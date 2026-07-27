@@ -4,9 +4,16 @@ import json
 import geopandas as gpd
 import fiona
 from .base import BaseHandler
+import pandas as pd
 
 fiona.drvsupport.supported_drivers['KML'] = 'rw'
 fiona.drvsupport.supported_drivers['LIBKML'] = 'rw'
+
+class MultipleLayersError(Exception):
+
+    def __init__(self, layers):
+        self.layers = layers
+        super().__init__("Multiple layers detected.")
 
 class SpatialHandler(BaseHandler):
 
@@ -14,13 +21,29 @@ class SpatialHandler(BaseHandler):
     def is_spatial(self) -> bool:
         return True
 
-    def read(self, file_path: str) -> str:
+    def read(self, file_path: str, **kwargs) -> str:
         try:
-            gdf = gpd.read_file(file_path)
+            merge_all = kwargs.get('merge_all', False)
+            layer_name = kwargs.get('layer_name', None)
+            
+            layers = fiona.listlayers(file_path)
+            
+            if len(layers) > 1 and not (merge_all or layer_name):
+                raise MultipleLayersError(layers)
+            if merge_all:
+                gdfs = [gpd.read_file(file_path, layer=l) for l in layers]
+                gdf = pd.concat(gdfs, ignore_index=True)
+            elif layer_name:
+                gdf = gpd.read_file(file_path, layer=layer_name)
+            else:
+                gdf = gpd.read_file(file_path)
+            
             raw_geojson = gdf.to_json()
             parsed_json = json.loads(raw_geojson)
             return json.dumps(parsed_json, indent=4, ensure_ascii=False)
             
+        except MultipleLayersError:
+            raise
         except Exception as e:
             raise RuntimeError(f"Failed to read spatial data: {str(e)}")
 

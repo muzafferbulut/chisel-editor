@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+chisel.bat
+
+
 # C extensions
 *.so
 

@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import QPlainTextEdit, QWidget, QTextEdit
 from PyQt6.QtGui import QPainter, QColor, QTextFormat, QPen
 from PyQt6.QtCore import Qt, QRect, pyqtSignal
+from core.theme import ThemeManager
 import os
 
 class LineNumberArea(QWidget):
@@ -62,7 +63,8 @@ class ChiselCodeEditor(QPlainTextEdit):
         extra_selections = []
         if not self.isReadOnly():
             selection = QTextEdit.ExtraSelection()
-            line_color = QColor("#e8f2fe") 
+            
+            line_color = QColor(ThemeManager.get_color("highlight")) 
             
             selection.format.setBackground(line_color)
             selection.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
@@ -74,9 +76,10 @@ class ChiselCodeEditor(QPlainTextEdit):
 
     def line_number_area_paint_event(self, event):
         painter = QPainter(self.line_number_area)
-        bg_color = QColor("#f0f0f0")
+        bg_color = QColor(ThemeManager.get_color("line_bg"))
         painter.fillRect(event.rect(), bg_color)
-        pen = QPen(QColor("#c0c0c0"))
+        
+        pen = QPen(QColor(ThemeManager.get_color("line_border")))
         painter.setPen(pen)
         painter.drawLine(
             self.line_number_area.width() - 1, event.rect().top(),
@@ -91,7 +94,7 @@ class ChiselCodeEditor(QPlainTextEdit):
         while block.isValid() and top <= event.rect().bottom():
             if block.isVisible() and bottom >= event.rect().top():
                 number = str(block_number + 1)
-                painter.setPen(QColor("#808080"))
+                painter.setPen(QColor(ThemeManager.get_color("line_text")))
                 painter.drawText(
                     0, top, self.line_number_area.width() - 5, 
                     self.fontMetrics().height(),

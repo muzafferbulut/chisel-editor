@@ -8,7 +8,7 @@ class BaseHandler(ABC):
         pass
 
     @abstractmethod
-    def read(self, file_path: str) -> str:
+    def read(self, file_path: str, **kwargs) -> str:
         pass
 
     @abstractmethod

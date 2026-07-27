@@ -1,5 +1,6 @@
 from PyQt6.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor, QFont
 from PyQt6.QtCore import QRegularExpression
+from core.theme import ThemeManager
 
 
 class JsonHighlighter(QSyntaxHighlighter):
@@ -9,16 +10,16 @@ class JsonHighlighter(QSyntaxHighlighter):
         self.rules = []
 
         key_fmt = QTextCharFormat()
-        key_fmt.setForeground(QColor("#d73a49"))
+        key_fmt.setForeground(QColor(ThemeManager.get_color("syntax_key")))
         key_fmt.setFontWeight(QFont.Weight.Bold)
         self.rules.append((QRegularExpression(r'".*?"(?=\s*:)'), key_fmt))
 
         str_fmt = QTextCharFormat()
-        str_fmt.setForeground(QColor("#032f62"))
+        str_fmt.setForeground(QColor(ThemeManager.get_color("syntax_str")))
         self.rules.append((QRegularExpression(r'".*?"'), str_fmt))
 
         num_fmt = QTextCharFormat()
-        num_fmt.setForeground(QColor("#005cc5"))
+        num_fmt.setForeground(QColor(ThemeManager.get_color("syntax_num")))
         self.rules.append((QRegularExpression(r'\b[-+]?\d*\.?\d+([eE][-+]?\d+)?\b'), num_fmt))
 
     def highlightBlock(self, text):

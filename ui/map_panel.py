@@ -3,6 +3,7 @@ import folium
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 from PyQt6.QtCore import QTimer
+from core.theme import ThemeManager
 
 class MapPanel(QWidget):
     
@@ -20,7 +21,8 @@ class MapPanel(QWidget):
 
     def render_geojson(self, geojson_str: str):
         try:
-            m = folium.Map()
+            tiles = ThemeManager.get_map_tiles()
+            m = folium.Map(tiles = tiles)
             gj = folium.GeoJson(geojson_str)
             gj.add_to(m)
             

@@ -10,6 +10,8 @@ from handlers.factory import HandlerFactory
 from ui.highlighter import JsonHighlighter, MarkdownHighlighter
 from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent
 from .editor import ChiselCodeEditor
+from handlers.spatial import MultipleLayersError
+from ui.dialogs import LayerSelectionDialog
 from ui.map_panel import MapPanel
 from PyQt6.QtCore import Qt
 import os
@@ -75,11 +77,10 @@ class MainWindow(QMainWindow):
         if file_path:
             self._load_file(file_path)
 
-    def _load_file(self, file_path: str):
+    def _load_file(self, file_path: str, **kwargs):
         try:
             handler = HandlerFactory.get_handler(file_path)
-            content = handler.read(file_path)
-            
+            content = handler.read(file_path, **kwargs)
             self.text_editor.setPlainText(content)
             self.current_file = file_path
             self.setWindowTitle(f"Chisel Editor - {os.path.basename(file_path)}")
@@ -96,6 +97,14 @@ class MainWindow(QMainWindow):
                 self.map_panel.hide()
                 if file_path.lower().endswith('.md'):
                     self.highlighter = MarkdownHighlighter(self.text_editor.document())
+                    
+        except MultipleLayersError as e:
+            dialog = LayerSelectionDialog(os.path.basename(file_path), e.layers, self)
+            if dialog.exec():
+                if dialog.merge_all:
+                    self._load_file(file_path, merge_all=True)
+                elif dialog.selected_layer:
+                    self._load_file(file_path, layer_name=dialog.selected_layer)
                     
         except ValueError as e:
             QMessageBox.warning(self, "Unsupported File", str(e))
