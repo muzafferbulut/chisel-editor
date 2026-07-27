@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QSplitter,
+    QStackedWidget,
 )
 from handlers.factory import HandlerFactory
 from ui.highlighter import JsonHighlighter, MarkdownHighlighter
@@ -12,8 +13,8 @@ from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent
 from .editor import ChiselCodeEditor
 from handlers.spatial import MultipleLayersError
 from ui.dialogs import LayerSelectionDialog
-from ui.map_panel import MapPanel
-from PyQt6.QtCore import Qt
+from ui.preview_panels import MapPreviewPanel, MarkdownPreviewPanel
+from PyQt6.QtCore import Qt, QTimer
 import os
 
 class MainWindow(QMainWindow):
@@ -30,13 +31,27 @@ class MainWindow(QMainWindow):
         self.resize(1200, 800)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.text_editor = ChiselCodeEditor()
-        self.map_panel = MapPanel()
+    
+        self.preview_stack = QStackedWidget()
+        self.map_panel = MapPreviewPanel()
+        self.markdown_panel = MarkdownPreviewPanel()
+
+        self.preview_stack.addWidget(self.map_panel)
+        self.preview_stack.addWidget(self.markdown_panel)
+        self.preview_stack.hide()
+
+        self.preview_timer = QTimer()
+        self.preview_timer.setSingleShot(True)
+        self.preview_timer.setInterval(800)
+        self.preview_timer.timeout.connect(self._refresh_preview)
+        self.text_editor.textChanged.connect(self._on_text_changed)
+
         self.splitter.addWidget(self.text_editor)
-        self.splitter.addWidget(self.map_panel)
-        self.map_panel.hide()
-        self.setAcceptDrops(True)
+        self.splitter.addWidget(self.preview_stack)
         self.splitter.setSizes([480, 720])
         self.setCentralWidget(self.splitter)
+
+        self.setAcceptDrops(True)
         self.text_editor.file_dropped.connect(self._load_file)
 
     def _create_menus(self):
@@ -59,12 +74,6 @@ class MainWindow(QMainWindow):
         file_menu.addAction(save_as_action)
         file_menu.addSeparator()
         file_menu.addAction(exit_action)
-
-        view_menu: QMenu = menu_bar.addMenu("View")
-        update_map_action = QAction("Update Map Preview", self)
-        update_map_action.setShortcut("Ctrl+R")  # Kısa yol ekledik
-        update_map_action.triggered.connect(self._update_map_preview)
-        view_menu.addAction(update_map_action)
 
     def _open_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -91,12 +100,16 @@ class MainWindow(QMainWindow):
 
             if handler.is_spatial:
                 self.highlighter = JsonHighlighter(self.text_editor.document())
-                self.map_panel.show()
-                self.map_panel.render_geojson(content)
+                self.preview_stack.setCurrentWidget(self.map_panel)
+                self.preview_stack.show()
+                self.map_panel.render_content(content)
+            elif file_path.lower().endswith('.md'):
+                self.highlighter = MarkdownHighlighter(self.text_editor.document())
+                self.preview_stack.setCurrentWidget(self.markdown_panel)
+                self.preview_stack.show()
+                self.markdown_panel.render_content(content)
             else:
-                self.map_panel.hide()
-                if file_path.lower().endswith('.md'):
-                    self.highlighter = MarkdownHighlighter(self.text_editor.document())
+                self.preview_stack.hide()
                     
         except MultipleLayersError as e:
             dialog = LayerSelectionDialog(os.path.basename(file_path), e.layers, self)
@@ -156,3 +169,17 @@ class MainWindow(QMainWindow):
             file_path = urls[0].toLocalFile()
             if os.path.isfile(file_path):
                 self._load_file(file_path)
+
+    def _on_text_changed(self):
+        if self.current_file:
+            self.preview_timer.start()
+
+    def _refresh_preview(self):
+        if not self.current_file:
+            return
+            
+        content = self.text_editor.toPlainText()
+        active_panel = self.preview_stack.currentWidget()
+        
+        if active_panel and self.preview_stack.isVisible():
+            active_panel.render_content(content)
