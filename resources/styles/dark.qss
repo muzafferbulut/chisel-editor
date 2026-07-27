@@ -22,11 +22,12 @@ QMenuBar {
     background-color: #181818;
     color: #cccccc;
     border-bottom: 1px solid #333333;
+    font-size: 12px;
 }
 
 QMenuBar::item {
     background-color: transparent;
-    padding: 6px 12px;
+    padding: 4px 10px;
 }
 
 QMenuBar::item:selected {
@@ -38,11 +39,12 @@ QMenuBar::item:selected {
 QMenu {
     background-color: #252526;
     border: 1px solid #333333;
-    padding: 5px 0px;
+    padding: 3px 0px;
+    font-size: 12px;
 }
 
 QMenu::item {
-    padding: 6px 24px 6px 24px;
+    padding: 4px 20px 4px 20px;
 }
 
 QMenu::item:selected {
@@ -121,8 +123,9 @@ QListWidget, QListView {
 }
 
 QListWidget::item {
-    padding: 8px;
-    border-radius: 4px;
+    padding: 5px 8px;
+    border-radius: 3px;
+    margin-bottom: 1px;
 }
 
 QListWidget::item:hover {
@@ -150,9 +153,10 @@ QPushButton {
     background-color: #333333;
     color: #cccccc;
     border: none;
-    padding: 6px 14px;
+    padding: 4px 12px;
     border-radius: 4px;
     font-weight: 500;
+    font-size: 11px;
 }
 
 QPushButton:hover {
