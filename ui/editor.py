@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QPlainTextEdit, QWidget, QTextEdit
-from PyQt6.QtGui import QPainter, QColor, QTextFormat, QPen
+from PyQt6.QtGui import QPainter, QColor, QTextFormat, QPen, QTextCursor
 from PyQt6.QtCore import Qt, QRect, pyqtSignal
 from core.theme import ThemeManager
 import os
@@ -32,6 +32,7 @@ class ChiselCodeEditor(QPlainTextEdit):
         font.setFamily("Courier New")
         self.document().setDefaultFont(font)
         self.setAcceptDrops(True)
+        self._current_font_size = 13
 
     def line_number_area_width(self):
         digits = 1
@@ -127,3 +128,28 @@ class ChiselCodeEditor(QPlainTextEdit):
                     self.file_dropped.emit(file_path)
         else:
             super().dropEvent(event)
+
+    def wheelEvent(self, event):
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self._current_font_size += 1
+            elif delta < 0:
+                self._current_font_size -= 1
+            self._current_font_size = max(8, min(self._current_font_size, 48))
+            self.setStyleSheet(f"font-size: {self._current_font_size}px;")
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
+    def keyPressEvent(self, event):
+        super().keyPressEvent(event)
+        
+        char = event.text()
+        match_dict = {'{': '}', '[': ']', '(': ')', '"': '"', "'": "'"}
+        
+        if char in match_dict:
+            cursor = self.textCursor()
+            cursor.insertText(match_dict[char])
+            cursor.movePosition(QTextCursor.MoveOperation.Left)
+            self.setTextCursor(cursor)
