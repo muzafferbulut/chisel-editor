@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QLabel,
+    QStyle,
 )
 from handlers.factory import HandlerFactory
 from ui.highlighter import JsonHighlighter, MarkdownHighlighter
@@ -31,7 +32,7 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self):
             self.setWindowTitle("Chisel Editor - Untitled")
-            self.resize(1200, 800)
+            self.resize(800, 500)
             self.splitter = QSplitter(Qt.Orientation.Horizontal)
             self.text_editor = ChiselCodeEditor()
         
