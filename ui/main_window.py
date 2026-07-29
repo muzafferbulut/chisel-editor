@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QLabel,
+    QStyle,
 )
 from handlers.factory import HandlerFactory
 from ui.highlighter import JsonHighlighter, MarkdownHighlighter
