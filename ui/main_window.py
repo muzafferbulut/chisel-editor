@@ -31,7 +31,7 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self):
             self.setWindowTitle("Chisel Editor - Untitled")
-            self.resize(1200, 800)
+            self.resize(800, 500)
             self.splitter = QSplitter(Qt.Orientation.Horizontal)
             self.text_editor = ChiselCodeEditor()
         
