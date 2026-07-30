@@ -20,7 +20,7 @@ class ThemeManager:
             "line_bg": "#1e1e1e",
             "line_text": "#858585",
             "line_border": "#333333",
-            "highlight": "#264f78",
+            "highlight": "#2a2d2e",
             "syntax_key": "#c678dd",
             "syntax_str": "#98c379",
             "syntax_num": "#d19a66",

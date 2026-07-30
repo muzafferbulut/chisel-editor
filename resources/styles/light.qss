@@ -55,7 +55,8 @@ QPlainTextEdit, QTextEdit {
     background-color: #ffffff;
     color: #24292e;
     border: none;
-    selection-background-color: #c8e1ff;
+    selection-background-color: #add6ff;
+    selection-color: #24292e;
 }
 
 QScrollBar:vertical {
@@ -186,10 +187,21 @@ QToolTip {
 }
 
 QStatusBar {
-    background-color: #0366d6;
-    color: #ffffff;
+    background-color: #f6f8fa;
+    color: #586069;
+    font-size: 12px;
+    border-top: 1px solid #e1e4e8;
 }
 
 QStatusBar::item {
-    border: none;
+    border: 0px solid transparent;
+    border-style: none;
+    outline: none;
+}
+
+QStatusBar QLabel {
+    background: transparent;
+    color: #24292e;
+    padding: 0px 8px;
+    font-weight: 500;
 }

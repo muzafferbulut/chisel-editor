@@ -187,10 +187,21 @@ QToolTip {
 }
 
 QStatusBar {
-    background-color: #007acc;
-    color: #ffffff;
+    background-color: #181818;
+    color: #cccccc;
+    font-size: 12px;
+    border-top: 1px solid #2b2b2b;
 }
 
 QStatusBar::item {
-    border: none;
+    border: 0px solid transparent;
+    border-style: none;
+    outline: none;
+}
+
+QStatusBar QLabel {
+    background: transparent;
+    color: #cccccc;
+    padding: 0px 8px;
+    font-weight: 500;
 }
