@@ -1,10 +1,8 @@
 import json
 import markdown
 import folium
-from abc import ABC, abstractmethod
 from PyQt6.QtWidgets import QWidget, QVBoxLayout
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtCore import QTimer
 from core.theme import ThemeManager
 
 
@@ -26,17 +24,10 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        QTimer.singleShot(0, self._render_empty_map)
-
-    def _render_empty_map(self):
-        tiles = ThemeManager.get_map_tiles()
-        m = folium.Map(tiles=tiles)
-        self.web_view.setHtml(m.get_root().render())
 
     def render_content(self, content: str):
         try:
-            json.loads(content) 
-            
+            json.loads(content)
             tiles = ThemeManager.get_map_tiles()
             m = folium.Map(tiles=tiles)
             gj = folium.GeoJson(content)
@@ -45,7 +36,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
             bounds = gj.get_bounds()
             if bounds:
                 m.fit_bounds(bounds)
-                
+            
             self.web_view.setHtml(m.get_root().render())
         except json.JSONDecodeError:
             pass

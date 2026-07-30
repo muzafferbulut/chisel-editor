@@ -7,7 +7,6 @@ from PyQt6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QLabel,
-    QStyle,
 )
 from handlers.factory import HandlerFactory
 from ui.highlighter import JsonHighlighter, MarkdownHighlighter
@@ -15,7 +14,6 @@ from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent
 from .editor import ChiselCodeEditor
 from handlers.spatial import MultipleLayersError
 from ui.dialogs import LayerSelectionDialog
-from ui.preview_panels import MapPreviewPanel, MarkdownPreviewPanel
 from PyQt6.QtCore import Qt, QTimer
 import os
 
@@ -26,6 +24,7 @@ class MainWindow(QMainWindow):
         self.current_file = None
         self.is_dirty = False
         self.highlighter = None
+        self._is_loading = False
         
         self._init_ui()
         self._create_menus()
@@ -37,11 +36,9 @@ class MainWindow(QMainWindow):
             self.text_editor = ChiselCodeEditor()
         
             self.preview_stack = QStackedWidget()
-            self.map_panel = MapPreviewPanel()
-            self.markdown_panel = MarkdownPreviewPanel()
+            self.map_panel = None
+            self.markdown_panel = None
     
-            self.preview_stack.addWidget(self.map_panel)
-            self.preview_stack.addWidget(self.markdown_panel)
             self.preview_stack.hide()
     
             self.preview_timer = QTimer()
@@ -73,6 +70,12 @@ class MainWindow(QMainWindow):
         self.cursor_label.setText(f"Ln {line}, Col {col}")
 
     def _on_text_changed(self):
+        if self._is_loading:
+            return
+
+        if not self.text_editor.document().isModified():
+            return
+
         if self.current_file:
             self.preview_timer.start()
 
@@ -144,40 +147,44 @@ class MainWindow(QMainWindow):
 
     def _load_file(self, file_path: str, **kwargs):
         try:
+            self._is_loading = True
             handler = HandlerFactory.get_handler(file_path)
             content = handler.read(file_path, **kwargs)
-
             self.text_editor.blockSignals(True)
+
             try:
                 self.text_editor.setPlainText(content)
+
+                if self.highlighter:
+                    self.highlighter.setDocument(None)
+                    self.highlighter = None
+
+                if handler.is_spatial:
+                    self.highlighter = JsonHighlighter(self.text_editor.document())
+                    panel = self._get_map_panel()
+                    self.preview_stack.setCurrentWidget(panel)
+                    self.preview_stack.show()
+                    panel.render_content(content)
+                    self.type_label.setText("Spatial")
+                    
+                elif file_path.lower().endswith('.md'):
+                    self.highlighter = MarkdownHighlighter(self.text_editor.document())
+                    panel = self._get_markdown_panel()
+                    self.preview_stack.setCurrentWidget(panel)
+                    self.preview_stack.show()
+                    panel.render_content(content)
+                    self.type_label.setText("Markdown")
+                    
+                else:
+                    self.preview_stack.hide()
+                    self.type_label.setText("Plain Text")
             finally:
                 self.text_editor.blockSignals(False)
             
+            self.text_editor.document().setModified(False)
             self.current_file = file_path
             self.is_dirty = False 
             self._update_title()
-
-            if self.highlighter:
-                self.highlighter.setDocument(None)
-                self.highlighter = None
-
-            if handler.is_spatial:
-                self.highlighter = JsonHighlighter(self.text_editor.document())
-                self.preview_stack.setCurrentWidget(self.map_panel)
-                self.preview_stack.show()
-                self.map_panel.render_content(content)
-                self.type_label.setText("Spatial")
-                
-            elif file_path.lower().endswith('.md'):
-                self.highlighter = MarkdownHighlighter(self.text_editor.document())
-                self.preview_stack.setCurrentWidget(self.markdown_panel)
-                self.preview_stack.show()
-                self.markdown_panel.render_content(content)
-                self.type_label.setText("Markdown")
-                
-            else:
-                self.preview_stack.hide()
-                self.type_label.setText("Plain Text")
                     
         except MultipleLayersError as e:
             dialog = LayerSelectionDialog(os.path.basename(file_path), e.layers, self)
@@ -191,6 +198,9 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Unsupported File", str(e))
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Could not read file:\n{str(e)}")
+            
+        finally:
+            QTimer.singleShot(150, lambda: setattr(self, "_is_loading", False))
 
     def _save_file(self):
         if not self.current_file:
@@ -202,7 +212,7 @@ class MainWindow(QMainWindow):
             content = self.text_editor.toPlainText()
             handler.write(self.current_file, content)
             self.statusBar().showMessage("File saved successfully.", 3000)
-            
+            self.text_editor.document().setModified(False)
             self.is_dirty = False
             self._update_title()
             
@@ -225,7 +235,8 @@ class MainWindow(QMainWindow):
     def _update_map_preview(self):
         content = self.text_editor.toPlainText()
         if content.strip():
-            self.map_panel.render_geojson(content)
+            panel = self._get_map_panel()
+            panel.render_geojson(content)
             self.statusBar().showMessage("Map updated.", 3000)
 
     def dragEnterEvent(self, event: QDragEnterEvent):
@@ -250,3 +261,17 @@ class MainWindow(QMainWindow):
         
         if active_panel and self.preview_stack.isVisible():
             active_panel.render_content(content)
+
+    def _get_map_panel(self):
+        if self.map_panel is None:
+            from ui.preview_panels import MapPreviewPanel
+            self.map_panel = MapPreviewPanel()
+            self.preview_stack.addWidget(self.map_panel)
+        return self.map_panel
+
+    def _get_markdown_panel(self):
+        if self.markdown_panel is None:
+            from ui.preview_panels import MarkdownPreviewPanel
+            self.markdown_panel = MarkdownPreviewPanel()
+            self.preview_stack.addWidget(self.markdown_panel)
+        return self.markdown_panel

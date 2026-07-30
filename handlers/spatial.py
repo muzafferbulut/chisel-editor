@@ -25,11 +25,12 @@ class SpatialHandler(BaseHandler):
         try:
             merge_all = kwargs.get('merge_all', False)
             layer_name = kwargs.get('layer_name', None)
-            
+                         
             layers = fiona.listlayers(file_path)
-            
+                         
             if len(layers) > 1 and not (merge_all or layer_name):
                 raise MultipleLayersError(layers)
+
             if merge_all:
                 gdfs = [gpd.read_file(file_path, layer=l) for l in layers]
                 gdf = pd.concat(gdfs, ignore_index=True)
@@ -37,11 +38,20 @@ class SpatialHandler(BaseHandler):
                 gdf = gpd.read_file(file_path, layer=layer_name)
             else:
                 gdf = gpd.read_file(file_path)
-            
+
+            for col in gdf.columns:
+                if col != gdf.geometry.name:
+                    if pd.api.types.is_datetime64_any_dtype(gdf[col]) or pd.api.types.is_timedelta64_dtype(gdf[col]):
+                        gdf[col] = gdf[col].astype(str).replace({'NaT': None, 'nan': None})
+                    elif gdf[col].dtype == 'object':
+                        gdf[col] = gdf[col].apply(
+                            lambda x: None if x is pd.NaT else (x.isoformat() if hasattr(x, 'isoformat') else x)
+                        )
+
             raw_geojson = gdf.to_json()
             parsed_json = json.loads(raw_geojson)
             return json.dumps(parsed_json, indent=4, ensure_ascii=False)
-            
+                     
         except MultipleLayersError:
             raise
         except Exception as e:
