@@ -11,9 +11,8 @@ from PyQt6.QtWidgets import (
 from handlers.factory import HandlerFactory
 from ui.highlighter import JsonHighlighter, MarkdownHighlighter
 from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent
+from core.workers import FileLoadWorker
 from .editor import ChiselCodeEditor
-from handlers.spatial import MultipleLayersError
-from ui.dialogs import LayerSelectionDialog
 from PyQt6.QtCore import Qt, QTimer
 import os
 
@@ -145,63 +144,6 @@ class MainWindow(QMainWindow):
         if file_path:
             self._load_file(file_path)
 
-    def _load_file(self, file_path: str, **kwargs):
-        try:
-            self._is_loading = True
-            handler = HandlerFactory.get_handler(file_path)
-            content = handler.read(file_path, **kwargs)
-            self.text_editor.blockSignals(True)
-
-            try:
-                self.text_editor.setPlainText(content)
-
-                if self.highlighter:
-                    self.highlighter.setDocument(None)
-                    self.highlighter = None
-
-                if handler.is_spatial:
-                    self.highlighter = JsonHighlighter(self.text_editor.document())
-                    panel = self._get_map_panel()
-                    self.preview_stack.setCurrentWidget(panel)
-                    self.preview_stack.show()
-                    panel.render_content(content)
-                    self.type_label.setText("Spatial")
-                    
-                elif file_path.lower().endswith('.md'):
-                    self.highlighter = MarkdownHighlighter(self.text_editor.document())
-                    panel = self._get_markdown_panel()
-                    self.preview_stack.setCurrentWidget(panel)
-                    self.preview_stack.show()
-                    panel.render_content(content)
-                    self.type_label.setText("Markdown")
-                    
-                else:
-                    self.preview_stack.hide()
-                    self.type_label.setText("Plain Text")
-            finally:
-                self.text_editor.blockSignals(False)
-            
-            self.text_editor.document().setModified(False)
-            self.current_file = file_path
-            self.is_dirty = False 
-            self._update_title()
-                    
-        except MultipleLayersError as e:
-            dialog = LayerSelectionDialog(os.path.basename(file_path), e.layers, self)
-            if dialog.exec():
-                if dialog.merge_all:
-                    self._load_file(file_path, merge_all=True)
-                elif dialog.selected_layer:
-                    self._load_file(file_path, layer_name=dialog.selected_layer)
-                    
-        except ValueError as e:
-            QMessageBox.warning(self, "Unsupported File", str(e))
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Could not read file:\n{str(e)}")
-            
-        finally:
-            QTimer.singleShot(150, lambda: setattr(self, "_is_loading", False))
-
     def _save_file(self):
         if not self.current_file:
             self._save_file_as()
@@ -275,3 +217,58 @@ class MainWindow(QMainWindow):
             self.markdown_panel = MarkdownPreviewPanel()
             self.preview_stack.addWidget(self.markdown_panel)
         return self.markdown_panel
+
+    def _load_file(self, file_path: str, **kwargs):
+        if self._is_loading:
+            return
+            
+        self._is_loading = True
+        self.statusBar().showMessage(f"Loading {os.path.basename(file_path)}...")
+        
+        self.worker = FileLoadWorker(file_path, **kwargs)
+        self.worker.finished.connect(self._on_file_loaded)
+        self.worker.start()
+
+    def _on_file_loaded(self, file_path: str, content: str, is_spatial: bool, error_msg: str):
+        self._is_loading = False
+        self.statusBar().clearMessage()
+
+        if error_msg:
+            QMessageBox.critical(self, "Error", f"Could not read file:\n{error_msg}")
+            return
+
+        self.text_editor.blockSignals(True)
+        try:
+            self.text_editor.setPlainText(content)
+            
+            if self.highlighter:
+                self.highlighter.setDocument(None)
+                self.highlighter = None
+
+            if is_spatial:
+                self.highlighter = JsonHighlighter(self.text_editor.document())
+                panel = self._get_map_panel()
+                self.preview_stack.setCurrentWidget(panel)
+                self.preview_stack.show()
+                panel.render_content(content)
+                self.type_label.setText("Spatial")
+                
+            elif file_path.lower().endswith('.md'):
+                self.highlighter = MarkdownHighlighter(self.text_editor.document())
+                panel = self._get_markdown_panel()
+                self.preview_stack.setCurrentWidget(panel)
+                self.preview_stack.show()
+                panel.render_content(content)
+                self.type_label.setText("Markdown")
+                
+            else:
+                self.preview_stack.hide()
+                self.type_label.setText("Plain Text")
+
+        finally:
+            self.text_editor.blockSignals(False)
+            
+        self.text_editor.document().setModified(False)
+        self.current_file = file_path
+        self.is_dirty = False
+        self._update_title()
