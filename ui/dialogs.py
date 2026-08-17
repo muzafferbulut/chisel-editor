@@ -1,6 +1,8 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QListWidget, QPushButton)
+                             QListWidget, QPushButton, QLineEdit, QCheckBox)
+from PyQt6.QtGui import QTextDocument
 from PyQt6.QtCore import Qt
+
 
 class LayerSelectionDialog(QDialog):
     
@@ -60,3 +62,121 @@ class LayerSelectionDialog(QDialog):
         if item:
             self.selected_layer = item.text()
         self.accept()
+
+
+class FindReplaceDialog(QDialog):
+
+    def __init__(self, editor, parent=None):
+        super().__init__(parent)
+        self.editor = editor
+        self.setWindowTitle("Find & Replace")
+        self.setModal(False) 
+        self.resize(350, 150)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        find_layout = QHBoxLayout()
+        self.find_input = QLineEdit()
+        self.find_input.setPlaceholderText("Find...")
+        self.btn_find_prev = QPushButton("<")
+        self.btn_find_next = QPushButton(">")
+        self.btn_find_prev.setFixedWidth(30)
+        self.btn_find_next.setFixedWidth(30)
+        
+        find_layout.addWidget(QLabel("Find:"))
+        find_layout.addWidget(self.find_input)
+        find_layout.addWidget(self.btn_find_prev)
+        find_layout.addWidget(self.btn_find_next)
+
+        replace_layout = QHBoxLayout()
+        self.replace_input = QLineEdit()
+        self.replace_input.setPlaceholderText("Replace with...")
+        self.btn_replace = QPushButton("Replace")
+        self.btn_replace_all = QPushButton("Replace All")
+        
+        replace_layout.addWidget(QLabel("Replace:"))
+        replace_layout.addWidget(self.replace_input)
+        replace_layout.addWidget(self.btn_replace)
+        replace_layout.addWidget(self.btn_replace_all)
+
+        options_layout = QHBoxLayout()
+        self.cb_match_case = QCheckBox("Match Case")
+        self.cb_whole_word = QCheckBox("Whole Word")
+        options_layout.addWidget(self.cb_match_case)
+        options_layout.addWidget(self.cb_whole_word)
+        options_layout.addStretch()
+
+        layout.addLayout(find_layout)
+        layout.addLayout(replace_layout)
+        layout.addLayout(options_layout)
+
+        self.btn_find_next.clicked.connect(self.find_next)
+        self.btn_find_prev.clicked.connect(self.find_prev)
+        self.btn_replace.clicked.connect(self.replace)
+        self.btn_replace_all.clicked.connect(self.replace_all)
+
+    def _get_find_flags(self, backward=False):
+        flags = QTextDocument.FindFlag(0)
+        if backward:
+            flags |= QTextDocument.FindFlag.FindBackward
+        if self.cb_match_case.isChecked():
+            flags |= QTextDocument.FindFlag.FindCaseSensitively
+        if self.cb_whole_word.isChecked():
+            flags |= QTextDocument.FindFlag.FindWholeWords
+        return flags
+
+    def find_next(self):
+        text = self.find_input.text()
+        if not text: return
+        
+        found = self.editor.find(text, self._get_find_flags())
+        if not found:
+            cursor = self.editor.textCursor()
+            cursor.movePosition(cursor.MoveOperation.Start)
+            self.editor.setTextCursor(cursor)
+            self.editor.find(text, self._get_find_flags())
+
+    def find_prev(self):
+        text = self.find_input.text()
+        if not text: return
+        
+        found = self.editor.find(text, self._get_find_flags(backward=True))
+        if not found:
+            cursor = self.editor.textCursor()
+            cursor.movePosition(cursor.MoveOperation.End)
+            self.editor.setTextCursor(cursor)
+            self.editor.find(text, self._get_find_flags(backward=True))
+
+    def replace(self):
+        text = self.find_input.text()
+        replace_text = self.replace_input.text()
+        if not text: return
+        
+        cursor = self.editor.textCursor()
+        if cursor.hasSelection() and cursor.selectedText() == text:
+            cursor.insertText(replace_text)
+        
+        self.find_next()
+
+    def replace_all(self):
+        text = self.find_input.text()
+        replace_text = self.replace_input.text()
+        if not text: return
+
+        cursor = self.editor.textCursor()
+        cursor.beginEditBlock()
+        
+        cursor.movePosition(cursor.MoveOperation.Start)
+        self.editor.setTextCursor(cursor)
+        
+        count = 0
+        while self.editor.find(text, self._get_find_flags()):
+            self.editor.textCursor().insertText(replace_text)
+            count += 1
+            
+        cursor.endEditBlock()
+        
+        if self.parent():
+            self.parent().statusBar().showMessage(f"Replaced {count} occurrences.", 3000)

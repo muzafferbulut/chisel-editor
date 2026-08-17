@@ -10,11 +10,13 @@ from PyQt6.QtWidgets import (
 )
 from handlers.factory import HandlerFactory
 from ui.highlighter import JsonHighlighter, MarkdownHighlighter
-from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent
+from ui.dialogs import FindReplaceDialog
+from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QKeySequence
 from core.workers import FileLoadWorker
 from .editor import ChiselCodeEditor
 from PyQt6.QtCore import Qt, QTimer
 import os
+
 
 class MainWindow(QMainWindow):
     
@@ -132,6 +134,12 @@ class MainWindow(QMainWindow):
         file_menu.addAction(save_as_action)
         file_menu.addSeparator()
         file_menu.addAction(exit_action)
+
+        edit_menu: QMenu = menu_bar.addMenu("Edit")
+        find_action = QAction("Find & Replace", self)
+        find_action.setShortcut(QKeySequence("Ctrl+F"))
+        find_action.triggered.connect(self._show_find_replace)
+        edit_menu.addAction(find_action)
 
     def _open_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -272,3 +280,12 @@ class MainWindow(QMainWindow):
         self.current_file = file_path
         self.is_dirty = False
         self._update_title()
+
+    def _show_find_replace(self):
+        if not hasattr(self, 'find_dialog') or self.find_dialog is None:
+            self.find_dialog = FindReplaceDialog(self.text_editor, self)
+        
+        self.find_dialog.show()
+        self.find_dialog.raise_()
+        self.find_dialog.activateWindow()
+        self.find_dialog.find_input.setFocus()

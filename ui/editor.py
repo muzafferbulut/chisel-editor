@@ -16,6 +16,10 @@ class LineNumberArea(QWidget):
     def paintEvent(self, event):
         self.code_editor.line_number_area_paint_event(event)
 
+    def mousePressEvent(self, event):
+        self.code_editor.line_number_area_mouse_press_event(event)
+
+
 class ChiselCodeEditor(QPlainTextEdit):
 
     file_dropped = pyqtSignal(str)
@@ -33,6 +37,7 @@ class ChiselCodeEditor(QPlainTextEdit):
         self.document().setDefaultFont(font)
         self.setAcceptDrops(True)
         self._current_font_size = 13
+        self.folded_blocks = set()
 
     def line_number_area_width(self):
         digits = 1
@@ -97,10 +102,29 @@ class ChiselCodeEditor(QPlainTextEdit):
                 number = str(block_number + 1)
                 painter.setPen(QColor(ThemeManager.get_color("line_text")))
                 painter.drawText(
-                    0, top, self.line_number_area.width() - 5, 
+                    0, top, self.line_number_area.width() - 15,
                     self.fontMetrics().height(),
                     Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, number
                 )
+
+                text = block.text()
+                next_block = block.next()
+                if next_block.isValid() and text.strip():
+                    indent = len(text) - len(text.lstrip())
+                    next_text = next_block.text()
+                    
+                    if next_text.strip():
+                        next_indent = len(next_text) - len(next_text.lstrip())
+                        if next_indent > indent:
+                            is_folded = block_number in self.folded_blocks
+                            sign = "+" if is_folded else "-"
+                            
+                            icon_rect = QRect(self.line_number_area.width() - 12, top + (self.fontMetrics().height() - 10) // 2, 10, 10)
+                            painter.setPen(QColor(ThemeManager.get_color("line_border")))
+                            painter.drawRect(icon_rect)
+                            
+                            painter.setPen(QColor(ThemeManager.get_color("line_text")))
+                            painter.drawText(icon_rect, Qt.AlignmentFlag.AlignCenter, sign)
 
             block = block.next()
             top = bottom
@@ -153,3 +177,37 @@ class ChiselCodeEditor(QPlainTextEdit):
             cursor.insertText(match_dict[char])
             cursor.movePosition(QTextCursor.MoveOperation.Left)
             self.setTextCursor(cursor)
+
+    def line_number_area_mouse_press_event(self, event):
+        cursor = self.cursorForPosition(event.pos())
+        block = cursor.block()
+
+        if event.pos().x() >= self.line_number_area.width() - 15:
+            self.toggle_fold(block.blockNumber())
+
+    def toggle_fold(self, block_number):
+        block = self.document().findBlockByNumber(block_number)
+        if not block.isValid() or not block.text().strip(): return
+        
+        indent = len(block.text()) - len(block.text().lstrip())
+        is_folded = block_number in self.folded_blocks
+        
+        if is_folded:
+            self.folded_blocks.remove(block_number)
+        else:
+            self.folded_blocks.add(block_number)
+            
+        next_block = block.next()
+        while next_block.isValid():
+            text = next_block.text()
+            if text.strip():
+                next_indent = len(text) - len(text.lstrip())
+                if next_indent <= indent:
+                    break
+            
+            next_block.setVisible(is_folded)
+            next_block = next_block.next()
+
+        self.document().markContentsDirty(block.position(), self.document().characterCount())
+        self.viewport().update()
+        self.update_line_number_area_width(0)
