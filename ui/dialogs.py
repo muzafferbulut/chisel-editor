@@ -1,5 +1,6 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QListWidget, QPushButton, QLineEdit, QCheckBox)
+                             QListWidget, QPushButton, QLineEdit, QCheckBox,
+                             QMessageBox)
 from PyQt6.QtGui import QTextDocument
 from PyQt6.QtCore import Qt
 
@@ -180,3 +181,60 @@ class FindReplaceDialog(QDialog):
         
         if self.parent():
             self.parent().statusBar().showMessage(f"Replaced {count} occurrences.", 3000)
+
+
+class CRSDialog(QDialog):
+
+    def __init__(self, title: str, current_crs: str = None, parent=None):
+        super().__init__(parent)
+        self.selected_epsg = None
+        self.setWindowTitle(title)
+        self.resize(300, 120)
+        self.setModal(True)
+        
+        self._setup_ui(current_crs)
+
+    def _setup_ui(self, current_crs):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        if current_crs:
+            lbl_current = QLabel(f"<b>Current CRS:</b> {current_crs}")
+            layout.addWidget(lbl_current)
+
+        input_layout = QHBoxLayout()
+        input_layout.addWidget(QLabel("<b>Target EPSG:</b>"))
+        
+        self.epsg_input = QLineEdit()
+        self.epsg_input.setPlaceholderText("e.g. 4326 or 32636")
+        input_layout.addWidget(self.epsg_input)
+        
+        layout.addLayout(input_layout)
+        btn_layout = QHBoxLayout()
+        self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.setObjectName("btn_cancel")
+        
+        self.btn_apply = QPushButton("Apply")
+        self.btn_apply.setObjectName("btn_load")
+        
+        self.btn_cancel.clicked.connect(self.reject)
+        self.btn_apply.clicked.connect(self._on_apply)
+        
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.btn_cancel)
+        btn_layout.addWidget(self.btn_apply)
+        
+        layout.addLayout(btn_layout)
+
+    def _on_apply(self):
+        epsg_text = self.epsg_input.text().strip()
+        
+        if epsg_text.isdigit():
+            self.selected_epsg = f"EPSG:{epsg_text}"
+            self.accept()
+        elif epsg_text.lower().startswith("epsg:") and epsg_text.split(":")[-1].isdigit():
+            self.selected_epsg = epsg_text.upper()
+            self.accept()
+        else:
+            QMessageBox.warning(self, "Invalid Input", "Please enter a valid EPSG code (e.g.,4326).")

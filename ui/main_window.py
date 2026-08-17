@@ -11,12 +11,15 @@ from PyQt6.QtWidgets import (
 )
 from handlers.factory import HandlerFactory
 from ui.highlighter import JsonHighlighter, MarkdownHighlighter
-from ui.dialogs import FindReplaceDialog
+from ui.dialogs import FindReplaceDialog, LayerSelectionDialog, CRSDialog
 from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QKeySequence
 from core.workers import FileLoadWorker
 from core.theme import ThemeManager
-from .editor import ChiselCodeEditor
+from ui.editor import ChiselCodeEditor
 from PyQt6.QtCore import Qt, QTimer
+import geopandas as gpd
+import json
+import io
 import os
 
 
@@ -104,6 +107,17 @@ class MainWindow(QMainWindow):
             
             theme_menu.addAction(light_theme_action)
             theme_menu.addAction(dark_theme_action)
+
+            tools_menu: QMenu = menu_bar.addMenu("Tools")
+        
+            set_crs_action = QAction("Set CRS...", self)
+            reproject_crs_action = QAction("Reproject CRS...", self)
+            
+            set_crs_action.triggered.connect(self._set_crs)
+            reproject_crs_action.triggered.connect(self._reproject_crs)
+            
+            tools_menu.addAction(set_crs_action)
+            tools_menu.addAction(reproject_crs_action)
 
     def _update_cursor_pos(self):
         cursor = self.text_editor.textCursor()
@@ -274,6 +288,7 @@ class MainWindow(QMainWindow):
                 self.preview_stack.show()
                 panel.render_content(content)
                 self.type_label.setText("Spatial")
+                self._set_crs(initial_check=True)
                 
             elif file_path.lower().endswith('.md'):
                 self.highlighter = MarkdownHighlighter(self.text_editor.document())
@@ -320,3 +335,79 @@ class MainWindow(QMainWindow):
         self.text_editor.viewport().update()
         self.text_editor.line_number_area.update()
         self._refresh_preview()
+
+    def _get_gdf_from_editor(self):
+        content = self.text_editor.toPlainText()
+        if not content.strip():
+            return None
+        try:
+            return gpd.read_file(io.StringIO(content))
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not parse spatial data:\n{str(e)}")
+            return None
+
+    def _update_editor_with_gdf(self, gdf):
+        raw_geojson = gdf.to_json()
+        parsed_json = json.loads(raw_geojson)
+        formatted_json = json.dumps(parsed_json, indent=4, ensure_ascii=False)
+        
+        self.text_editor.blockSignals(True)
+        self.text_editor.setPlainText(formatted_json)
+        self.text_editor.blockSignals(False)
+        
+        self.is_dirty = True
+        self._update_title()
+        
+        self.preview_timer.start()
+
+    def _set_crs(self, initial_check=False):
+        if self.type_label.text() != "Spatial":
+            if not initial_check:
+                QMessageBox.information(self, "Not Spatial", "Current file is not recognized as spatial data.")
+            return
+            
+        gdf = self._get_gdf_from_editor()
+        if gdf is None: return
+        
+        current_crs = str(gdf.crs) if gdf.crs else "None"
+        
+        if initial_check and gdf.crs is not None:
+            return
+            
+        dialog_title = "Set CRS (Missing!)" if initial_check else "Set CRS"
+        dialog = CRSDialog(title=dialog_title, current_crs=current_crs, parent=self)
+        
+        if dialog.exec():
+            new_crs = dialog.selected_epsg
+            try:
+                gdf.set_crs(new_crs, allow_override=True, inplace=True)
+                self._update_editor_with_gdf(gdf)
+                self.statusBar().showMessage(f"CRS successfully set to {new_crs}", 4000)
+            except Exception as e:
+                QMessageBox.critical(self, "CRS Error", f"Failed to set CRS:\n{str(e)}")
+
+    def _reproject_crs(self):
+        if self.type_label.text() != "Spatial":
+            QMessageBox.information(self, "Not Spatial", "Current file is not recognized as spatial data.")
+            return
+            
+        gdf = self._get_gdf_from_editor()
+        if gdf is None: return
+        
+        if gdf.crs is None:
+            QMessageBox.warning(self, "Missing CRS", "The data has no CRS defined. Please use 'Set CRS' first before reprojecting.")
+            return
+            
+        current_crs = str(gdf.crs)
+        dialog = CRSDialog(title="Reproject CRS", current_crs=current_crs, parent=self)
+        
+        if dialog.exec():
+            target_crs = dialog.selected_epsg
+            if target_crs == current_crs:
+                return
+            try:
+                gdf = gdf.to_crs(target_crs)
+                self._update_editor_with_gdf(gdf)
+                self.statusBar().showMessage(f"Successfully reprojected to {target_crs}", 4000)
+            except Exception as e:
+                QMessageBox.critical(self, "Reprojection Error", f"Failed to reproject CRS:\n{str(e)}")
