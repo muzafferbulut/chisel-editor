@@ -7,12 +7,14 @@ from PyQt6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QLabel,
+    QApplication
 )
 from handlers.factory import HandlerFactory
 from ui.highlighter import JsonHighlighter, MarkdownHighlighter
 from ui.dialogs import FindReplaceDialog
 from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QKeySequence
 from core.workers import FileLoadWorker
+from core.theme import ThemeManager
 from .editor import ChiselCodeEditor
 from PyQt6.QtCore import Qt, QTimer
 import os
@@ -64,6 +66,45 @@ class MainWindow(QMainWindow):
             self.text_editor.cursorPositionChanged.connect(self._update_cursor_pos)
             self.text_editor.textChanged.connect(self._on_text_changed)
 
+    def _create_menus(self):
+            menu_bar: QMenuBar = self.menuBar()
+    
+            file_menu: QMenu = menu_bar.addMenu("File")
+            
+            open_action = QAction("Open...", self)
+            save_action = QAction("Save", self)
+            save_as_action = QAction("Save As...", self)
+            exit_action = QAction("Exit", self)
+            
+            open_action.triggered.connect(self._open_file)
+            save_action.triggered.connect(self._save_file)
+            save_as_action.triggered.connect(self._save_file_as)
+            exit_action.triggered.connect(self.close)
+            
+            file_menu.addAction(open_action)
+            file_menu.addAction(save_action)
+            file_menu.addAction(save_as_action)
+            file_menu.addSeparator()
+            file_menu.addAction(exit_action)
+    
+            edit_menu: QMenu = menu_bar.addMenu("Edit")
+            find_action = QAction("Find & Replace", self)
+            find_action.setShortcut(QKeySequence("Ctrl+F"))
+            find_action.triggered.connect(self._show_find_replace)
+            edit_menu.addAction(find_action)
+    
+            view_menu: QMenu = menu_bar.addMenu("View")
+            theme_menu: QMenu = view_menu.addMenu("Theme")
+            
+            light_theme_action = QAction("Light", self)
+            dark_theme_action = QAction("Dark", self)
+    
+            light_theme_action.triggered.connect(lambda: self._change_theme("light"))
+            dark_theme_action.triggered.connect(lambda: self._change_theme("dark"))
+            
+            theme_menu.addAction(light_theme_action)
+            theme_menu.addAction(dark_theme_action)
+
     def _update_cursor_pos(self):
         cursor = self.text_editor.textCursor()
         line = cursor.blockNumber() + 1
@@ -113,33 +154,6 @@ class MainWindow(QMainWindow):
                 event.ignore()
         else:
             event.accept()
-
-    def _create_menus(self):
-        menu_bar: QMenuBar = self.menuBar()
-
-        file_menu: QMenu = menu_bar.addMenu("File")
-        
-        open_action = QAction("Open...", self)
-        save_action = QAction("Save", self)
-        save_as_action = QAction("Save As...", self)
-        exit_action = QAction("Exit", self)
-        
-        open_action.triggered.connect(self._open_file)
-        save_action.triggered.connect(self._save_file)
-        save_as_action.triggered.connect(self._save_file_as)
-        exit_action.triggered.connect(self.close)
-        
-        file_menu.addAction(open_action)
-        file_menu.addAction(save_action)
-        file_menu.addAction(save_as_action)
-        file_menu.addSeparator()
-        file_menu.addAction(exit_action)
-
-        edit_menu: QMenu = menu_bar.addMenu("Edit")
-        find_action = QAction("Find & Replace", self)
-        find_action.setShortcut(QKeySequence("Ctrl+F"))
-        find_action.triggered.connect(self._show_find_replace)
-        edit_menu.addAction(find_action)
 
     def _open_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -289,3 +303,20 @@ class MainWindow(QMainWindow):
         self.find_dialog.raise_()
         self.find_dialog.activateWindow()
         self.find_dialog.find_input.setFocus()
+
+    def _change_theme(self, theme_name: str):
+        ThemeManager.apply_theme(QApplication.instance(), theme_name)
+        
+        if self.highlighter:
+            self.highlighter.setDocument(None)
+            self.highlighter = None
+            
+            if self.type_label.text() == "Spatial":
+                self.highlighter = JsonHighlighter(self.text_editor.document())
+            elif self.type_label.text() == "Markdown":
+                self.highlighter = MarkdownHighlighter(self.text_editor.document())
+
+        self.text_editor.highlight_current_line()
+        self.text_editor.viewport().update()
+        self.text_editor.line_number_area.update()
+        self._refresh_preview()
