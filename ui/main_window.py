@@ -1,13 +1,6 @@
 from PyQt6.QtWidgets import (
-    QMainWindow,
-    QMenuBar,
-    QMenu,
-    QFileDialog,
-    QMessageBox,
-    QSplitter,
-    QStackedWidget,
-    QLabel,
-    QApplication
+    QMainWindow,QMenuBar,QMenu,QFileDialog,QMessageBox,QSplitter,QStackedWidget,
+    QLabel,QApplication,QTabWidget
 )
 from handlers.factory import HandlerFactory
 from ui.highlighter import JsonHighlighter, MarkdownHighlighter
@@ -16,6 +9,7 @@ from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QKeySequence
 from core.workers import FileLoadWorker
 from core.theme import ThemeManager
 from ui.editor import ChiselCodeEditor
+from ui.tabs import EditorTab
 from PyQt6.QtCore import Qt, QTimer
 import geopandas as gpd
 import json
@@ -36,38 +30,27 @@ class MainWindow(QMainWindow):
         self._create_menus()
 
     def _init_ui(self):
-            self.setWindowTitle("Chisel Editor - Untitled")
-            self.resize(800, 500)
-            self.splitter = QSplitter(Qt.Orientation.Horizontal)
-            self.text_editor = ChiselCodeEditor()
-        
-            self.preview_stack = QStackedWidget()
-            self.map_panel = None
-            self.markdown_panel = None
-    
-            self.preview_stack.hide()
-    
-            self.preview_timer = QTimer()
-            self.preview_timer.setSingleShot(True)
-            self.preview_timer.setInterval(800)
-            self.preview_timer.timeout.connect(self._refresh_preview)
-    
-            self.splitter.addWidget(self.text_editor)
-            self.splitter.addWidget(self.preview_stack)
-            self.splitter.setSizes([480, 720])
-            self.setCentralWidget(self.splitter)
-    
-            self.setAcceptDrops(True)
-            self.text_editor.file_dropped.connect(self._load_file)
+        self.setWindowTitle("Chisel Editor")
+        self.resize(1000, 600)
 
-            self.status_bar = self.statusBar()
-            self.cursor_label = QLabel("Ln 1, Col 1")
-            self.type_label = QLabel("Plain Text")
-            
-            self.status_bar.addPermanentWidget(self.cursor_label)
-            self.status_bar.addPermanentWidget(self.type_label)
-            self.text_editor.cursorPositionChanged.connect(self._update_cursor_pos)
-            self.text_editor.textChanged.connect(self._on_text_changed)
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setTabsClosable(True)
+        self.tab_widget.setDocumentMode(True) 
+        self.tab_widget.tabCloseRequested.connect(self._close_tab)
+        self.tab_widget.currentChanged.connect(self._on_tab_changed)
+        
+        self.setCentralWidget(self.tab_widget)
+        
+        self.status_bar = self.statusBar()
+        self.cursor_label = QLabel("Ln 1, Col 1")
+        self.type_label = QLabel("Plain Text")
+        
+        self.status_bar.addPermanentWidget(self.cursor_label)
+        self.status_bar.addPermanentWidget(self.type_label)
+        
+        self.setAcceptDrops(True)
+
+        self._add_new_tab()
 
     def _create_menus(self):
             menu_bar: QMenuBar = self.menuBar()
@@ -120,10 +103,10 @@ class MainWindow(QMainWindow):
             tools_menu.addAction(reproject_crs_action)
 
     def _update_cursor_pos(self):
-        cursor = self.text_editor.textCursor()
-        line = cursor.blockNumber() + 1
-        col = cursor.columnNumber() + 1
-        self.cursor_label.setText(f"Ln {line}, Col {col}")
+        tab = self._get_current_tab()
+        if not tab: return
+        cursor = tab.text_editor.textCursor()
+        self.cursor_label.setText(f"Ln {cursor.blockNumber() + 1}, Col {cursor.columnNumber() + 1}")
 
     def _on_text_changed(self):
         if self._is_loading:
@@ -181,34 +164,31 @@ class MainWindow(QMainWindow):
             self._load_file(file_path)
 
     def _save_file(self):
-        if not self.current_file:
+        tab = self._get_current_tab()
+        if not tab: return
+        
+        if not tab.current_file:
             self._save_file_as()
             return
             
         try:
-            handler = HandlerFactory.get_handler(self.current_file)
-            content = self.text_editor.toPlainText()
-            handler.write(self.current_file, content)
+            handler = HandlerFactory.get_handler(tab.current_file)
+            handler.write(tab.current_file, tab.text_editor.toPlainText())
             self.statusBar().showMessage("File saved successfully.", 3000)
-            self.text_editor.document().setModified(False)
-            self.is_dirty = False
-            self._update_title()
-            
+            tab.text_editor.document().setModified(False)
+            tab.is_dirty = False
+            self._update_tab_title(tab)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Could not save file:\n{str(e)}")
 
     def _save_file_as(self):
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save File As",
-            "",
-            "All Supported Files (*.txt *.md *.geojson *.kml *.shp);;Text Files (*.txt *.md);;Spatial Files (*.geojson *.kml *.shp);;All Files (*)"
-        )
-        
+        tab = self._get_current_tab()
+        if not tab: return
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save File As", "", "All Supported Files (*.txt *.md *.geojson *.kml *.shp);;All Files (*)")
         if file_path:
-            self.current_file = file_path
-            self.setWindowTitle(f"Chisel Editor - {os.path.basename(file_path)}")
+            tab.current_file = file_path
             self._save_file()
+            self._on_tab_changed(self.tab_widget.indexOf(tab))
 
     def _update_map_preview(self):
         content = self.text_editor.toPlainText()
@@ -255,9 +235,7 @@ class MainWindow(QMainWindow):
         return self.markdown_panel
 
     def _load_file(self, file_path: str, **kwargs):
-        if self._is_loading:
-            return
-            
+        if self._is_loading: return
         self._is_loading = True
         self.statusBar().showMessage(f"Loading {os.path.basename(file_path)}...")
         
@@ -273,46 +251,57 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Could not read file:\n{error_msg}")
             return
 
-        self.text_editor.blockSignals(True)
+        current_tab = self._get_current_tab()
+        if current_tab and current_tab.current_file is None and not current_tab.is_dirty and not current_tab.text_editor.toPlainText():
+            tab = current_tab
+        else:
+            tab = self._add_new_tab()
+
+        tab.text_editor.blockSignals(True)
         try:
-            self.text_editor.setPlainText(content)
+            tab.text_editor.setPlainText(content)
+            tab.current_file = file_path
             
-            if self.highlighter:
-                self.highlighter.setDocument(None)
-                self.highlighter = None
+            if tab.highlighter:
+                tab.highlighter.setDocument(None)
+                tab.highlighter = None
 
             if is_spatial:
-                self.highlighter = JsonHighlighter(self.text_editor.document())
-                panel = self._get_map_panel()
-                self.preview_stack.setCurrentWidget(panel)
-                self.preview_stack.show()
-                panel.render_content(content)
-                self.type_label.setText("Spatial")
-                self._set_crs(initial_check=True)
+                tab.highlighter = JsonHighlighter(tab.text_editor.document())
+                tab.preview_stack.setCurrentWidget(tab.map_panel)
+                tab.preview_stack.show()
+                tab.map_panel.render_content(content)
+                tab.file_type = "Spatial"
                 
             elif file_path.lower().endswith('.md'):
-                self.highlighter = MarkdownHighlighter(self.text_editor.document())
-                panel = self._get_markdown_panel()
-                self.preview_stack.setCurrentWidget(panel)
-                self.preview_stack.show()
-                panel.render_content(content)
-                self.type_label.setText("Markdown")
-                
+                tab.highlighter = MarkdownHighlighter(tab.text_editor.document())
+                tab.preview_stack.setCurrentWidget(tab.markdown_panel)
+                tab.preview_stack.show()
+                tab.markdown_panel.render_content(content)
+                tab.file_type = "Markdown"
             else:
-                self.preview_stack.hide()
-                self.type_label.setText("Plain Text")
+                tab.preview_stack.hide()
+                tab.file_type = "Plain Text"
 
         finally:
-            self.text_editor.blockSignals(False)
+            tab.text_editor.blockSignals(False)
             
-        self.text_editor.document().setModified(False)
-        self.current_file = file_path
-        self.is_dirty = False
-        self._update_title()
+        tab.text_editor.document().setModified(False)
+        tab.is_dirty = False
+        self._update_tab_title(tab)
+        self._on_tab_changed(self.tab_widget.indexOf(tab))
+        
+        if is_spatial:
+            self._set_crs(initial_check=True)
 
     def _show_find_replace(self):
+        tab = self._get_current_tab()
+        if not tab: return
+        
         if not hasattr(self, 'find_dialog') or self.find_dialog is None:
-            self.find_dialog = FindReplaceDialog(self.text_editor, self)
+            self.find_dialog = FindReplaceDialog(tab.text_editor, self)
+        else:
+            self.find_dialog.editor = tab.text_editor 
         
         self.find_dialog.show()
         self.find_dialog.raise_()
@@ -322,24 +311,33 @@ class MainWindow(QMainWindow):
     def _change_theme(self, theme_name: str):
         ThemeManager.apply_theme(QApplication.instance(), theme_name)
         
-        if self.highlighter:
-            self.highlighter.setDocument(None)
-            self.highlighter = None
+        for i in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(i)
             
-            if self.type_label.text() == "Spatial":
-                self.highlighter = JsonHighlighter(self.text_editor.document())
-            elif self.type_label.text() == "Markdown":
-                self.highlighter = MarkdownHighlighter(self.text_editor.document())
+            if tab.highlighter:
+                tab.highlighter.setDocument(None)
+                tab.highlighter = None
+                
+                if tab.file_type == "Spatial":
+                    tab.highlighter = JsonHighlighter(tab.text_editor.document())
+                elif tab.file_type == "Markdown":
+                    tab.highlighter = MarkdownHighlighter(tab.text_editor.document())
 
-        self.text_editor.highlight_current_line()
-        self.text_editor.viewport().update()
-        self.text_editor.line_number_area.update()
-        self._refresh_preview()
+            tab.text_editor.highlight_current_line()
+            tab.text_editor.viewport().update()
+            tab.text_editor.line_number_area.update()
+            
+            tab._refresh_preview()
 
     def _get_gdf_from_editor(self):
-        content = self.text_editor.toPlainText()
+        tab = self._get_current_tab()
+        if not tab: 
+            return None
+            
+        content = tab.text_editor.toPlainText()
         if not content.strip():
             return None
+            
         try:
             return gpd.read_file(io.StringIO(content))
         except Exception as e:
@@ -347,21 +345,45 @@ class MainWindow(QMainWindow):
             return None
 
     def _update_editor_with_gdf(self, gdf):
+        tab = self._get_current_tab()
+        if not tab: 
+            return
+
         raw_geojson = gdf.to_json()
         parsed_json = json.loads(raw_geojson)
         formatted_json = json.dumps(parsed_json, indent=4, ensure_ascii=False)
         
-        self.text_editor.blockSignals(True)
-        self.text_editor.setPlainText(formatted_json)
-        self.text_editor.blockSignals(False)
+        tab.text_editor.blockSignals(True)
+        tab.text_editor.setPlainText(formatted_json)
+        tab.text_editor.blockSignals(False)
         
-        self.is_dirty = True
-        self._update_title()
+        tab.is_dirty = True
+        self._update_tab_title(tab)
+        tab.preview_timer.start()
+
+    def _update_editor_with_gdf(self, gdf):
+        tab = self._get_current_tab()
+        if not tab: 
+            return
+
+        raw_geojson = gdf.to_json()
+        parsed_json = json.loads(raw_geojson)
+        formatted_json = json.dumps(parsed_json, indent=4, ensure_ascii=False)
         
-        self.preview_timer.start()
+        tab.text_editor.blockSignals(True)
+        tab.text_editor.setPlainText(formatted_json)
+        tab.text_editor.blockSignals(False)
+        
+        tab.is_dirty = True
+        self._update_tab_title(tab)
+        
+        tab.preview_timer.start()
 
     def _set_crs(self, initial_check=False):
-        if self.type_label.text() != "Spatial":
+        tab = self._get_current_tab()
+        if not tab: return
+        
+        if tab.file_type != "Spatial":
             if not initial_check:
                 QMessageBox.information(self, "Not Spatial", "Current file is not recognized as spatial data.")
             return
@@ -387,7 +409,10 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "CRS Error", f"Failed to set CRS:\n{str(e)}")
 
     def _reproject_crs(self):
-        if self.type_label.text() != "Spatial":
+        tab = self._get_current_tab()
+        if not tab: return
+        
+        if tab.file_type != "Spatial":
             QMessageBox.information(self, "Not Spatial", "Current file is not recognized as spatial data.")
             return
             
@@ -411,3 +436,59 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(f"Successfully reprojected to {target_crs}", 4000)
             except Exception as e:
                 QMessageBox.critical(self, "Reprojection Error", f"Failed to reproject CRS:\n{str(e)}")
+
+    def _get_current_tab(self) -> EditorTab:
+        return self.tab_widget.currentWidget()
+
+    def _add_new_tab(self, file_path=None):
+        tab = EditorTab(self)
+        tab.current_file = file_path
+        
+        # Sinyal bağlantıları
+        tab.state_changed.connect(lambda: self._update_tab_title(tab))
+        tab.text_editor.cursorPositionChanged.connect(self._update_cursor_pos)
+        tab.text_editor.file_dropped.connect(self._load_file) # Sürükle-bırak desteği
+        
+        index = self.tab_widget.addTab(tab, tab.get_title())
+        self.tab_widget.setCurrentIndex(index)
+        return tab
+
+    def _update_tab_title(self, tab):
+        index = self.tab_widget.indexOf(tab)
+        if index != -1:
+            self.tab_widget.setTabText(index, tab.get_title())
+
+    def _on_tab_changed(self, index):
+        if index == -1:
+            self.cursor_label.clear()
+            self.type_label.clear()
+            self.setWindowTitle("Chisel Editor")
+            return
+            
+        tab = self.tab_widget.widget(index)
+        self._update_cursor_pos()
+        self.type_label.setText(tab.file_type)
+        
+        title = f"Chisel Editor - {os.path.basename(tab.current_file) if tab.current_file else 'Untitled'}"
+        self.setWindowTitle(title)
+
+    def _close_tab(self, index):
+        tab = self.tab_widget.widget(index)
+        if tab.is_dirty:
+            reply = QMessageBox.warning(
+                self, 
+                "Unsaved Changes",
+                f"Save changes to {tab.get_title().replace('*', '').strip()}?",
+                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel
+            )
+            if reply == QMessageBox.StandardButton.Save:
+                self.tab_widget.setCurrentIndex(index)
+                self._save_file()
+            elif reply == QMessageBox.StandardButton.Cancel:
+                return
+        
+        self.tab_widget.removeTab(index)
+        tab.deleteLater()
+        
+        if self.tab_widget.count() == 0:
+            self._add_new_tab()
