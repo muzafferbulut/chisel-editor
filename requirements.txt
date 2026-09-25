@@ -7,7 +7,6 @@ click-plugins==1.1.1.2
 cligj==0.7.2
 colorama==0.4.6
 fiona==1.10.1
-folium==0.20.0
 geopandas==1.1.4
 idna==3.18
 Jinja2==3.1.6

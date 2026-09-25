@@ -6,20 +6,25 @@ import fiona
 from .base import BaseHandler
 import pandas as pd
 
+
 fiona.drvsupport.supported_drivers['KML'] = 'rw'
 fiona.drvsupport.supported_drivers['LIBKML'] = 'rw'
 
+
 class MultipleLayersError(Exception):
+
 
     def __init__(self, layers):
         self.layers = layers
         super().__init__("Multiple layers detected.")
+
 
 class SpatialHandler(BaseHandler):
 
     @property
     def is_spatial(self) -> bool:
         return True
+
 
     def read(self, file_path: str, **kwargs) -> str:
         try:
@@ -32,12 +37,12 @@ class SpatialHandler(BaseHandler):
                 raise MultipleLayersError(layers)
 
             if merge_all:
-                gdfs = [gpd.read_file(file_path, layer=l) for l in layers]
+                gdfs = [gpd.read_file(file_path, layer=l, engine="pyogrio") for l in layers]
                 gdf = pd.concat(gdfs, ignore_index=True)
             elif layer_name:
-                gdf = gpd.read_file(file_path, layer=layer_name)
+                gdf = gpd.read_file(file_path, layer=layer_name, engine="pyogrio")
             else:
-                gdf = gpd.read_file(file_path)
+                gdf = gpd.read_file(file_path, engine="pyogrio")
 
             for col in gdf.columns:
                 if col != gdf.geometry.name:
@@ -48,14 +53,13 @@ class SpatialHandler(BaseHandler):
                             lambda x: None if x is pd.NaT else (x.isoformat() if hasattr(x, 'isoformat') else x)
                         )
 
-            raw_geojson = gdf.to_json()
-            parsed_json = json.loads(raw_geojson)
-            return json.dumps(parsed_json, indent=4, ensure_ascii=False)
+            return gdf.to_json()
                      
         except MultipleLayersError:
             raise
         except Exception as e:
             raise RuntimeError(f"Failed to read spatial data: {str(e)}")
+
 
     def write(self, file_path: str, content: str) -> bool:
         try:

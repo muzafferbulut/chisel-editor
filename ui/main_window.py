@@ -1,33 +1,27 @@
 from PyQt6.QtWidgets import (
-    QMainWindow,QMenuBar,QMenu,QFileDialog,QMessageBox,QSplitter,QStackedWidget,
+    QMainWindow,QMenuBar,QMenu,QFileDialog,QMessageBox,
     QLabel,QApplication,QTabWidget
 )
 from handlers.factory import HandlerFactory
 from ui.highlighter import JsonHighlighter, MarkdownHighlighter
-from ui.dialogs import FindReplaceDialog, LayerSelectionDialog, CRSDialog
+from ui.dialogs import FindReplaceDialog, CRSDialog
 from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QKeySequence
 from core.workers import FileLoadWorker
 from core.theme import ThemeManager
-from ui.editor import ChiselCodeEditor
 from ui.tabs import EditorTab
-from PyQt6.QtCore import Qt, QTimer
 import geopandas as gpd
-import json
 import io
 import os
 
 
 class MainWindow(QMainWindow):
+
     
     def __init__(self):
-        super().__init__()
-        self.current_file = None
-        self.is_dirty = False
-        self.highlighter = None
-        self._is_loading = False
-        
+        super().__init__()        
         self._init_ui()
         self._create_menus()
+
 
     def _init_ui(self):
         self.setWindowTitle("Chisel Editor")
@@ -51,6 +45,7 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
 
         self._add_new_tab()
+
 
     def _create_menus(self):
             menu_bar: QMenuBar = self.menuBar()
@@ -102,45 +97,27 @@ class MainWindow(QMainWindow):
             tools_menu.addAction(set_crs_action)
             tools_menu.addAction(reproject_crs_action)
 
+
     def _update_cursor_pos(self):
         tab = self._get_current_tab()
         if not tab: return
         cursor = tab.text_editor.textCursor()
         self.cursor_label.setText(f"Ln {cursor.blockNumber() + 1}, Col {cursor.columnNumber() + 1}")
 
-    def _on_text_changed(self):
-        if self._is_loading:
-            return
-
-        if not self.text_editor.document().isModified():
-            return
-
-        if self.current_file:
-            self.preview_timer.start()
-
-        if not self.is_dirty:
-            self.is_dirty = True
-            self._update_title()
-
-    def _update_title(self):
-        title = "Chisel Editor - "
-        if self.current_file:
-            import os
-            title += os.path.basename(self.current_file)
-        else:
-            title += "Untitled"
-
-        if self.is_dirty:
-            title += " *"
-            
-        self.setWindowTitle(title)
         
     def closeEvent(self, event):
-        if self.is_dirty:
+        has_unsaved_changes = False
+        for i in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(i)
+            if hasattr(tab, 'is_dirty') and tab.is_dirty:
+                has_unsaved_changes = True
+                break
+
+        if has_unsaved_changes:
             reply = QMessageBox.warning(
                 self, 
                 "Unsaved Changes",
-                "You have unsaved changes. Are you sure you want to exit without saving?",
+                "You have unsaved changes in one or more tabs. Are you sure you want to exit without saving?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No
             )
@@ -152,6 +129,7 @@ class MainWindow(QMainWindow):
         else:
             event.accept()
 
+
     def _open_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -162,6 +140,7 @@ class MainWindow(QMainWindow):
         
         if file_path:
             self._load_file(file_path)
+
 
     def _save_file(self):
         tab = self._get_current_tab()
@@ -181,6 +160,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Could not save file:\n{str(e)}")
 
+
     def _save_file_as(self):
         tab = self._get_current_tab()
         if not tab: return
@@ -190,18 +170,13 @@ class MainWindow(QMainWindow):
             self._save_file()
             self._on_tab_changed(self.tab_widget.indexOf(tab))
 
-    def _update_map_preview(self):
-        content = self.text_editor.toPlainText()
-        if content.strip():
-            panel = self._get_map_panel()
-            panel.render_geojson(content)
-            self.statusBar().showMessage("Map updated.", 3000)
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
         else:
             event.ignore()
+
 
     def dropEvent(self, event: QDropEvent):
         urls = event.mimeData().urls()
@@ -210,29 +185,6 @@ class MainWindow(QMainWindow):
             if os.path.isfile(file_path):
                 self._load_file(file_path)
 
-    def _refresh_preview(self):
-        if not self.current_file:
-            return
-            
-        content = self.text_editor.toPlainText()
-        active_panel = self.preview_stack.currentWidget()
-        
-        if active_panel and self.preview_stack.isVisible():
-            active_panel.render_content(content)
-
-    def _get_map_panel(self):
-        if self.map_panel is None:
-            from ui.preview_panels import MapPreviewPanel
-            self.map_panel = MapPreviewPanel()
-            self.preview_stack.addWidget(self.map_panel)
-        return self.map_panel
-
-    def _get_markdown_panel(self):
-        if self.markdown_panel is None:
-            from ui.preview_panels import MarkdownPreviewPanel
-            self.markdown_panel = MarkdownPreviewPanel()
-            self.preview_stack.addWidget(self.markdown_panel)
-        return self.markdown_panel
 
     def _load_file(self, file_path: str, **kwargs):
         if self._is_loading: return
@@ -242,6 +194,7 @@ class MainWindow(QMainWindow):
         self.worker = FileLoadWorker(file_path, **kwargs)
         self.worker.finished.connect(self._on_file_loaded)
         self.worker.start()
+
 
     def _on_file_loaded(self, file_path: str, content: str, is_spatial: bool, error_msg: str):
         self._is_loading = False
@@ -268,16 +221,15 @@ class MainWindow(QMainWindow):
 
             if is_spatial:
                 tab.highlighter = JsonHighlighter(tab.text_editor.document())
-                tab.preview_stack.setCurrentWidget(tab.map_panel)
+                tab.preview_stack.setCurrentWidget(tab.get_map_panel())
                 tab.preview_stack.show()
-                tab.map_panel.render_content(content)
+                tab.get_map_panel().render_content(content)
                 tab.file_type = "Spatial"
-                
             elif file_path.lower().endswith('.md'):
                 tab.highlighter = MarkdownHighlighter(tab.text_editor.document())
-                tab.preview_stack.setCurrentWidget(tab.markdown_panel)
+                tab.preview_stack.setCurrentWidget(tab.get_markdown_panel())
                 tab.preview_stack.show()
-                tab.markdown_panel.render_content(content)
+                tab.get_markdown_panel().render_content(content)
                 tab.file_type = "Markdown"
             else:
                 tab.preview_stack.hide()
@@ -294,6 +246,7 @@ class MainWindow(QMainWindow):
         if is_spatial:
             self._set_crs(initial_check=True)
 
+
     def _show_find_replace(self):
         tab = self._get_current_tab()
         if not tab: return
@@ -307,6 +260,7 @@ class MainWindow(QMainWindow):
         self.find_dialog.raise_()
         self.find_dialog.activateWindow()
         self.find_dialog.find_input.setFocus()
+
 
     def _change_theme(self, theme_name: str):
         ThemeManager.apply_theme(QApplication.instance(), theme_name)
@@ -329,6 +283,7 @@ class MainWindow(QMainWindow):
             
             tab._refresh_preview()
 
+
     def _get_gdf_from_editor(self):
         tab = self._get_current_tab()
         if not tab: 
@@ -344,40 +299,20 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", f"Could not parse spatial data:\n{str(e)}")
             return None
 
+
     def _update_editor_with_gdf(self, gdf):
         tab = self._get_current_tab()
         if not tab: 
             return
-
-        raw_geojson = gdf.to_json()
-        parsed_json = json.loads(raw_geojson)
-        formatted_json = json.dumps(parsed_json, indent=4, ensure_ascii=False)
-        
+            
         tab.text_editor.blockSignals(True)
-        tab.text_editor.setPlainText(formatted_json)
+        tab.text_editor.setPlainText(gdf.to_json())
         tab.text_editor.blockSignals(False)
         
         tab.is_dirty = True
         self._update_tab_title(tab)
         tab.preview_timer.start()
 
-    def _update_editor_with_gdf(self, gdf):
-        tab = self._get_current_tab()
-        if not tab: 
-            return
-
-        raw_geojson = gdf.to_json()
-        parsed_json = json.loads(raw_geojson)
-        formatted_json = json.dumps(parsed_json, indent=4, ensure_ascii=False)
-        
-        tab.text_editor.blockSignals(True)
-        tab.text_editor.setPlainText(formatted_json)
-        tab.text_editor.blockSignals(False)
-        
-        tab.is_dirty = True
-        self._update_tab_title(tab)
-        
-        tab.preview_timer.start()
 
     def _set_crs(self, initial_check=False):
         tab = self._get_current_tab()
@@ -408,6 +343,7 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "CRS Error", f"Failed to set CRS:\n{str(e)}")
 
+
     def _reproject_crs(self):
         tab = self._get_current_tab()
         if not tab: return
@@ -437,8 +373,10 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Reprojection Error", f"Failed to reproject CRS:\n{str(e)}")
 
+
     def _get_current_tab(self) -> EditorTab:
         return self.tab_widget.currentWidget()
+
 
     def _add_new_tab(self, file_path=None):
         tab = EditorTab(self)
@@ -453,10 +391,12 @@ class MainWindow(QMainWindow):
         self.tab_widget.setCurrentIndex(index)
         return tab
 
+
     def _update_tab_title(self, tab):
         index = self.tab_widget.indexOf(tab)
         if index != -1:
             self.tab_widget.setTabText(index, tab.get_title())
+
 
     def _on_tab_changed(self, index):
         if index == -1:
@@ -472,6 +412,7 @@ class MainWindow(QMainWindow):
         title = f"Chisel Editor - {os.path.basename(tab.current_file) if tab.current_file else 'Untitled'}"
         self.setWindowTitle(title)
 
+
     def _close_tab(self, index):
         tab = self.tab_widget.widget(index)
         if tab.is_dirty:
@@ -486,7 +427,12 @@ class MainWindow(QMainWindow):
                 self._save_file()
             elif reply == QMessageBox.StandardButton.Cancel:
                 return
-        
+                
+        if hasattr(tab, 'map_panel') and tab.map_panel.web_view:
+            tab.map_panel.web_view.setPage(None)
+        if hasattr(tab, 'markdown_panel') and tab.markdown_panel.web_view:
+            tab.markdown_panel.web_view.setPage(None)
+            
         self.tab_widget.removeTab(index)
         tab.deleteLater()
         
