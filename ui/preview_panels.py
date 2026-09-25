@@ -20,12 +20,14 @@ class AbstractPreviewPanel(QWidget):
 
 
 class MapPreviewPanel(AbstractPreviewPanel):
-
-
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._is_loaded = False
+        self._pending_content = None
+        
+        # Sayfa yüklenmesi bittiğinde tetiklenecek sinyal
+        self.web_view.loadFinished.connect(self._on_load_finished)
         self._init_map()
-
 
     def _init_map(self):
         html_content = """
@@ -61,13 +63,25 @@ class MapPreviewPanel(AbstractPreviewPanel):
         """
         self.web_view.setHtml(html_content)
 
+    def _on_load_finished(self, ok):
+        if ok:
+            self._is_loaded = True
+            # Eğer sayfa yüklenirken bekleyen bir veri varsa, şimdi haritaya bas
+            if self._pending_content:
+                self.render_content(self._pending_content)
+                self._pending_content = None
 
     def render_content(self, content: str):
+        # Sayfa henüz yüklenmediyse içeriği hafızada beklet
+        if not self._is_loaded:
+            self._pending_content = content
+            return
+            
         try:
             json.loads(content)
             js_code = f"updateMap({content});"
             self.web_view.page().runJavaScript(js_code)
-        except Exception:
+        except Exception as e:
             pass
 
 

@@ -19,7 +19,8 @@ class MainWindow(QMainWindow):
 
     
     def __init__(self):
-        super().__init__()        
+        super().__init__()
+        self._is_loading = False
         self._init_ui()
         self._create_menus()
 
