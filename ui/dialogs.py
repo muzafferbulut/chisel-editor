@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt
 
 
 class LayerSelectionDialog(QDialog):
+
     
     def __init__(self, file_name: str, layers: list, parent=None):
         super().__init__(parent)
@@ -19,6 +20,7 @@ class LayerSelectionDialog(QDialog):
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         
         self._setup_ui(file_name)
+
         
     def _setup_ui(self, file_name):
         layout = QVBoxLayout(self)
@@ -53,10 +55,12 @@ class LayerSelectionDialog(QDialog):
         btn_layout.addWidget(self.btn_load)
         
         layout.addLayout(btn_layout)
+
         
     def _on_merge(self):
         self.merge_all = True
         self.accept()
+
         
     def _on_load(self):
         item = self.list_widget.currentItem()
@@ -67,6 +71,7 @@ class LayerSelectionDialog(QDialog):
 
 class FindReplaceDialog(QDialog):
 
+
     def __init__(self, editor, parent=None):
         super().__init__(parent)
         self.editor = editor
@@ -74,6 +79,7 @@ class FindReplaceDialog(QDialog):
         self.setModal(False) 
         self.resize(350, 150)
         self._setup_ui()
+
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -118,6 +124,7 @@ class FindReplaceDialog(QDialog):
         self.btn_replace.clicked.connect(self.replace)
         self.btn_replace_all.clicked.connect(self.replace_all)
 
+
     def _get_find_flags(self, backward=False):
         flags = QTextDocument.FindFlag(0)
         if backward:
@@ -127,6 +134,7 @@ class FindReplaceDialog(QDialog):
         if self.cb_whole_word.isChecked():
             flags |= QTextDocument.FindFlag.FindWholeWords
         return flags
+
 
     def find_next(self):
         text = self.find_input.text()
@@ -139,6 +147,7 @@ class FindReplaceDialog(QDialog):
             self.editor.setTextCursor(cursor)
             self.editor.find(text, self._get_find_flags())
 
+
     def find_prev(self):
         text = self.find_input.text()
         if not text: return
@@ -150,6 +159,7 @@ class FindReplaceDialog(QDialog):
             self.editor.setTextCursor(cursor)
             self.editor.find(text, self._get_find_flags(backward=True))
 
+
     def replace(self):
         text = self.find_input.text()
         replace_text = self.replace_input.text()
@@ -160,6 +170,7 @@ class FindReplaceDialog(QDialog):
             cursor.insertText(replace_text)
         
         self.find_next()
+
 
     def replace_all(self):
         text = self.find_input.text()
@@ -185,6 +196,7 @@ class FindReplaceDialog(QDialog):
 
 class CRSDialog(QDialog):
 
+
     def __init__(self, title: str, current_crs: str = None, parent=None):
         super().__init__(parent)
         self.selected_epsg = None
@@ -193,6 +205,7 @@ class CRSDialog(QDialog):
         self.setModal(True)
         
         self._setup_ui(current_crs)
+
 
     def _setup_ui(self, current_crs):
         layout = QVBoxLayout(self)
@@ -227,6 +240,7 @@ class CRSDialog(QDialog):
         
         layout.addLayout(btn_layout)
 
+
     def _on_apply(self):
         epsg_text = self.epsg_input.text().strip()
         
@@ -238,3 +252,59 @@ class CRSDialog(QDialog):
             self.accept()
         else:
             QMessageBox.warning(self, "Invalid Input", "Please enter a valid EPSG code (e.g.,4326).")
+
+
+class CommandPaletteDialog(QDialog):
+
+
+    def __init__(self, commands: dict, parent=None):
+        super().__init__(parent)
+        self.commands = commands
+        self.selected_command = None
+        self.setWindowTitle("Command Palette")
+        self.resize(400, 300)
+
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        
+        self._setup_ui()
+
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Type a command (e.g. format, crs...)")
+        
+        self.list_widget = QListWidget()
+        self.list_widget.addItems(self.commands.keys())
+        
+        layout.addWidget(self.search_input)
+        layout.addWidget(self.list_widget)
+        
+        self.search_input.textChanged.connect(self._filter)
+        self.list_widget.itemActivated.connect(self._accept_command)
+        self.search_input.returnPressed.connect(self._on_enter)
+
+
+    def _filter(self, text):
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            item.setHidden(text.lower() not in item.text().lower())
+
+        for i in range(self.list_widget.count()):
+            if not self.list_widget.item(i).isHidden():
+                self.list_widget.setCurrentRow(i)
+                break
+
+
+    def _on_enter(self):
+        current_item = self.list_widget.currentItem()
+        if current_item and not current_item.isHidden():
+            self.selected_command = current_item.text()
+            self.accept()
+
+
+    def _accept_command(self, item):
+        self.selected_command = item.text()
+        self.accept()
