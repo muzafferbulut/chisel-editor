@@ -3,8 +3,8 @@ from PyQt6.QtWidgets import (
     QLabel,QApplication,QTabWidget
 )
 from handlers.factory import HandlerFactory
-from ui.dialogs import CRSDialog, CommandPaletteDialog
-from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QKeySequence, QShortcut
+from ui.dialogs import CRSDialog
+from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent
 from core.workers import FileLoadWorker
 from core.theme import ThemeManager
 from ui.tabs import EditorTab
@@ -42,11 +42,7 @@ class MainWindow(QMainWindow):
         self.status_bar.addPermanentWidget(self.type_label)
         
         self.setAcceptDrops(True)
-
         self._add_new_tab()
-
-        self.cmd_shortcut = QShortcut(QKeySequence("Ctrl+Shift+P"), self)
-        self.cmd_shortcut.activated.connect(self._show_command_palette)
 
     def _create_menus(self):
             menu_bar: QMenuBar = self.menuBar()
@@ -71,7 +67,6 @@ class MainWindow(QMainWindow):
     
             edit_menu: QMenu = menu_bar.addMenu("Edit")
             find_action = QAction("Find & Replace", self)
-            find_action.setShortcut(QKeySequence("Ctrl+F"))
             find_action.triggered.connect(self._show_find_replace)
             edit_menu.addAction(find_action)
     
@@ -397,45 +392,3 @@ class MainWindow(QMainWindow):
         
         if self.tab_widget.count() == 0:
             self._add_new_tab()
-
-    def _show_command_palette(self):
-        commands = {
-            "Format GeoJSON": self._format_geojson,
-            "Spatial: Set CRS": self._set_crs,
-            "Spatial: Reproject CRS": self._reproject_crs,
-            "Theme: Switch to Dark": lambda: self._change_theme("dark"),
-            "Theme: Switch to Light": lambda: self._change_theme("light"),
-            "File: Save": self._save_file,
-            "File: Save As...": self._save_file_as,
-            "File: Open...": self._open_file,
-            "Edit: Find & Replace": self._show_find_replace
-        }
-        
-        dialog = CommandPaletteDialog(commands, self)
-        if dialog.exec():
-            cmd_name = dialog.selected_command
-            if cmd_name and cmd_name in commands:
-                commands[cmd_name]()
-
-    def _format_geojson(self):
-        tab = self._get_current_tab()
-        if not tab or tab.file_type != "Spatial":
-            self.statusBar().showMessage("Current file is not Spatial/GeoJSON.", 3000)
-            return
-            
-        try:
-            content = tab.text_editor.toPlainText()
-            parsed = json.loads(content)
-            formatted = json.dumps(parsed, indent=4, ensure_ascii=False)
-            
-            tab.text_editor.blockSignals(True)
-            cursor = tab.text_editor.textCursor()
-            cursor.select(cursor.SelectionType.Document)
-            cursor.insertText(formatted)
-            tab.text_editor.blockSignals(False)
-            
-            self.statusBar().showMessage("GeoJSON formatted successfully.", 3000)
-            tab.is_dirty = True
-            self._update_tab_title(tab)
-        except Exception as e:
-            self.statusBar().showMessage(f"Format error: Invalid JSON.", 3000)
