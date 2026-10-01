@@ -5,11 +5,11 @@ from PyQt6.QtWidgets import (
 from handlers.factory import HandlerFactory
 from ui.dialogs import CRSDialog
 from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent
+from ui.toast import ToastNotification
 from core.workers import FileLoadWorker
 from core.theme import ThemeManager
 from ui.tabs import EditorTab
 import geopandas as gpd
-import json
 import io
 import os
 
@@ -139,7 +139,7 @@ class MainWindow(QMainWindow):
         try:
             handler = HandlerFactory.get_handler(tab.current_file)
             handler.write(tab.current_file, tab.text_editor.toPlainText())
-            self.statusBar().showMessage("File saved successfully.", 3000)
+            ToastNotification(self, f"Saved: {os.path.basename(tab.current_file)}", "success")
             tab.is_dirty = False
             self._update_tab_title(tab)
         except Exception as e:
@@ -170,7 +170,7 @@ class MainWindow(QMainWindow):
     def _load_file(self, file_path: str, **kwargs):
         if self._is_loading: return
         self._is_loading = True
-        self.statusBar().showMessage(f"Loading {os.path.basename(file_path)}...")
+        ToastNotification(self, f"Loading {os.path.basename(file_path)}...", "success")
         
         self.worker = FileLoadWorker(file_path, **kwargs)
         self.worker.finished.connect(self._on_file_loaded)
@@ -293,7 +293,7 @@ class MainWindow(QMainWindow):
             try:
                 gdf.set_crs(new_crs, allow_override=True, inplace=True)
                 self._update_editor_with_gdf(gdf)
-                self.statusBar().showMessage(f"CRS successfully set to {new_crs}", 4000)
+                ToastNotification(self, f"CRS successfully set to {new_crs}", "success")
             except Exception as e:
                 QMessageBox.critical(self, "CRS Error", f"Failed to set CRS:\n{str(e)}")
 

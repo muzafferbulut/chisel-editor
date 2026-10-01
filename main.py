@@ -1,6 +1,6 @@
 import sys
 import os
-import ctypes  # Windows görev çubuğu ikonu için gerekli
+import ctypes
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt
@@ -9,7 +9,7 @@ from core.theme import ThemeManager
 
 def main():
     if os.name == 'nt':
-        myappid = 'muzafferbulut.chiseleditor.app.1.0' 
+        myappid = 'chiseleditor.app.1.0' 
         try:
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
         except Exception:

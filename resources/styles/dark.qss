@@ -107,13 +107,6 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     width: 0px;
 }
 
-QDialog {
-    background-color: #252526;
-}
-
-QMessageBox {
-    background-color: #252526;
-}
 
 QListWidget, QListView {
     background-color: #1e1e1e;
@@ -149,35 +142,6 @@ QLineEdit:focus {
     border: 1px solid #007fd4;
 }
 
-QPushButton {
-    background-color: #333333;
-    color: #cccccc;
-    border: none;
-    padding: 4px 12px;
-    border-radius: 4px;
-    font-weight: 500;
-    font-size: 11px;
-}
-
-QPushButton:hover {
-    background-color: #404040;
-    color: #ffffff;
-}
-
-QPushButton#btn_load {
-    background-color: #0e639c;
-    color: #ffffff;
-}
-
-QPushButton#btn_load:hover { background-color: #1177bb; }
-
-QPushButton#btn_cancel {
-    background-color: transparent;
-}
-
-QPushButton#btn_cancel:hover { 
-    background-color: #333333; 
-}
 
 QToolTip {
     background-color: #252526;
@@ -199,7 +163,7 @@ QStatusBar::item {
     outline: none;
 }
 
-QStatusBar QLabel {
+QStatusBar {
     background: transparent;
     color: #cccccc;
     padding: 0px 8px;
@@ -230,4 +194,28 @@ QTabBar::tab:selected {
 QTabBar::tab:hover:!selected {
     background-color: #333333;
     color: #cccccc;
+}
+
+QDialog, QMessageBox {
+    background-color: #252526;
+    color: #cccccc;
+}
+QMessageBox QLabel {
+    color: #cccccc;
+    font-size: 13px;
+}
+QPushButton {
+    background-color: #0e639c; /* VS Code Mavi Buton */
+    color: #ffffff;
+    border: none;
+    padding: 6px 16px;
+    border-radius: 3px;
+    min-width: 60px;
+    min-height: 20px;
+}
+QPushButton:hover {
+    background-color: #1177bb;
+}
+QPushButton:pressed {
+    background-color: #094771;
 }
