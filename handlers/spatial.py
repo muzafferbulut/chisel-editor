@@ -1,18 +1,15 @@
 import os
 import io
-import json
 import geopandas as gpd
 import fiona
 from .base import BaseHandler
 import pandas as pd
-
 
 fiona.drvsupport.supported_drivers['KML'] = 'rw'
 fiona.drvsupport.supported_drivers['LIBKML'] = 'rw'
 
 
 class MultipleLayersError(Exception):
-
 
     def __init__(self, layers):
         self.layers = layers
@@ -24,7 +21,6 @@ class SpatialHandler(BaseHandler):
     @property
     def is_spatial(self) -> bool:
         return True
-
 
     def read(self, file_path: str, **kwargs) -> str:
         try:
@@ -59,7 +55,6 @@ class SpatialHandler(BaseHandler):
             raise
         except Exception as e:
             raise RuntimeError(f"Failed to read spatial data: {str(e)}")
-
 
     def write(self, file_path: str, content: str) -> bool:
         try:
