@@ -9,10 +9,7 @@ class HandlerFactory:
     def get_handler(file_path: str):
         extension = os.path.splitext(file_path)[1].lower()
 
-        if extension in ['.txt', '.md', '.log']:
-            return TextHandler()
-
-        elif extension in ['.geojson', '.kml', '.kmz','.shp']:
+        if extension in ['.geojson', '.json', '.kml', '.kmz', '.shp']:
             return SpatialHandler()
 
-        raise ValueError(f"Unsupported file extension: {extension}")
+        return TextHandler()

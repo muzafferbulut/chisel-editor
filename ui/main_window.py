@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QMainWindow,QMenuBar,QMenu,QFileDialog,QMessageBox,
-    QLabel,QApplication,QTabWidget
+    QLabel,QApplication,QTabWidget, QProgressBar
 )
 from handlers.factory import HandlerFactory
 from ui.dialogs import CRSDialog
@@ -40,6 +40,14 @@ class MainWindow(QMainWindow):
         
         self.status_bar.addPermanentWidget(self.cursor_label)
         self.status_bar.addPermanentWidget(self.type_label)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMaximum(0)
+        self.progress_bar.setMinimum(0)
+        self.progress_bar.setFixedWidth(150)
+        self.progress_bar.hide()
+        self.status_bar.addPermanentWidget(self.progress_bar)
+
         
         self.setAcceptDrops(True)
         self._add_new_tab()
@@ -195,25 +203,55 @@ class MainWindow(QMainWindow):
             tab.text_editor.setPlainText(content)
             tab.current_file = file_path
             
+            content_length = len(content)
+            is_large_file = content_length > 15_000_000
+            ext = os.path.splitext(file_path)[1].lower()
+            monaco_langs = {
+                '.py': 'python', '.sql': 'sql', '.js': 'javascript', '.ts': 'typescript',
+                '.html': 'html', '.css': 'css', '.xml': 'xml', '.yaml': 'yaml', '.yml': 'yaml',
+                '.sh': 'shell', '.cpp': 'cpp', '.c': 'c', '.h': 'cpp', '.java': 'java',
+                '.cs': 'csharp', '.php': 'php', '.rb': 'ruby', '.go': 'go', '.rs': 'rust',
+                '.json': 'json'
+            }
+            
             if is_spatial:
-                tab.text_editor.set_language("json")
+                tab.file_type = "Spatial (GeoJSON)"
                 tab.preview_stack.setCurrentWidget(tab.get_map_panel())
                 tab.preview_stack.show()
-                tab.get_map_panel().render_content(content)
-                tab.file_type = "Spatial"
                 
-            elif file_path.lower().endswith('.md'):
+                if is_large_file:
+                    tab.text_editor.set_language("plaintext")
+                    bg_color = "#1e1e1e" if ThemeManager._current_theme == "dark" else "#ffffff"
+                    text_color = "#cccccc" if ThemeManager._current_theme == "dark" else "#24292e"
+                    tab.get_map_panel().web_view.setHtml(
+                        f"<div style='font-family:sans-serif; color:{text_color}; background:{bg_color}; height:100vh; display:flex; align-items:center; justify-content:center; text-align:center; padding:20px;'>"
+                        f"<h3>Map Preview Disabled</h3><p>This file is too large (>15 MB) to render safely in the map preview.<br>You can still edit the raw text.</p></div>"
+                    )
+                else:
+                    tab.text_editor.set_language("json")
+                    tab.get_map_panel().render_content(content)
+                    
+            elif ext == '.md':
                 tab.text_editor.set_language("markdown")
                 tab.preview_stack.setCurrentWidget(tab.get_markdown_panel())
                 tab.preview_stack.show()
                 tab.get_markdown_panel().render_content(content)
                 tab.file_type = "Markdown"
+                
+            elif ext in monaco_langs:
+                lang = monaco_langs[ext]
+                tab.text_editor.set_language(lang)
+                tab.preview_stack.hide()
+                tab.file_type = lang.capitalize()
+                
             else:
+                tab.text_editor.set_language("plaintext")
                 tab.preview_stack.hide()
                 tab.file_type = "Plain Text"
-
+                
         finally:
-            tab.text_editor.blockSignals(False)
+            self.progress_bar.hide()
+            self.statusBar().showMessage("Ready", 3000)
             
         tab.is_dirty = False
         self._update_tab_title(tab)
