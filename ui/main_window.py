@@ -200,6 +200,7 @@ class MainWindow(QMainWindow):
 
         tab.text_editor.blockSignals(True)
         try:
+            QApplication.processEvents()
             tab.text_editor.setPlainText(content)
             tab.current_file = file_path
             

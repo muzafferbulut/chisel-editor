@@ -41,14 +41,16 @@ class SpatialHandler(BaseHandler):
                 gdf = gpd.read_file(file_path, engine="pyogrio")
 
             for col in gdf.columns:
-                if col != gdf.geometry.name:
-                    if pd.api.types.is_datetime64_any_dtype(gdf[col]) or pd.api.types.is_timedelta64_dtype(gdf[col]):
-                        gdf[col] = gdf[col].astype(str).replace({'NaT': None, 'nan': None})
-                    elif gdf[col].dtype == 'object':
-                        gdf[col] = gdf[col].apply(
-                            lambda x: None if x is pd.NaT else (x.isoformat() if hasattr(x, 'isoformat') else x)
-                        )
-
+                if col == gdf.geometry.name:
+                    continue
+                    
+                if pd.api.types.is_datetime64_any_dtype(gdf[col]) or pd.api.types.is_timedelta64_dtype(gdf[col]):
+                    gdf[col] = gdf[col].astype(str).replace({'NaT': None, 'nan': None, '<NA>': None})
+                    
+                elif gdf[col].dtype == 'object':
+                    gdf[col] = gdf[col].apply(lambda x: str(x) if isinstance(x, pd.Timestamp) else x)
+                    gdf[col] = gdf[col].replace({pd.NaT: None, 'NaT': None})
+                    
             return gdf.to_json()
                      
         except MultipleLayersError:
