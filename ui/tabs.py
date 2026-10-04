@@ -1,9 +1,6 @@
 import os
 import geopandas as gpd
-from PyQt6.QtWidgets import (
-    QWidget, QSplitter, QStackedWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QButtonGroup
-)
+from PyQt6.QtWidgets import QWidget, QSplitter, QStackedWidget, QVBoxLayout
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from ui.editor import MonacoEditor
 from ui.preview_panels import MapPreviewPanel, MarkdownPreviewPanel
@@ -32,60 +29,11 @@ class EditorTab(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
 
-        # Tab Toolbar (View Mode Switchers + Quick Actions - ALWAYS VISIBLE!)
-        self.control_bar = QWidget()
-        self.control_bar.setObjectName("tabToolbar")
-        bar_layout = QHBoxLayout(self.control_bar)
-        bar_layout.setContentsMargins(8, 4, 8, 4)
-        bar_layout.setSpacing(6)
-
-        self.view_btn_group = QButtonGroup(self)
-        self.view_btn_group.setExclusive(True)
-
-        self.btn_mode_code = QPushButton("📝 Kod")
-        self.btn_mode_code.setCheckable(True)
-        self.btn_mode_code.clicked.connect(lambda: self.set_view_mode("code"))
-        self.view_btn_group.addButton(self.btn_mode_code)
-        bar_layout.addWidget(self.btn_mode_code)
-
-        self.btn_mode_code_map = QPushButton("⚡ Kod + Harita")
-        self.btn_mode_code_map.setCheckable(True)
-        self.btn_mode_code_map.setChecked(True)
-        self.btn_mode_code_map.clicked.connect(lambda: self.set_view_mode("code_map"))
-        self.view_btn_group.addButton(self.btn_mode_code_map)
-        bar_layout.addWidget(self.btn_mode_code_map)
-
-        self.btn_mode_table_map = QPushButton("📊 Tablo + Harita")
-        self.btn_mode_table_map.setCheckable(True)
-        self.btn_mode_table_map.clicked.connect(lambda: self.set_view_mode("table_map"))
-        self.view_btn_group.addButton(self.btn_mode_table_map)
-        bar_layout.addWidget(self.btn_mode_table_map)
-
-        self.btn_mode_map = QPushButton("🗺️ Harita")
-        self.btn_mode_map.setCheckable(True)
-        self.btn_mode_map.clicked.connect(lambda: self.set_view_mode("map"))
-        self.view_btn_group.addButton(self.btn_mode_map)
-        bar_layout.addWidget(self.btn_mode_map)
-
-        self.btn_mode_table = QPushButton("📋 Tablo")
-        self.btn_mode_table.setCheckable(True)
-        self.btn_mode_table.clicked.connect(lambda: self.set_view_mode("table"))
-        self.view_btn_group.addButton(self.btn_mode_table)
-        bar_layout.addWidget(self.btn_mode_table)
-
-        bar_layout.addStretch()
-
-        self.btn_quick_fit = QPushButton("🎯 Sınırla")
-        self.btn_quick_fit.setToolTip("Fit layer bounds")
-        self.btn_quick_fit.clicked.connect(self._on_quick_fit)
-        bar_layout.addWidget(self.btn_quick_fit)
-
-        self.layout.addWidget(self.control_bar)
-
-        # Splitter Layout
+        # Splitter Layout (direct workspace, no intermediate toolbar)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.setHandleWidth(2)
 
-        # Left Container: Editor (0) or Attribute Table (1)
+        # Left Container: Monaco Editor (0) or Attribute Table (1)
         self.left_stack = QStackedWidget()
         self.text_editor = MonacoEditor()
         self.table_panel = AttributeTableWidget()
@@ -107,8 +55,8 @@ class EditorTab(QWidget):
 
         self.layout.addWidget(self.splitter)
 
-        # Default mode: Code + Map
-        self.set_view_mode("code_map")
+        # Default mode for new/unopened tab: Pure code view (map hidden)
+        self.set_view_mode("code")
 
         # Bi-directional sync
         self.table_panel.feature_selected.connect(self.map_panel.highlight_feature)
@@ -166,7 +114,6 @@ class EditorTab(QWidget):
             self.left_stack.setCurrentIndex(0)
             self.left_stack.show()
             self.right_stack.hide()
-            self.btn_mode_code.setChecked(True)
 
         elif mode == "code_map":
             self.left_stack.setCurrentIndex(0)
@@ -174,7 +121,6 @@ class EditorTab(QWidget):
             self.left_stack.show()
             self.right_stack.show()
             self.splitter.setSizes([500, 650])
-            self.btn_mode_code_map.setChecked(True)
 
         elif mode == "table_map":
             self.left_stack.setCurrentIndex(1)
@@ -182,19 +128,16 @@ class EditorTab(QWidget):
             self.left_stack.show()
             self.right_stack.show()
             self.splitter.setSizes([500, 650])
-            self.btn_mode_table_map.setChecked(True)
 
         elif mode == "map":
             self.right_stack.setCurrentIndex(0)
             self.left_stack.hide()
             self.right_stack.show()
-            self.btn_mode_map.setChecked(True)
 
         elif mode == "table":
             self.left_stack.setCurrentIndex(1)
             self.left_stack.show()
             self.right_stack.hide()
-            self.btn_mode_table.setChecked(True)
 
         elif mode == "markdown":
             self.left_stack.setCurrentIndex(0)
@@ -202,6 +145,16 @@ class EditorTab(QWidget):
             self.left_stack.show()
             self.right_stack.show()
             self.splitter.setSizes([500, 500])
+
+    def toggle_spatial_left_view(self):
+        """Toggles between Code (0) and Attribute Table (1) on the left side of split view."""
+        if not self.is_spatial:
+            return
+        curr = self.left_stack.currentIndex()
+        if curr == 1:
+            self.set_view_mode("code_map")
+        else:
+            self.set_view_mode("table_map")
 
     def configure_for_file_type(self, file_type: str, is_spatial: bool, content: str = ""):
         self.file_type = file_type

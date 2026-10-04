@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QSplitter
 )
 from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QKeySequence
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSettings
 
 from handlers.factory import HandlerFactory
 from ui.dialogs import (
@@ -31,14 +31,22 @@ class MainWindow(QMainWindow):
         self.spatial_worker = None
         self.wfs_worker = None
         self._wms_counter = 1
-        self._current_folder = os.getcwd()
+
+        # Restore last opened folder
+        settings = QSettings("ChiselEditor", "ChiselEditor")
+        saved_folder = settings.value("last_folder", "")
+        if saved_folder and os.path.isdir(str(saved_folder)):
+            self._current_folder = str(saved_folder)
+        else:
+            self._current_folder = os.getcwd()
 
         self._init_ui()
         self._create_menus()
+        self._restore_session_files()
 
     def _init_ui(self):
         self.setWindowTitle("Chisel Editor")
-        self.resize(1200, 750)
+        self._center_on_screen()
 
         # Main Central Container
         central_container = QWidget()
@@ -114,7 +122,53 @@ class MainWindow(QMainWindow):
         self.status_bar.addPermanentWidget(self.progress_bar)
 
         self.setAcceptDrops(True)
-        self._add_new_tab()
+
+    def _center_on_screen(self):
+        screen = QApplication.primaryScreen()
+        if screen:
+            avail = screen.availableGeometry()
+            w = min(1200, max(800, int(avail.width() * 0.88)))
+            h = min(750, max(550, int(avail.height() * 0.82)))
+            self.resize(w, h)
+            self.move(avail.x() + (avail.width() - w) // 2, avail.y() + (avail.height() - h) // 2)
+        else:
+            self.resize(1150, 720)
+
+    def _restore_session_files(self):
+        settings = QSettings("ChiselEditor", "ChiselEditor")
+        saved_files = settings.value("open_files", [])
+        if isinstance(saved_files, str):
+            saved_files = [saved_files] if saved_files else []
+
+        valid_files = [f for f in saved_files if f and os.path.isfile(str(f))]
+        active_file = settings.value("active_file", "")
+
+        if valid_files:
+            for f in valid_files:
+                self._load_file(str(f))
+            if active_file:
+                for idx in range(self.tab_widget.count()):
+                    tab = self.tab_widget.widget(idx)
+                    if tab and tab.current_file == active_file:
+                        self.tab_widget.setCurrentIndex(idx)
+                        break
+        else:
+            self._add_new_tab()
+
+    def _save_session_state(self):
+        settings = QSettings("ChiselEditor", "ChiselEditor")
+        settings.setValue("last_folder", self._current_folder)
+        open_files = []
+        active_file = ""
+        curr_idx = self.tab_widget.currentIndex()
+        for i in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(i)
+            if tab and tab.current_file and os.path.exists(tab.current_file):
+                open_files.append(tab.current_file)
+                if i == curr_idx:
+                    active_file = tab.current_file
+        settings.setValue("open_files", open_files)
+        settings.setValue("active_file", active_file)
 
     def _create_menus(self):
         menu_bar: QMenuBar = self.menuBar()
@@ -319,9 +373,10 @@ class MainWindow(QMainWindow):
         return tab
 
     def _close_tab(self, index: int):
-        if self.tab_widget.count() <= 1:
-            self._add_new_tab()
         self.tab_widget.removeTab(index)
+        if self.tab_widget.count() == 0:
+            self._add_new_tab()
+        self._save_session_state()
 
     def _update_tab_title(self, tab: EditorTab):
         idx = self.tab_widget.indexOf(tab)
@@ -334,6 +389,10 @@ class MainWindow(QMainWindow):
             self.type_label.setText(tab.file_type)
             if tab.is_spatial:
                 self.btn_status_table.show()
+                if tab.left_stack.currentIndex() == 1:
+                    self.btn_status_table.setText("📝 Kod Göster (F6)")
+                else:
+                    self.btn_status_table.setText("📊 Tablo Göster (F6)")
                 crs_label = str(tab._current_gdf.crs) if tab._current_gdf is not None and tab._current_gdf.crs else "EPSG:4326"
                 self.btn_status_crs.setText(f"🌐 {crs_label}")
                 self.btn_status_crs.show()
@@ -344,6 +403,7 @@ class MainWindow(QMainWindow):
                 self.btn_status_table.hide()
                 self.btn_status_crs.hide()
                 self.side_bar.layers_panel.set_active_vector_layer("", 0)
+        self._save_session_state()
 
     def _update_cursor_info(self, line: int, col: int):
         self.cursor_label.setText(f"Ln {line}, Col {col}")
@@ -356,14 +416,15 @@ class MainWindow(QMainWindow):
     def _toggle_attribute_table(self):
         tab = self._get_current_tab()
         if not tab or not tab.is_spatial:
-            ToastNotification.show_toast(self, "Öznitelik tablosu yalnızca mekansal verilerde kullanılabilir", "warning")
             return
 
         curr_left = tab.left_stack.currentIndex()
-        if curr_left == 1 and tab.splitter.sizes()[0] > 0:
+        if curr_left == 1:
             tab.set_view_mode("code_map")
+            self.btn_status_table.setText("📊 Tablo Göster (F6)")
         else:
             tab.set_view_mode("table_map")
+            self.btn_status_table.setText("📝 Kod Göster (F6)")
 
     def _fit_bounds(self):
         tab = self._get_current_tab()
@@ -371,14 +432,15 @@ class MainWindow(QMainWindow):
             tab.map_panel.fit_bounds()
 
     def _open_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Select Folder", self._current_folder)
+        folder = QFileDialog.getExistingDirectory(self, "Klasör Seç", self._current_folder)
         if folder:
             self._current_folder = folder
             self.side_bar.explorer_panel.set_root_path(folder)
-            self.lbl_folder.setText(f"📁 {os.path.basename(folder)}")
+            self.lbl_folder.setText(f"📁 {os.path.basename(folder) or folder}")
             self.activity_bar.set_active_view("explorer")
             self.side_bar.show_view("explorer")
-            ToastNotification.show_toast(self, f"Opened: {os.path.basename(folder)}", "info")
+            self._save_session_state()
+            ToastNotification.show_toast(self, f"Açıldı: {os.path.basename(folder)}", "info")
 
     def _open_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -389,6 +451,12 @@ class MainWindow(QMainWindow):
             self._load_file(file_path)
 
     def _load_file(self, file_path: str, **kwargs):
+        for i in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(i)
+            if tab and tab.current_file == file_path:
+                self.tab_widget.setCurrentIndex(i)
+                return
+
         self.progress_bar.show()
         self._is_loading = True
 
@@ -406,7 +474,7 @@ class MainWindow(QMainWindow):
             return
 
         tab = self._get_current_tab()
-        if tab.current_file is not None or tab.is_dirty:
+        if tab is None or tab.current_file is not None or tab.is_dirty:
             tab = self._add_new_tab()
 
         tab.current_file = file_path
@@ -423,8 +491,9 @@ class MainWindow(QMainWindow):
         tab.configure_for_file_type(file_type, is_spatial, content)
         self._update_tab_title(tab)
         self._on_tab_changed(self.tab_widget.currentIndex())
+        self._save_session_state()
 
-        ToastNotification.show_toast(self, f"Opened: {os.path.basename(file_path)}", "info")
+        ToastNotification.show_toast(self, f"Açıldı: {os.path.basename(file_path)}", "info")
 
     def _on_multiple_layers(self, file_path: str, layers: list):
         self.progress_bar.hide()
@@ -705,3 +774,7 @@ class MainWindow(QMainWindow):
     def _handle_file_drop(self, file_path: str):
         if os.path.exists(file_path):
             self._load_file(file_path)
+
+    def closeEvent(self, event):
+        self._save_session_state()
+        super().closeEvent(event)
