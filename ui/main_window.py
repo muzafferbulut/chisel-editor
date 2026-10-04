@@ -360,7 +360,10 @@ class MainWindow(QMainWindow):
         self.side_bar.setVisible(not is_vis)
 
     def _get_current_tab(self) -> EditorTab:
-        return self.tab_widget.currentWidget()
+        tab = self.tab_widget.currentWidget()
+        if not tab and self.tab_widget.count() == 0:
+            return self._add_new_tab()
+        return tab
 
     def _add_new_tab(self) -> EditorTab:
         tab = EditorTab()
