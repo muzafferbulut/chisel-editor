@@ -54,7 +54,10 @@ class MapPreviewPanel(AbstractPreviewPanel):
         <head>
             <meta charset="utf-8" />
             <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+            <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+            <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
             <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+            <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
             <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
             <style>
                 html, body, #map {{
@@ -63,13 +66,13 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
                 .hud-panel {{
                     position: absolute;
-                    background: rgba(30, 30, 30, 0.85);
+                    background: rgba(30, 30, 30, 0.88);
                     color: #e0e0e0;
                     backdrop-filter: blur(8px);
                     border: 1px solid rgba(255, 255, 255, 0.15);
                     border-radius: 6px;
-                    padding: 6px 12px;
-                    font-size: 12px;
+                    padding: 5px 10px;
+                    font-size: 11px;
                     z-index: 1000;
                     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
                     user-select: none;
@@ -85,7 +88,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     top: 12px;
                     right: 12px;
                     display: flex;
-                    gap: 6px;
+                    gap: 5px;
                     align-items: center;
                     padding: 4px 8px;
                 }}
@@ -113,6 +116,11 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     border-color: #007fd4;
                     font-weight: bold;
                 }}
+                .hud-slider {{
+                    width: 60px;
+                    cursor: pointer;
+                    vertical-align: middle;
+                }}
                 .leaflet-popup-content-wrapper {{
                     background: #252526 !important;
                     color: #cccccc !important;
@@ -128,12 +136,12 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     width: 100%;
                     border-collapse: collapse;
                     font-size: 11px;
-                    max-height: 240px;
+                    max-height: 220px;
                     overflow-y: auto;
                     display: block;
                 }}
                 .prop-table th, .prop-table td {{
-                    padding: 4px 8px;
+                    padding: 3px 6px;
                     text-align: left;
                     border-bottom: 1px solid #333;
                 }}
@@ -153,19 +161,36 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     display: flex;
                     justify-content: space-between;
                 }}
+                .measure-tooltip {{
+                    background: rgba(0,0,0,0.85);
+                    color: #fff;
+                    padding: 3px 6px;
+                    border-radius: 3px;
+                    font-size: 11px;
+                    font-weight: bold;
+                    border: 1px solid #00a2ff;
+                }}
             </style>
         </head>
         <body>
             <div id="map"></div>
 
-            <div class="hud-panel hud-stats" id="statsPill">No layer loaded</div>
+            <div class="hud-panel hud-stats" id="statsPill">No layer</div>
 
             <div class="hud-panel hud-toolbar">
-                <button class="hud-btn" id="btnFit" title="Zoom to layer bounds">🎯 Fit Bounds</button>
-                <button class="hud-btn" id="btnDark" onclick="setBaseMap('dark')">Dark</button>
-                <button class="hud-btn" id="btnLight" onclick="setBaseMap('light')">Light</button>
-                <button class="hud-btn" id="btnOsm" onclick="setBaseMap('osm')">Street</button>
-                <button class="hud-btn" id="btnSat" onclick="setBaseMap('sat')">Satellite</button>
+                <button class="hud-btn" id="btnFit" title="Zoom to layer bounds">🎯 Fit</button>
+                <button class="hud-btn" id="btnMeasure" title="Measure Distance / Area">📏 Ölçüm</button>
+                <button class="hud-btn" id="btnCluster" title="Toggle Marker Clustering">📍 Cluster</button>
+                <span style="font-size:10px; color:#aaa; margin-left:3px;">Opaklık:</span>
+                <input type="range" class="hud-slider" id="opacitySlider" min="10" max="100" value="85" title="Layer Opacity"/>
+                <span style="border-left: 1px solid #555; height: 14px; margin: 0 4px;"></span>
+                <!-- ONLY 100% FREE BASEMAPS -->
+                <button class="hud-btn" id="btnOsm" onclick="setBaseMap('osm')" title="OpenStreetMap (Free)">OSM</button>
+                <button class="hud-btn" id="btnTopo" onclick="setBaseMap('topo')" title="OpenTopoMap (Free)">Topo</button>
+                <button class="hud-btn" id="btnDark" onclick="setBaseMap('dark')" title="CartoDB Dark Matter (Free CDN)">Dark</button>
+                <button class="hud-btn" id="btnLight" onclick="setBaseMap('light')" title="CartoDB Positron (Free CDN)">Light</button>
+                <button class="hud-btn" id="btnSat" onclick="setBaseMap('sat')" title="Esri World Imagery (Free)">Uydu</button>
+                <button class="hud-btn" id="btnNone" onclick="setBaseMap('none')" title="Altlık Yok (Empty Canvas)">Yok</button>
             </div>
 
             <div class="hud-panel hud-coords" id="coordsPill">
@@ -181,39 +206,46 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 L.control.scale({{ imperial: false, position: 'bottomleft' }}).addTo(map);
 
-                var tiles = {{
+                // STRICTLY FREE BASE TILES
+                var freeTiles = {{
+                    osm: L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{ maxZoom: 19 }}),
+                    topo: L.tileLayer('https://{{s}}.tile.opentopomap.org/{{z}}/{{x}}/{{y}}.png', {{ maxZoom: 17 }}),
                     dark: L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{ maxZoom: 19 }}),
                     light: L.tileLayer('https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{ maxZoom: 19 }}),
-                    osm: L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{ maxZoom: 19 }}),
-                    sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{{z}}/{{y}}/{{x}}', {{ maxZoom: 18 }})
+                    sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{{z}}/{{y}}/{{x}}', {{ maxZoom: 18 }}),
+                    none: null
                 }};
 
                 var currentBase = '{theme}' === 'dark' ? 'dark' : 'light';
-                tiles[currentBase].addTo(map);
+                if (freeTiles[currentBase]) freeTiles[currentBase].addTo(map);
                 updateActiveBaseButton(currentBase);
 
                 function setBaseMap(type) {{
-                    if (tiles[currentBase]) map.removeLayer(tiles[currentBase]);
+                    if (freeTiles[currentBase]) map.removeLayer(freeTiles[currentBase]);
                     currentBase = type;
-                    if (tiles[type]) tiles[type].addTo(map);
-                    if (geojsonLayer) geojsonLayer.bringToFront();
+                    if (freeTiles[type]) freeTiles[type].addTo(map);
+                    bringVectorsToFront();
                     updateActiveBaseButton(type);
                 }}
 
                 function updateActiveBaseButton(type) {{
-                    ['btnDark', 'btnLight', 'btnOsm', 'btnSat'].forEach(id => {{
+                    ['btnOsm', 'btnTopo', 'btnDark', 'btnLight', 'btnSat', 'btnNone'].forEach(id => {{
                         var btn = document.getElementById(id);
                         if (btn) btn.classList.remove('active');
                     }});
-                    var mapBtn = {{ dark: 'btnDark', light: 'btnLight', osm: 'btnOsm', sat: 'btnSat' }}[type];
+                    var mapBtn = {{ osm: 'btnOsm', topo: 'btnTopo', dark: 'btnDark', light: 'btnLight', sat: 'btnSat', none: 'btnNone' }}[type];
                     if (mapBtn && document.getElementById(mapBtn)) {{
                         document.getElementById(mapBtn).classList.add('active');
                     }}
                 }}
 
                 var geojsonLayer = null;
+                var clusterGroup = null;
+                var useClustering = false;
                 var layerIndexMap = {{}};
+                var currentOpacity = 0.85;
                 var pyBridge = null;
+                var wmsLayers = {{}};
 
                 if (typeof QWebChannel !== 'undefined') {{
                     new QWebChannel(qt.webChannelTransport, function(channel) {{
@@ -221,6 +253,39 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }});
                 }}
 
+                // --- WMS Layer Management ---
+                function addWmsLayer(layerId, url, layers, format, transparent) {{
+                    if (wmsLayers[layerId]) map.removeLayer(wmsLayers[layerId]);
+                    wmsLayers[layerId] = L.tileLayer.wms(url, {{
+                        layers: layers,
+                        format: format || 'image/png',
+                        transparent: transparent !== false,
+                        maxZoom: 20
+                    }}).addTo(map);
+                    bringVectorsToFront();
+                }}
+
+                function removeWmsLayer(layerId) {{
+                    if (wmsLayers[layerId]) {{
+                        map.removeLayer(wmsLayers[layerId]);
+                        delete wmsLayers[layerId];
+                    }}
+                }}
+
+                function setWmsVisibility(layerId, visible) {{
+                    if (wmsLayers[layerId]) {{
+                        if (visible) map.addLayer(wmsLayers[layerId]);
+                        else map.removeLayer(wmsLayers[layerId]);
+                        bringVectorsToFront();
+                    }}
+                }}
+
+                function bringVectorsToFront() {{
+                    if (clusterGroup) clusterGroup.bringToFront();
+                    else if (geojsonLayer) geojsonLayer.bringToFront();
+                }}
+
+                // --- Map Mouse Move & Coordinate Tracking ---
                 map.on('mousemove', function(e) {{
                     document.getElementById('coordsPill').innerHTML = 
                         '<span>Lat: ' + e.latlng.lat.toFixed(4) + '°</span>' +
@@ -229,15 +294,97 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }});
 
                 document.getElementById('btnFit').onclick = function() {{
-                    if (geojsonLayer && geojsonLayer.getBounds().isValid()) {{
-                        map.fitBounds(geojsonLayer.getBounds(), {{ padding: [30, 30] }});
+                    fitLayerBounds();
+                }};
+
+                document.getElementById('opacitySlider').oninput = function(e) {{
+                    currentOpacity = e.target.value / 100.0;
+                    if (geojsonLayer) {{
+                        geojsonLayer.setStyle(function(feature) {{
+                            return {{
+                                fillOpacity: currentOpacity * 0.4,
+                                opacity: currentOpacity
+                            }};
+                        }});
                     }}
                 }};
 
+                document.getElementById('btnCluster').onclick = function() {{
+                    useClustering = !useClustering;
+                    this.classList.toggle('active', useClustering);
+                    if (lastGeojsonData) {{
+                        updateMap(lastGeojsonData);
+                    }}
+                }};
+
+                // --- Measurement Ruler Tool ---
+                var measureActive = false;
+                var measurePoints = [];
+                var measureMarkers = [];
+                var measureLine = null;
+                var measurePolygon = null;
+                var measureTooltip = null;
+
+                document.getElementById('btnMeasure').onclick = function() {{
+                    measureActive = !measureActive;
+                    this.classList.toggle('active', measureActive);
+                    if (!measureActive) {{
+                        clearMeasure();
+                    }}
+                }};
+
+                map.on('click', function(e) {{
+                    if (!measureActive) return;
+                    measurePoints.push(e.latlng);
+
+                    var m = L.circleMarker(e.latlng, {{ radius: 4, color: '#e74c3c', fillColor: '#fff', fillOpacity: 1 }}).addTo(map);
+                    measureMarkers.push(m);
+
+                    if (measurePoints.length > 1) {{
+                        if (measureLine) map.removeLayer(measureLine);
+                        measureLine = L.polyline(measurePoints, {{ color: '#e74c3c', weight: 2.5, dashArray: '5, 5' }}).addTo(map);
+
+                        var totalDist = 0;
+                        for (var i = 1; i < measurePoints.length; i++) {{
+                            totalDist += measurePoints[i - 1].distanceTo(measurePoints[i]);
+                        }}
+                        var distText = totalDist > 1000 ? (totalDist / 1000).toFixed(2) + ' km' : totalDist.toFixed(1) + ' m';
+
+                        if (measurePoints.length >= 3) {{
+                            if (measurePolygon) map.removeLayer(measurePolygon);
+                            measurePolygon = L.polygon(measurePoints, {{ color: '#e74c3c', fillOpacity: 0.15, weight: 1 }}).addTo(map);
+                        }}
+
+                        if (!measureTooltip) {{
+                            measureTooltip = L.tooltip({{ permanent: true, className: 'measure-tooltip' }});
+                        }}
+                        measureTooltip.setLatLng(e.latlng).setContent('📏 ' + distText).addTo(map);
+                    }}
+                }});
+
+                function clearMeasure() {{
+                    measurePoints = [];
+                    measureMarkers.forEach(m => map.removeLayer(m));
+                    measureMarkers = [];
+                    if (measureLine) map.removeLayer(measureLine);
+                    if (measurePolygon) map.removeLayer(measurePolygon);
+                    if (measureTooltip) map.removeLayer(measureTooltip);
+                    measureLine = null;
+                    measurePolygon = null;
+                    measureTooltip = null;
+                }}
+
+                var lastGeojsonData = null;
+
                 function updateMap(geojsonData) {{
+                    lastGeojsonData = geojsonData;
                     if (geojsonLayer) {{
                         map.removeLayer(geojsonLayer);
                         geojsonLayer = null;
+                    }}
+                    if (clusterGroup) {{
+                        map.removeLayer(clusterGroup);
+                        clusterGroup = null;
                     }}
                     layerIndexMap = {{}};
 
@@ -253,7 +400,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         featureCount = 1;
                     }}
 
-                    document.getElementById('statsPill').textContent = '📍 ' + featureCount + ' Features';
+                    document.getElementById('statsPill').textContent = '📍 ' + featureCount.toLocaleString() + ' Özellik';
 
                     var geomColors = {{
                         Point: '#00a2ff',
@@ -264,17 +411,27 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         MultiPolygon: '#2ecc71'
                     }};
 
+                    if (useClustering && typeof L.markerClusterGroup === 'function') {{
+                        clusterGroup = L.markerClusterGroup({{
+                            maxClusterRadius: 45,
+                            spiderfyOnMaxZoom: true,
+                            showCoverageOnHover: false
+                        }});
+                    }}
+
                     var featureIdx = 0;
                     geojsonLayer = L.geoJSON(geojsonData, {{
                         pointToLayer: function(feature, latlng) {{
-                            return L.circleMarker(latlng, {{
-                                radius: 7,
+                            var marker = L.circleMarker(latlng, {{
+                                radius: 6,
                                 fillColor: '#00a2ff',
                                 color: '#ffffff',
-                                weight: 2,
-                                opacity: 1,
-                                fillOpacity: 0.85
+                                weight: 1.5,
+                                opacity: currentOpacity,
+                                fillOpacity: currentOpacity * 0.9
                             }});
+                            if (clusterGroup) clusterGroup.addLayer(marker);
+                            return marker;
                         }},
                         style: function(feature) {{
                             var gtype = feature.geometry ? feature.geometry.type : 'Polygon';
@@ -282,26 +439,26 @@ class MapPreviewPanel(AbstractPreviewPanel):
                             return {{
                                 color: color,
                                 weight: 2,
-                                opacity: 0.9,
+                                opacity: currentOpacity,
                                 fillColor: color,
-                                fillOpacity: 0.3
+                                fillOpacity: currentOpacity * 0.35
                             }};
                         }},
                         onEachFeature: function(feature, layer) {{
                             var currentIdx = featureIdx++;
                             layerIndexMap[currentIdx] = layer;
 
-                            var title = (feature.properties && (feature.properties.name || feature.properties.NAME || feature.properties.city || feature.properties.title || feature.properties.id)) || ('Feature #' + currentIdx);
+                            var title = (feature.properties && (feature.properties.city || feature.properties.name || feature.properties.NAME || feature.properties.title || feature.properties.id)) || ('Özellik #' + currentIdx);
                             layer.bindTooltip(String(title), {{ sticky: true }});
 
                             layer.on('click', function(e) {{
                                 var props = feature.properties || {{}};
                                 var gType = feature.geometry ? feature.geometry.type : 'Unknown';
-                                var html = '<div class="prop-title"><span>Feature #' + currentIdx + '</span><span>[' + gType + ']</span></div>';
+                                var html = '<div class="prop-title"><span>Özellik #' + currentIdx + '</span><span>[' + gType + ']</span></div>';
                                 html += '<table class="prop-table">';
                                 var keys = Object.keys(props);
                                 if (keys.length === 0) {{
-                                    html += '<tr><td colspan="2"><i>No attributes</i></td></tr>';
+                                    html += '<tr><td colspan="2"><i>Öznitelik yok</i></td></tr>';
                                 }} else {{
                                     keys.forEach(function(k) {{
                                         var val = props[k];
@@ -310,18 +467,22 @@ class MapPreviewPanel(AbstractPreviewPanel):
                                     }});
                                 }}
                                 html += '</table>';
-                                layer.bindPopup(html, {{ maxWidth: 350, maxHeight: 300 }}).openPopup();
+                                layer.bindPopup(html, {{ maxWidth: 350, maxHeight: 280 }}).openPopup();
 
                                 if (pyBridge) {{
                                     pyBridge.onFeatureClicked(currentIdx);
                                 }}
                             }});
                         }}
-                    }}).addTo(map);
+                    }});
 
-                    if (geojsonLayer.getBounds().isValid()) {{
-                        map.fitBounds(geojsonLayer.getBounds(), {{ padding: [30, 30] }});
+                    if (clusterGroup) {{
+                        map.addLayer(clusterGroup);
+                    }} else {{
+                        map.addLayer(geojsonLayer);
                     }}
+
+                    fitLayerBounds();
                 }}
 
                 function highlightFeature(idx) {{
@@ -330,7 +491,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         if (layer.getBounds && layer.getBounds().isValid()) {{
                             map.fitBounds(layer.getBounds(), {{ maxZoom: 16, padding: [40, 40] }});
                         }} else if (layer.getLatLng) {{
-                            map.setView(layer.getLatLng(), Math.max(map.getZoom(), 12));
+                            map.setView(layer.getLatLng(), Math.max(map.getZoom(), 13));
                         }}
                         if (layer.openPopup) layer.openPopup();
                     }}
@@ -377,6 +538,26 @@ class MapPreviewPanel(AbstractPreviewPanel):
     def fit_bounds(self):
         if self._is_loaded:
             self.web_view.page().runJavaScript("fitLayerBounds();")
+
+    def add_wms_layer(self, layer_id: str, url: str, layer_name: str, fmt: str = "image/png", transparent: bool = True):
+        if self._is_loaded:
+            esc_id = json.dumps(layer_id)
+            esc_url = json.dumps(url)
+            esc_layer = json.dumps(layer_name)
+            esc_fmt = json.dumps(fmt)
+            trans_str = "true" if transparent else "false"
+            self.web_view.page().runJavaScript(f"addWmsLayer({esc_id}, {esc_url}, {esc_layer}, {esc_fmt}, {trans_str});")
+
+    def remove_wms_layer(self, layer_id: str):
+        if self._is_loaded:
+            esc_id = json.dumps(layer_id)
+            self.web_view.page().runJavaScript(f"removeWmsLayer({esc_id});")
+
+    def set_wms_visibility(self, layer_id: str, visible: bool):
+        if self._is_loaded:
+            esc_id = json.dumps(layer_id)
+            vis_str = "true" if visible else "false"
+            self.web_view.page().runJavaScript(f"setWmsVisibility({esc_id}, {vis_str});")
 
     def set_theme_tiles(self, theme_name: str):
         if self._is_loaded:
@@ -435,5 +616,4 @@ class MarkdownPreviewPanel(AbstractPreviewPanel):
             """
             self.web_view.setHtml(styled_html)
         except Exception as e:
-            print(f"Markdown rendering error: {e}")
             print(f"Markdown rendering error: {e}")

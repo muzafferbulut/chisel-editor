@@ -1,8 +1,10 @@
+import io
+import os
+import requests
 from PyQt6.QtCore import QThread, pyqtSignal
 from handlers.factory import HandlerFactory
 from handlers.spatial import MultipleLayersError
 from core.spatial_ops import SpatialOps
-import os
 import geopandas as gpd
 
 
@@ -24,6 +26,36 @@ class FileLoadWorker(QThread):
             self.multiple_layers_detected.emit(self.file_path, mle.layers)
         except Exception as e:
             self.finished.emit(self.file_path, "", False, str(e))
+
+
+class WFSWorker(QThread):
+    finished = pyqtSignal(str, object, str)  # (layer_name, GeoDataFrame, error)
+
+    def __init__(self, url: str, type_name: str = "", limit: int = 500):
+        super().__init__()
+        self.url = url
+        self.type_name = type_name
+        self.limit = limit
+
+    def run(self):
+        try:
+            req_url = self.url
+            if self.type_name and "GetFeature" not in req_url:
+                delim = "&" if "?" in req_url else "?"
+                req_url = f"{req_url}{delim}service=WFS&version=2.0.0&request=GetFeature&typeNames={self.type_name}&outputFormat=application/json&count={self.limit}"
+
+            resp = requests.get(req_url, timeout=25, headers={"User-Agent": "ChiselEditor/1.0"})
+            resp.raise_for_status()
+
+            text = resp.text
+            gdf = gpd.read_file(io.StringIO(text))
+            if gdf.crs is None:
+                gdf.set_crs("EPSG:4326", inplace=True)
+
+            layer_name = self.type_name or "WFS_Layer"
+            self.finished.emit(layer_name, gdf, "")
+        except Exception as e:
+            self.finished.emit("", None, str(e))
 
 
 class SpatialOpWorker(QThread):
@@ -57,6 +89,26 @@ class SpatialOpWorker(QThread):
                 res, orig_v, simp_v = SpatialOps.simplify_geometries(self.gdf, tolerance, preserve_topo)
                 self.finished.emit(self.op_name, (res, orig_v, simp_v), "")
 
+            elif self.op_name == "buffer":
+                dist = self.params.get("distance", 100)
+                unit = self.params.get("unit", "meters")
+                res = SpatialOps.buffer_geometries(self.gdf, dist, unit)
+                self.finished.emit(self.op_name, res, "")
+
+            elif self.op_name == "dissolve":
+                by_col = self.params.get("by_column", None)
+                res = SpatialOps.dissolve_geometries(self.gdf, by_col)
+                self.finished.emit(self.op_name, res, "")
+
+            elif self.op_name == "calc_geometry":
+                res = SpatialOps.calculate_geometry_attributes(self.gdf)
+                self.finished.emit(self.op_name, res, "")
+
+            elif self.op_name == "convex_hull":
+                per_feature = self.params.get("per_feature", False)
+                res = SpatialOps.calculate_convex_hull(self.gdf, per_feature)
+                self.finished.emit(self.op_name, res, "")
+
             elif self.op_name == "centroids":
                 res = SpatialOps.calculate_centroids(self.gdf)
                 self.finished.emit(self.op_name, res, "")
@@ -75,4 +127,3 @@ class SpatialOpWorker(QThread):
 
         except Exception as e:
             self.finished.emit(self.op_name, None, str(e))
-            self.finished.emit(self.file_path, "", False, str(e))

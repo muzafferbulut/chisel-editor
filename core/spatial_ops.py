@@ -1,19 +1,20 @@
 import os
 import io
 import json
+import warnings
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 import shapely
-from shapely.geometry import shape, mapping
+from shapely.geometry import Point, Polygon, LineString, MultiPolygon
 from pyproj import CRS
 
 
 class SpatialOps:
     """
-    High-performance, robust utility for spatial data operations.
-    Handles GeoDataFrames, conversions, reprojections, geometry validations,
-    simplifications, and format exports.
+    High-performance utility for GIS & spatial operations in Chisel Editor.
+    Includes buffering, dissolving, geometry attribute calculations,
+    simplification, validation, statistics, and multi-format exports.
     """
 
     @staticmethod
@@ -148,11 +149,90 @@ class SpatialOps:
         return new_gdf, orig_vertices, simplified_vertices
 
     @staticmethod
+    def buffer_geometries(gdf: gpd.GeoDataFrame, distance: float, unit: str = "meters") -> gpd.GeoDataFrame:
+        """
+        Buffers geometries. If CRS is geographic (degrees/EPSG:4326) and unit is 'meters',
+        temporarily reprojects to World Mercator (EPSG:3857), applies the metric buffer,
+        and reprojects back to the original CRS.
+        """
+        new_gdf = gdf.copy()
+        orig_crs = new_gdf.crs or "EPSG:4326"
+        is_geographic = False
+        try:
+            crs_obj = CRS.from_user_input(orig_crs)
+            is_geographic = crs_obj.is_geographic
+        except Exception:
+            is_geographic = True
+
+        if is_geographic and unit == "meters":
+            metric_gdf = new_gdf.to_crs("EPSG:3857")
+            metric_gdf['geometry'] = metric_gdf.geometry.buffer(distance)
+            buffered_gdf = metric_gdf.to_crs(orig_crs)
+            return buffered_gdf
+        else:
+            new_gdf['geometry'] = new_gdf.geometry.buffer(distance)
+            return new_gdf
+
+    @staticmethod
+    def dissolve_geometries(gdf: gpd.GeoDataFrame, by_column: str = None) -> gpd.GeoDataFrame:
+        """
+        Dissolves geometries by a specified attribute column or merges all features into one.
+        """
+        clean_gdf = SpatialOps.sanitize_gdf_for_json(gdf)
+        if by_column and by_column in clean_gdf.columns:
+            dissolved = clean_gdf.dissolve(by=by_column, as_index=False)
+        else:
+            dissolved = clean_gdf.dissolve(as_index=False)
+        return dissolved
+
+    @staticmethod
+    def calculate_geometry_attributes(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """
+        Calculates geometric properties (Area in km², Perimeter/Length in km, and Point Coordinates)
+        using accurate metric projection (EPSG:3857), and adds them as new columns.
+        """
+        res_gdf = gdf.copy()
+        try:
+            metric_gdf = res_gdf.to_crs("EPSG:3857")
+        except Exception:
+            metric_gdf = res_gdf
+
+        has_polygons = any(t in ('Polygon', 'MultiPolygon') for t in metric_gdf.geometry.geom_type)
+        if has_polygons:
+            res_gdf['area_sqkm'] = (metric_gdf.geometry.area / 1_000_000.0).round(4)
+            res_gdf['area_ha'] = (metric_gdf.geometry.area / 10_000.0).round(2)
+            res_gdf['perimeter_km'] = (metric_gdf.geometry.length / 1000.0).round(3)
+
+        has_lines = any(t in ('LineString', 'MultiLineString') for t in metric_gdf.geometry.geom_type)
+        if has_lines and not has_polygons:
+            res_gdf['length_km'] = (metric_gdf.geometry.length / 1000.0).round(3)
+
+        has_points = any(t in ('Point', 'MultiPoint') for t in res_gdf.geometry.geom_type)
+        if has_points and not has_polygons and not has_lines:
+            res_gdf['coord_x'] = res_gdf.geometry.apply(lambda g: round(g.x, 6) if hasattr(g, 'x') else None)
+            res_gdf['coord_y'] = res_gdf.geometry.apply(lambda g: round(g.y, 6) if hasattr(g, 'y') else None)
+
+        return res_gdf
+
+    @staticmethod
+    def calculate_convex_hull(gdf: gpd.GeoDataFrame, per_feature: bool = False) -> gpd.GeoDataFrame:
+        """
+        Calculates convex hull geometries.
+        """
+        if per_feature:
+            new_gdf = gdf.copy()
+            new_gdf['geometry'] = new_gdf.geometry.convex_hull
+            return new_gdf
+        else:
+            orig_crs = gdf.crs or "EPSG:4326"
+            hull = gdf.geometry.unary_union.convex_hull
+            return gpd.GeoDataFrame([{"name": "Layer Convex Hull", "geometry": hull}], crs=orig_crs)
+
+    @staticmethod
     def calculate_centroids(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         """
         Calculates centroid points for all features in the GeoDataFrame.
         """
-        import warnings
         new_gdf = gdf.copy()
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=UserWarning)
@@ -169,14 +249,49 @@ class SpatialOps:
         return new_gdf
 
     @staticmethod
+    def get_column_statistics(gdf: gpd.GeoDataFrame, column_name: str) -> dict:
+        """
+        Calculates statistical summary for an attribute column.
+        """
+        if column_name not in gdf.columns:
+            raise ValueError(f"Column '{column_name}' not found.")
+
+        series = gdf[column_name]
+        total_count = len(series)
+        null_count = int(series.isna().sum())
+        valid_count = total_count - null_count
+
+        stats = {
+            "column": column_name,
+            "count": total_count,
+            "total_count": total_count,
+            "valid_count": valid_count,
+            "null_count": null_count,
+            "is_numeric": pd.api.types.is_numeric_dtype(series)
+        }
+
+        if stats["is_numeric"] and valid_count > 0:
+            stats["min"] = float(series.min())
+            stats["max"] = float(series.max())
+            stats["sum"] = float(series.sum())
+            stats["mean"] = float(series.mean())
+            stats["std"] = float(series.std()) if valid_count > 1 else 0.0
+            stats["median"] = float(series.median())
+        else:
+            stats["unique_count"] = int(series.nunique())
+            top_vals = series.value_counts().head(5).to_dict()
+            stats["top_values"] = {str(k): int(v) for k, v in top_vals.items()}
+
+        return stats
+
+    @staticmethod
     def get_summary(gdf: gpd.GeoDataFrame) -> dict:
         """
         Extracts comprehensive spatial summary information.
         """
         feature_count = len(gdf)
         crs_str = str(gdf.crs) if gdf.crs else "Unset"
-        
-        # Geometry types breakdown
+
         geom_types = {}
         for geom in gdf.geometry:
             if geom is not None and not geom.is_empty:
@@ -185,13 +300,11 @@ class SpatialOps:
             else:
                 geom_types["Empty/None"] = geom_types.get("Empty/None", 0) + 1
 
-        # Bounds (minx, miny, maxx, maxy)
         try:
             total_bounds = gdf.total_bounds.tolist() if feature_count > 0 else [0, 0, 0, 0]
         except Exception:
             total_bounds = [0, 0, 0, 0]
 
-        # Non-geometry columns with sample types
         columns_info = []
         for col in gdf.columns:
             if col != gdf.geometry.name:
@@ -218,8 +331,7 @@ class SpatialOps:
     @staticmethod
     def export_file(gdf: gpd.GeoDataFrame, target_path: str, driver: str = None) -> bool:
         """
-        Exports GeoDataFrame to various GIS vector formats with proper driver options.
-        Supports: .geojson, .gpkg, .shp, .kml, .fgb, .csv
+        Exports GeoDataFrame to various GIS vector formats (.geojson, .gpkg, .shp, .kml, .fgb, .csv).
         """
         ext = os.path.splitext(target_path)[1].lower()
         clean_gdf = SpatialOps.sanitize_gdf_for_json(gdf)
@@ -229,7 +341,6 @@ class SpatialOps:
         elif ext == '.gpkg':
             clean_gdf.to_file(target_path, driver='GPKG', engine='pyogrio')
         elif ext == '.shp':
-            # ESRI Shapefile column name limit: 10 characters
             shp_gdf = clean_gdf.copy()
             new_cols = {}
             seen = set()
@@ -246,7 +357,6 @@ class SpatialOps:
             shp_gdf.rename(columns=new_cols, inplace=True)
             shp_gdf.to_file(target_path, driver='ESRI Shapefile', engine='pyogrio')
         elif ext == '.kml':
-            # KML requires EPSG:4326
             kml_gdf = clean_gdf.copy()
             if kml_gdf.crs and str(kml_gdf.crs) != "EPSG:4326":
                 kml_gdf = kml_gdf.to_crs("EPSG:4326")
@@ -256,7 +366,6 @@ class SpatialOps:
         elif ext == '.fgb':
             clean_gdf.to_file(target_path, driver='FlatGeobuf', engine='pyogrio')
         elif ext == '.csv':
-            # Export attributes with WKT geometry
             csv_df = pd.DataFrame(clean_gdf)
             csv_df['wkt_geometry'] = clean_gdf.geometry.apply(lambda g: g.wkt if g is not None else "")
             geom_col = clean_gdf.geometry.name
@@ -264,6 +373,70 @@ class SpatialOps:
                 csv_df = csv_df.drop(columns=[geom_col])
             csv_df.to_csv(target_path, index=False, encoding='utf-8')
         else:
-            # Fallback
             clean_gdf.to_file(target_path, engine='pyogrio')
         return True
+
+    @staticmethod
+    def create_sample_spatial_data() -> gpd.GeoDataFrame:
+        """
+        Generates sample Turkish GIS vector data for 1-click instant testing.
+        """
+        features = [
+            {
+                "city": "İstanbul",
+                "region": "Marmara",
+                "population": 15907951,
+                "category": "Metropol",
+                "geometry": Polygon([(28.7, 40.9), (29.2, 40.9), (29.2, 41.2), (28.7, 41.2), (28.7, 40.9)])
+            },
+            {
+                "city": "Ankara",
+                "region": "İç Anadolu",
+                "population": 5803482,
+                "category": "Başkent",
+                "geometry": Polygon([(32.6, 39.8), (33.0, 39.8), (33.0, 40.1), (32.6, 40.1), (32.6, 39.8)])
+            },
+            {
+                "city": "İzmir",
+                "region": "Ege",
+                "population": 4462056,
+                "category": "Metropol",
+                "geometry": Polygon([(26.9, 38.3), (27.3, 38.3), (27.3, 38.6), (26.9, 38.6), (26.9, 38.3)])
+            },
+            {
+                "city": "Bursa",
+                "region": "Marmara",
+                "population": 3194720,
+                "category": "Sanayi",
+                "geometry": Polygon([(28.9, 40.1), (29.3, 40.1), (29.3, 40.35), (28.9, 40.35), (28.9, 40.1)])
+            },
+            {
+                "city": "Antalya",
+                "region": "Akdeniz",
+                "population": 2688004,
+                "category": "Turizm",
+                "geometry": Polygon([(30.5, 36.8), (30.9, 36.8), (30.9, 37.1), (30.5, 37.1), (30.5, 36.8)])
+            },
+            {
+                "city": "Konya",
+                "region": "İç Anadolu",
+                "population": 2296347,
+                "category": "Tarım",
+                "geometry": Polygon([(32.3, 37.7), (32.7, 37.7), (32.7, 38.1), (32.3, 38.1), (32.3, 37.7)])
+            },
+            {
+                "city": "Gaziantep",
+                "region": "Güneydoğu Anadolu",
+                "population": 2154051,
+                "category": "Sanayi",
+                "geometry": Polygon([(37.2, 36.9), (37.6, 36.9), (37.6, 37.2), (37.2, 37.2), (37.2, 36.9)])
+            },
+            {
+                "city": "Trabzon",
+                "region": "Karadeniz",
+                "population": 818023,
+                "category": "Liman",
+                "geometry": Polygon([(39.6, 40.9), (39.9, 40.9), (39.9, 41.1), (39.6, 41.1), (39.6, 40.9)])
+            }
+        ]
+        return gpd.GeoDataFrame(features, crs="EPSG:4326")

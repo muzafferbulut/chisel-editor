@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QGroupBox
 )
 from PyQt6.QtCore import Qt
+from core.spatial_ops import SpatialOps
 
 
 class LayerSelectionDialog(QDialog):
@@ -84,7 +85,7 @@ class CRSDialog(QDialog):
         super().__init__(parent)
         self.selected_epsg = None
         self.setWindowTitle(title)
-        self.resize(440, 220)
+        self.resize(460, 240)
         self.setModal(True)
         self._setup_ui(current_crs)
 
@@ -141,6 +142,122 @@ class CRSDialog(QDialog):
             QMessageBox.warning(self, "Invalid Input", "Please enter or select a valid EPSG code (e.g. 4326).")
 
 
+class BufferDialog(QDialog):
+
+    def __init__(self, crs: str = None, parent=None):
+        super().__init__(parent)
+        self.distance = 500.0
+        self.unit = "meters"
+
+        self.setWindowTitle("Buffer Geometries (Tampon Bölge)")
+        self.resize(380, 220)
+        self.setModal(True)
+        self._setup_ui(crs)
+
+    def _setup_ui(self, crs):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        lbl_desc = QLabel("Geometrilere belirtilen mesafede tampon bölge (buffer) uygular:")
+        lbl_desc.setWordWrap(True)
+        layout.addWidget(lbl_desc)
+
+        dist_layout = QHBoxLayout()
+        dist_layout.addWidget(QLabel("<b>Mesafe:</b>"))
+        self.spin_dist = QDoubleSpinBox()
+        self.spin_dist.setRange(0.0001, 1000000.0)
+        self.spin_dist.setValue(500.0)
+        self.spin_dist.setDecimals(2)
+        dist_layout.addWidget(self.spin_dist)
+
+        self.combo_unit = QComboBox()
+        self.combo_unit.addItem("Metre (m)", "meters")
+        self.combo_unit.addItem("Kilometre (km)", "kilometers")
+        self.combo_unit.addItem("Derece (°)", "degrees")
+        dist_layout.addWidget(self.combo_unit)
+        layout.addLayout(dist_layout)
+
+        preset_layout = QHBoxLayout()
+        preset_layout.addWidget(QLabel("Önayarlar:"))
+        for d, u, lbl in [(100, 0, "100m"), (500, 0, "500m"), (1, 1, "1km"), (5, 1, "5km")]:
+            btn = QPushButton(lbl)
+            btn.clicked.connect(lambda _, dist=d, unit_idx=u: self._set_preset(dist, unit_idx))
+            preset_layout.addWidget(btn)
+        layout.addLayout(preset_layout)
+
+        btn_layout = QHBoxLayout()
+        btn_cancel = QPushButton("İptal")
+        btn_apply = QPushButton("Tampon Oluştur")
+        btn_cancel.clicked.connect(self.reject)
+        btn_apply.clicked.connect(self._on_apply)
+
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_apply)
+        layout.addLayout(btn_layout)
+
+    def _set_preset(self, dist, unit_idx):
+        self.combo_unit.setCurrentIndex(unit_idx)
+        self.spin_dist.setValue(dist)
+
+    def _on_apply(self):
+        val = self.spin_dist.value()
+        unit_type = self.combo_unit.currentData()
+        if unit_type == "kilometers":
+            self.distance = val * 1000.0
+            self.unit = "meters"
+        else:
+            self.distance = val
+            self.unit = unit_type
+        self.accept()
+
+
+class DissolveDialog(QDialog):
+
+    def __init__(self, columns: list, parent=None):
+        super().__init__(parent)
+        self.by_column = None
+
+        self.setWindowTitle("Dissolve Geometries (Birleştir)")
+        self.resize(380, 180)
+        self.setModal(True)
+        self._setup_ui(columns)
+
+    def _setup_ui(self, columns):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        lbl_desc = QLabel("Geometrileri seçilen bir özniteliğe göre veya tek parça olarak birleştirir:")
+        lbl_desc.setWordWrap(True)
+        layout.addWidget(lbl_desc)
+
+        col_layout = QHBoxLayout()
+        col_layout.addWidget(QLabel("<b>Birleştirme Sütunu:</b>"))
+        self.col_combo = QComboBox()
+        self.col_combo.addItem("-- Tüm Katmanı Birleştir (Tek Parça) --", None)
+        for col in columns:
+            self.col_combo.addItem(col, col)
+        col_layout.addWidget(self.col_combo)
+        layout.addLayout(col_layout)
+
+        btn_layout = QHBoxLayout()
+        btn_cancel = QPushButton("İptal")
+        btn_apply = QPushButton("Birleştir")
+        btn_cancel.clicked.connect(self.reject)
+        btn_apply.clicked.connect(self._on_apply)
+
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_apply)
+        layout.addLayout(btn_layout)
+
+    def _on_apply(self):
+        self.by_column = self.col_combo.currentData()
+        self.accept()
+
+
 class SimplifyDialog(QDialog):
 
     def __init__(self, crs: str = None, vertex_count: int = 0, parent=None):
@@ -158,19 +275,19 @@ class SimplifyDialog(QDialog):
         layout.setSpacing(12)
         layout.setContentsMargins(20, 20, 20, 20)
 
-        info_text = f"Current vertices: <b>{vertex_count:,}</b>"
+        info_text = f"Mevcut köşe noktası sayısı: <b>{vertex_count:,}</b>"
         is_degree = crs and ("4326" in crs or "WGS 84" in crs)
         if is_degree:
-            info_text += "<br><small style='color:#858585'>Coordinate unit: <b>Degrees</b> (suggested: 0.0001 - 0.01)</small>"
+            info_text += "<br><small style='color:#858585'>Birim: <b>Derece</b> (önerilen: 0.0001 - 0.01)</small>"
         else:
-            info_text += "<br><small style='color:#858585'>Coordinate unit: <b>Meters / Linear</b> (suggested: 1.0 - 50.0)</small>"
+            info_text += "<br><small style='color:#858585'>Birim: <b>Metre</b> (önerilen: 1.0 - 50.0)</small>"
 
         lbl_info = QLabel(info_text)
         lbl_info.setWordWrap(True)
         layout.addWidget(lbl_info)
 
         spin_layout = QHBoxLayout()
-        spin_layout.addWidget(QLabel("<b>Tolerance:</b>"))
+        spin_layout.addWidget(QLabel("<b>Tolerans:</b>"))
         self.spin_tolerance = QDoubleSpinBox()
         self.spin_tolerance.setDecimals(6)
         self.spin_tolerance.setRange(0.000001, 10000.0)
@@ -179,13 +296,13 @@ class SimplifyDialog(QDialog):
         spin_layout.addWidget(self.spin_tolerance)
         layout.addLayout(spin_layout)
 
-        self.chk_topology = QCheckBox("Preserve Topology (Prevents invalid geometries)")
+        self.chk_topology = QCheckBox("Topolojiyi Koru (Geçersiz geometrileri engeller)")
         self.chk_topology.setChecked(True)
         layout.addWidget(self.chk_topology)
 
         btn_layout = QHBoxLayout()
-        btn_cancel = QPushButton("Cancel")
-        btn_simplify = QPushButton("Simplify")
+        btn_cancel = QPushButton("İptal")
+        btn_simplify = QPushButton("Basitleştir")
         btn_cancel.clicked.connect(self.reject)
         btn_simplify.clicked.connect(self._on_apply)
 
@@ -214,7 +331,7 @@ class ExportSpatialDialog(QDialog):
     def __init__(self, current_file: str = None, parent=None):
         super().__init__(parent)
         self.target_path = None
-        self.setWindowTitle("Export / Convert Spatial Data")
+        self.setWindowTitle("Export Spatial Data (CBS Format Dönüştürme)")
         self.resize(480, 200)
         self.setModal(True)
         self._setup_ui(current_file)
@@ -225,7 +342,7 @@ class ExportSpatialDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
 
         combo_layout = QHBoxLayout()
-        combo_layout.addWidget(QLabel("<b>Target Format:</b>"))
+        combo_layout.addWidget(QLabel("<b>Hedef Format:</b>"))
         self.format_combo = QComboBox()
         for label, ext in self.FORMATS:
             self.format_combo.addItem(label, ext)
@@ -233,7 +350,7 @@ class ExportSpatialDialog(QDialog):
         layout.addLayout(combo_layout)
 
         path_layout = QHBoxLayout()
-        path_layout.addWidget(QLabel("<b>Destination:</b>"))
+        path_layout.addWidget(QLabel("<b>Hedef Dosya:</b>"))
         self.path_input = QLineEdit()
         if current_file:
             import os
@@ -241,14 +358,14 @@ class ExportSpatialDialog(QDialog):
             self.path_input.setText(f"{base}_export.geojson")
         path_layout.addWidget(self.path_input)
 
-        btn_browse = QPushButton("Browse...")
+        btn_browse = QPushButton("Gözat...")
         btn_browse.clicked.connect(self._on_browse)
         path_layout.addWidget(btn_browse)
         layout.addLayout(path_layout)
 
         btn_layout = QHBoxLayout()
-        btn_cancel = QPushButton("Cancel")
-        btn_export = QPushButton("Export")
+        btn_cancel = QPushButton("İptal")
+        btn_export = QPushButton("Dışa Aktar")
         btn_cancel.clicked.connect(self.reject)
         btn_export.clicked.connect(self._on_export)
 
@@ -259,25 +376,98 @@ class ExportSpatialDialog(QDialog):
 
     def _on_browse(self):
         ext = self.format_combo.currentData()
-        filt = f"Selected Format (*{ext});;All Files (*)"
-        chosen, _ = QFileDialog.getSaveFileName(self, "Export Spatial Data", self.path_input.text(), filt)
+        filt = f"Seçilen Format (*{ext});;Tüm Dosyalar (*)"
+        chosen, _ = QFileDialog.getSaveFileName(self, "Dışa Aktar", self.path_input.text(), filt)
         if chosen:
             self.path_input.setText(chosen)
 
     def _on_export(self):
         path = self.path_input.text().strip()
         if not path:
-            QMessageBox.warning(self, "Empty Path", "Please specify a destination file path.")
+            QMessageBox.warning(self, "Boş Yol", "Lütfen bir dosya yolu belirleyin.")
             return
         self.target_path = path
         self.accept()
+
+
+class ColumnStatisticsDialog(QDialog):
+
+    def __init__(self, gdf, columns: list, parent=None):
+        super().__init__(parent)
+        self.gdf = gdf
+        self.columns = columns
+        self.setWindowTitle("Sütun İstatistikleri")
+        self.resize(420, 320)
+        self.setModal(True)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        sel_layout = QHBoxLayout()
+        sel_layout.addWidget(QLabel("<b>Sütun Seç:</b>"))
+        self.combo_cols = QComboBox()
+        self.combo_cols.addItems(self.columns)
+        self.combo_cols.currentTextChanged.connect(self._update_stats)
+        sel_layout.addWidget(self.combo_cols)
+        layout.addLayout(sel_layout)
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(2)
+        self.table.setHorizontalHeaderLabels(["Metrik", "Değer"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.verticalHeader().setVisible(False)
+        layout.addWidget(self.table)
+
+        btn_close = QPushButton("Kapat")
+        btn_close.clicked.connect(self.accept)
+        layout.addWidget(btn_close, alignment=Qt.AlignmentFlag.AlignRight)
+
+        if self.columns:
+            self._update_stats(self.columns[0])
+
+    def _update_stats(self, col_name):
+        if not col_name or col_name not in self.gdf.columns:
+            return
+        try:
+            stats = SpatialOps.get_column_statistics(self.gdf, col_name)
+            self.table.setRowCount(0)
+            items = [
+                ("Sütun", stats.get("column")),
+                ("Toplam Satır", f"{stats.get('total_count', 0):,}"),
+                ("Dolu Değer Sayısı", f"{stats.get('valid_count', 0):,}"),
+                ("Boş (Null) Sayısı", f"{stats.get('null_count', 0):,}")
+            ]
+            if stats.get("is_numeric"):
+                items.extend([
+                    ("Minimum", f"{stats.get('min'):,.4f}"),
+                    ("Maksimum", f"{stats.get('max'):,.4f}"),
+                    ("Toplam (Sum)", f"{stats.get('sum'):,.4f}"),
+                    ("Ortalama (Mean)", f"{stats.get('mean'):,.4f}"),
+                    ("Medyan", f"{stats.get('median'):,.4f}"),
+                    ("Standart Sapma", f"{stats.get('std'):,.4f}")
+                ])
+            else:
+                items.append(("Benzersiz Değerler", f"{stats.get('unique_count', 0):,}"))
+                top = stats.get("top_values", {})
+                for val, cnt in top.items():
+                    items.append((f"En Sık: {val}", str(cnt)))
+
+            self.table.setRowCount(len(items))
+            for row_idx, (m, v) in enumerate(items):
+                self.table.setItem(row_idx, 0, QTableWidgetItem(str(m)))
+                self.table.setItem(row_idx, 1, QTableWidgetItem(str(v)))
+        except Exception as e:
+            QMessageBox.warning(self, "Hata", f"İstatistik hesaplanamadı: {e}")
 
 
 class SpatialInfoDialog(QDialog):
 
     def __init__(self, summary: dict, file_path: str = None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Spatial Layer Information")
+        self.setWindowTitle("Katman Bilgisi (Layer Info)")
         self.resize(520, 460)
         self.setModal(True)
         self._setup_ui(summary, file_path)
@@ -287,23 +477,23 @@ class SpatialInfoDialog(QDialog):
         layout.setSpacing(12)
         layout.setContentsMargins(20, 20, 20, 20)
 
-        grp_general = QGroupBox("General Metadata")
+        grp_general = QGroupBox("Genel Katman Bilgileri")
         gen_layout = QVBoxLayout(grp_general)
         if file_path:
             import os
-            gen_layout.addWidget(QLabel(f"<b>File:</b> {os.path.basename(file_path)}"))
-        gen_layout.addWidget(QLabel(f"<b>Feature Count:</b> {summary.get('feature_count', 0):,}"))
-        gen_layout.addWidget(QLabel(f"<b>CRS:</b> <code style='color:#00a2ff'>{summary.get('crs', 'None')}</code>"))
-        gen_layout.addWidget(QLabel(f"<b>Total Vertices:</b> {summary.get('vertex_count', 0):,}"))
+            gen_layout.addWidget(QLabel(f"<b>Dosya:</b> {os.path.basename(file_path)}"))
+        gen_layout.addWidget(QLabel(f"<b>Özellik (Feature) Sayısı:</b> {summary.get('feature_count', 0):,}"))
+        gen_layout.addWidget(QLabel(f"<b>CRS:</b> <code style='color:#00a2ff'>{summary.get('crs', 'Yok')}</code>"))
+        gen_layout.addWidget(QLabel(f"<b>Toplam Köşe Noktası (Vertices):</b> {summary.get('vertex_count', 0):,}"))
 
-        valid_str = "✅ All Valid" if summary.get('all_valid') else f"⚠️ {summary.get('feature_count', 0) - summary.get('valid_count', 0)} Invalid Geometries"
-        gen_layout.addWidget(QLabel(f"<b>Geometry Validity:</b> {valid_str}"))
+        valid_str = "✅ Tümü Geçerli" if summary.get('all_valid') else f"⚠️ {summary.get('feature_count', 0) - summary.get('valid_count', 0)} Geçersiz Geometri"
+        gen_layout.addWidget(QLabel(f"<b>Geometri Durumu:</b> {valid_str}"))
 
         b = summary.get('total_bounds', [0, 0, 0, 0])
-        gen_layout.addWidget(QLabel(f"<b>Bounding Box:</b> MinX: {b[0]:.4f}, MinY: {b[1]:.4f}, MaxX: {b[2]:.4f}, MaxY: {b[3]:.4f}"))
+        gen_layout.addWidget(QLabel(f"<b>Sınır Kutusu (BBox):</b> MinX: {b[0]:.4f}, MinY: {b[1]:.4f}, MaxX: {b[2]:.4f}, MaxY: {b[3]:.4f}"))
         layout.addWidget(grp_general)
 
-        grp_geoms = QGroupBox("Geometry Types")
+        grp_geoms = QGroupBox("Geometri Türleri Dağılımı")
         geom_layout = QVBoxLayout(grp_geoms)
         g_types = summary.get('geometry_types', {})
         for gtype, count in g_types.items():
@@ -312,10 +502,10 @@ class SpatialInfoDialog(QDialog):
 
         cols = summary.get('columns', [])
         if cols:
-            layout.addWidget(QLabel("<b>Attribute Columns:</b>"))
+            layout.addWidget(QLabel("<b>Öznitelik Sütunları:</b>"))
             table = QTableWidget()
             table.setColumnCount(3)
-            table.setHorizontalHeaderLabels(["Column Name", "Data Type", "Non-Null Count"])
+            table.setHorizontalHeaderLabels(["Sütun Adı", "Veri Tipi", "Dolu Değer Sayısı"])
             table.setRowCount(len(cols))
             table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
             for idx, c in enumerate(cols):
@@ -324,7 +514,6 @@ class SpatialInfoDialog(QDialog):
                 table.setItem(idx, 2, QTableWidgetItem(str(c.get("non_null", ""))))
             layout.addWidget(table)
 
-        btn_close = QPushButton("Close")
+        btn_close = QPushButton("Kapat")
         btn_close.clicked.connect(self.accept)
         layout.addWidget(btn_close, alignment=Qt.AlignmentFlag.AlignRight)
-

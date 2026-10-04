@@ -4,6 +4,10 @@ from core.theme import ThemeManager
 
 class ToastNotification(QWidget):
     
+    @classmethod
+    def show_toast(cls, parent, message, notification_type="info", duration=3000):
+        return cls(parent, message, notification_type, duration)
+
     def __init__(self, parent, message, notification_type="info", duration=3000):
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
