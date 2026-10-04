@@ -43,3 +43,4 @@ class HandlerFactory:
         if HandlerFactory.is_spatial_file(file_path):
             return SpatialHandler()
         return TextHandler()
+        return TextHandler()

@@ -57,26 +57,6 @@ class SpatialOpWorker(QThread):
                 res, orig_v, simp_v = SpatialOps.simplify_geometries(self.gdf, tolerance, preserve_topo)
                 self.finished.emit(self.op_name, (res, orig_v, simp_v), "")
 
-            elif self.op_name == "buffer":
-                dist = self.params.get("distance", 100)
-                unit = self.params.get("unit", "meters")
-                res = SpatialOps.buffer_geometries(self.gdf, dist, unit)
-                self.finished.emit(self.op_name, res, "")
-
-            elif self.op_name == "dissolve":
-                by_col = self.params.get("by_column", None)
-                res = SpatialOps.dissolve_geometries(self.gdf, by_col)
-                self.finished.emit(self.op_name, res, "")
-
-            elif self.op_name == "calc_geometry":
-                res = SpatialOps.calculate_geometry_attributes(self.gdf)
-                self.finished.emit(self.op_name, res, "")
-
-            elif self.op_name == "convex_hull":
-                per_feature = self.params.get("per_feature", False)
-                res = SpatialOps.calculate_convex_hull(self.gdf, per_feature)
-                self.finished.emit(self.op_name, res, "")
-
             elif self.op_name == "centroids":
                 res = SpatialOps.calculate_centroids(self.gdf)
                 self.finished.emit(self.op_name, res, "")
@@ -95,3 +75,4 @@ class SpatialOpWorker(QThread):
 
         except Exception as e:
             self.finished.emit(self.op_name, None, str(e))
+            self.finished.emit(self.file_path, "", False, str(e))
