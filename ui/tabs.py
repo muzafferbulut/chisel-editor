@@ -51,13 +51,9 @@ class EditorTab(QWidget):
 
         self.splitter.addWidget(self.left_stack)
         self.splitter.addWidget(self.right_stack)
-        self.splitter.setCollapsible(0, True)
-        self.splitter.setCollapsible(1, True)
         self.splitter.setSizes([500, 650])
 
         self.layout.addWidget(self.splitter)
-
-        self.current_view_mode = "code"
 
         # Default mode for new/unopened tab: Pure code view (map hidden)
         self.set_view_mode("code")
@@ -66,7 +62,6 @@ class EditorTab(QWidget):
         self.table_panel.feature_selected.connect(self.map_panel.highlight_feature)
         self.map_panel.feature_clicked.connect(self.table_panel.select_feature)
         self.map_panel.table_toggle_requested.connect(self.toggle_table)
-        self.map_panel.code_toggle_requested.connect(self.toggle_code)
         self.table_panel.data_modified.connect(self._on_table_data_modified)
 
         # Auto-refresh timer for code edits
@@ -134,19 +129,12 @@ class EditorTab(QWidget):
             self.map_panel.fit_bounds()
 
     def set_view_mode(self, mode: str):
-        self.current_view_mode = mode
-
         if mode == "code":
-            self.right_stack.setMaximumWidth(0)
-            self.right_stack.hide()
-            self.left_stack.setMaximumWidth(16777215)
             self.left_stack.setCurrentIndex(0)
             self.left_stack.show()
-            self.splitter.setSizes([10000, 0])
+            self.right_stack.hide()
 
         elif mode == "code_map":
-            self.left_stack.setMaximumWidth(16777215)
-            self.right_stack.setMaximumWidth(16777215)
             self.left_stack.setCurrentIndex(0)
             self.right_stack.setCurrentIndex(0)
             self.left_stack.show()
@@ -154,8 +142,6 @@ class EditorTab(QWidget):
             self.splitter.setSizes([500, 650])
 
         elif mode == "table_map":
-            self.left_stack.setMaximumWidth(16777215)
-            self.right_stack.setMaximumWidth(16777215)
             self.left_stack.setCurrentIndex(1)
             self.right_stack.setCurrentIndex(0)
             self.left_stack.show()
@@ -163,54 +149,42 @@ class EditorTab(QWidget):
             self.splitter.setSizes([500, 650])
 
         elif mode == "map":
-            self.left_stack.setMaximumWidth(0)
-            self.left_stack.hide()
-            self.right_stack.setMaximumWidth(16777215)
             self.right_stack.setCurrentIndex(0)
+            self.left_stack.hide()
             self.right_stack.show()
-            self.splitter.setSizes([0, 10000])
 
         elif mode == "table":
-            self.right_stack.setMaximumWidth(0)
-            self.right_stack.hide()
-            self.left_stack.setMaximumWidth(16777215)
             self.left_stack.setCurrentIndex(1)
             self.left_stack.show()
-            self.splitter.setSizes([10000, 0])
+            self.right_stack.hide()
 
         elif mode == "markdown":
-            self.left_stack.setMaximumWidth(16777215)
-            self.right_stack.setMaximumWidth(16777215)
             self.left_stack.setCurrentIndex(0)
             self.right_stack.setCurrentIndex(1)
             self.left_stack.show()
             self.right_stack.show()
             self.splitter.setSizes([500, 500])
 
-        self.state_changed.emit()
-
     def toggle_table(self):
-        """Toggles between pure Map view and Table+Map split view."""
+        """Toggles between full Map view and Table+Map split view."""
         if not self.is_spatial:
             return
-        if self.current_view_mode == "table_map":
+        if self.left_stack.isVisible() and self.left_stack.currentIndex() == 1:
             self.set_view_mode("map")
         else:
             self.set_view_mode("table_map")
+        self.state_changed.emit()
 
-    def toggle_code(self):
-        """Toggles between pure Map view and Code+Map split view."""
+    def toggle_spatial_left_view(self):
+        """Toggles between Code (0) and Attribute Table (1) on the left side of split view."""
         if not self.is_spatial:
             return
-        if self.current_view_mode == "code_map":
-            self.set_view_mode("map")
-        else:
+        curr = self.left_stack.currentIndex()
+        if curr == 1:
             self.set_view_mode("code_map")
-
-    def show_pure_map(self):
-        """Switches directly to pure full-screen Map view."""
-        if self.is_spatial:
-            self.set_view_mode("map")
+        else:
+            self.set_view_mode("table_map")
+        self.state_changed.emit()
 
     def configure_for_file_type(self, file_type: str, is_spatial: bool, content: str = "", gdf: object = None):
         self.file_type = file_type

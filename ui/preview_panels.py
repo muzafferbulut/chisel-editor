@@ -10,7 +10,6 @@ from core.theme import ThemeManager
 class MapBridge(QObject):
     featureSelected = pyqtSignal(int)
     tableToggleRequested = pyqtSignal()
-    codeToggleRequested = pyqtSignal()
 
     @pyqtSlot(int)
     def onFeatureClicked(self, index):
@@ -19,10 +18,6 @@ class MapBridge(QObject):
     @pyqtSlot()
     def toggleTable(self):
         self.tableToggleRequested.emit()
-
-    @pyqtSlot()
-    def toggleCode(self):
-        self.codeToggleRequested.emit()
 
 
 class AbstractPreviewPanel(QWidget):
@@ -41,7 +36,6 @@ class AbstractPreviewPanel(QWidget):
 class MapPreviewPanel(AbstractPreviewPanel):
     feature_clicked = pyqtSignal(int)
     table_toggle_requested = pyqtSignal()
-    code_toggle_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -51,7 +45,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
         self.bridge = MapBridge()
         self.bridge.featureSelected.connect(self.feature_clicked.emit)
         self.bridge.tableToggleRequested.connect(self.table_toggle_requested.emit)
-        self.bridge.codeToggleRequested.connect(self.code_toggle_requested.emit)
 
         self.channel = QWebChannel()
         self.channel.registerObject("mapBridge", self.bridge)
@@ -192,11 +185,10 @@ class MapPreviewPanel(AbstractPreviewPanel):
             <div class="hud-panel hud-stats" id="statsPill">Mekansal Katman</div>
 
             <div class="hud-panel hud-toolbar">
-                <button class="hud-btn" id="btnTable" onclick="toggleTableHud()" title="Öznitelik Tablosunu Aç/Kapat (F6)" style="font-weight: 600;">📊 Tablo</button>
-                <button class="hud-btn" id="btnCode" onclick="toggleCodeHud()" title="Kod Editörünü Aç/Kapat" style="font-weight: 600;">📝 Kod</button>
-                <button class="hud-btn" id="btnFit" title="Katmana Odaklan">🎯 Fit</button>
-                <button class="hud-btn" id="btnMeasure" title="Mesafe / Alan Ölçümü">📏 Ölçüm</button>
-                <button class="hud-btn" id="btnCluster" title="Noktaları Kümele">📍 Cluster</button>
+                <button class="hud-btn" id="btnTable" onclick="toggleTableHud()" title="Öznitelik Tablosunu Aç/Kapat (F6)" style="font-weight: 600; background: rgba(0, 127, 212, 0.4); border-color: #007fd4;">📊 Tablo</button>
+                <button class="hud-btn" id="btnFit" title="Zoom to layer bounds">🎯 Fit</button>
+                <button class="hud-btn" id="btnMeasure" title="Measure Distance / Area">📏 Ölçüm</button>
+                <button class="hud-btn" id="btnCluster" title="Toggle Marker Clustering">📍 Cluster</button>
                 <span style="font-size:10px; color:#aaa; margin-left:3px;">Opaklık:</span>
                 <input type="range" class="hud-slider" id="opacitySlider" min="10" max="100" value="85" title="Layer Opacity"/>
                 <span style="border-left: 1px solid #555; height: 14px; margin: 0 4px;"></span>
@@ -287,12 +279,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 function toggleTableHud() {{
                     if (pyBridge && pyBridge.toggleTable) {{
                         pyBridge.toggleTable();
-                    }}
-                }}
-
-                function toggleCodeHud() {{
-                    if (pyBridge && pyBridge.toggleCode) {{
-                        pyBridge.toggleCode();
                     }}
                 }}
 
