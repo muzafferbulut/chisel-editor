@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QGroupBox
 )
 from PyQt6.QtCore import Qt
+from core.spatial_ops import SpatialOps
 
 
 class LayerSelectionDialog(QDialog):
@@ -84,7 +85,7 @@ class CRSDialog(QDialog):
         super().__init__(parent)
         self.selected_epsg = None
         self.setWindowTitle(title)
-        self.resize(440, 220)
+        self.resize(460, 240)
         self.setModal(True)
         self._setup_ui(current_crs)
 
@@ -139,6 +140,122 @@ class CRSDialog(QDialog):
             self.accept()
         else:
             QMessageBox.warning(self, "Invalid Input", "Please enter or select a valid EPSG code (e.g. 4326).")
+
+
+class BufferDialog(QDialog):
+
+    def __init__(self, crs: str = None, parent=None):
+        super().__init__(parent)
+        self.distance = 500.0
+        self.unit = "meters"
+
+        self.setWindowTitle("Buffer Geometries")
+        self.resize(380, 220)
+        self.setModal(True)
+        self._setup_ui(crs)
+
+    def _setup_ui(self, crs):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        lbl_desc = QLabel("Creates a buffer zone around all geometries in the active layer.")
+        lbl_desc.setWordWrap(True)
+        layout.addWidget(lbl_desc)
+
+        dist_layout = QHBoxLayout()
+        dist_layout.addWidget(QLabel("<b>Buffer Distance:</b>"))
+        self.spin_dist = QDoubleSpinBox()
+        self.spin_dist.setRange(0.0001, 1000000.0)
+        self.spin_dist.setValue(500.0)
+        self.spin_dist.setDecimals(2)
+        dist_layout.addWidget(self.spin_dist)
+
+        self.combo_unit = QComboBox()
+        self.combo_unit.addItem("Meters (m)", "meters")
+        self.combo_unit.addItem("Kilometers (km)", "kilometers")
+        self.combo_unit.addItem("Degrees (°)", "degrees")
+        dist_layout.addWidget(self.combo_unit)
+        layout.addLayout(dist_layout)
+
+        preset_layout = QHBoxLayout()
+        preset_layout.addWidget(QLabel("Presets:"))
+        for d, u, lbl in [(100, 0, "100m"), (500, 0, "500m"), (1, 1, "1km"), (5, 1, "5km")]:
+            btn = QPushButton(lbl)
+            btn.clicked.connect(lambda _, dist=d, unit_idx=u: self._set_preset(dist, unit_idx))
+            preset_layout.addWidget(btn)
+        layout.addLayout(preset_layout)
+
+        btn_layout = QHBoxLayout()
+        btn_cancel = QPushButton("Cancel")
+        btn_apply = QPushButton("Apply Buffer")
+        btn_cancel.clicked.connect(self.reject)
+        btn_apply.clicked.connect(self._on_apply)
+
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_apply)
+        layout.addLayout(btn_layout)
+
+    def _set_preset(self, dist, unit_idx):
+        self.combo_unit.setCurrentIndex(unit_idx)
+        self.spin_dist.setValue(dist)
+
+    def _on_apply(self):
+        val = self.spin_dist.value()
+        unit_type = self.combo_unit.currentData()
+        if unit_type == "kilometers":
+            self.distance = val * 1000.0
+            self.unit = "meters"
+        else:
+            self.distance = val
+            self.unit = unit_type
+        self.accept()
+
+
+class DissolveDialog(QDialog):
+
+    def __init__(self, columns: list, parent=None):
+        super().__init__(parent)
+        self.by_column = None
+
+        self.setWindowTitle("Dissolve Geometries")
+        self.resize(380, 180)
+        self.setModal(True)
+        self._setup_ui(columns)
+
+    def _setup_ui(self, columns):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        lbl_desc = QLabel("Merges adjacent or selected features based on an attribute value, or merges all features into one.")
+        lbl_desc.setWordWrap(True)
+        layout.addWidget(lbl_desc)
+
+        col_layout = QHBoxLayout()
+        col_layout.addWidget(QLabel("<b>Dissolve By Column:</b>"))
+        self.col_combo = QComboBox()
+        self.col_combo.addItem("-- Dissolve All Features (Single Layer) --", None)
+        for col in columns:
+            self.col_combo.addItem(col, col)
+        col_layout.addWidget(self.col_combo)
+        layout.addLayout(col_layout)
+
+        btn_layout = QHBoxLayout()
+        btn_cancel = QPushButton("Cancel")
+        btn_apply = QPushButton("Dissolve")
+        btn_cancel.clicked.connect(self.reject)
+        btn_apply.clicked.connect(self._on_apply)
+
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_apply)
+        layout.addLayout(btn_layout)
+
+    def _on_apply(self):
+        self.by_column = self.col_combo.currentData()
+        self.accept()
 
 
 class SimplifyDialog(QDialog):
@@ -273,6 +390,79 @@ class ExportSpatialDialog(QDialog):
         self.accept()
 
 
+class ColumnStatisticsDialog(QDialog):
+
+    def __init__(self, gdf, columns: list, parent=None):
+        super().__init__(parent)
+        self.gdf = gdf
+        self.columns = columns
+        self.setWindowTitle("Column Statistics")
+        self.resize(420, 320)
+        self.setModal(True)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        sel_layout = QHBoxLayout()
+        sel_layout.addWidget(QLabel("<b>Select Column:</b>"))
+        self.combo_cols = QComboBox()
+        self.combo_cols.addItems(self.columns)
+        self.combo_cols.currentTextChanged.connect(self._update_stats)
+        sel_layout.addWidget(self.combo_cols)
+        layout.addLayout(sel_layout)
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(2)
+        self.table.setHorizontalHeaderLabels(["Metric", "Value"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.verticalHeader().setVisible(False)
+        layout.addWidget(self.table)
+
+        btn_close = QPushButton("Close")
+        btn_close.clicked.connect(self.accept)
+        layout.addWidget(btn_close, alignment=Qt.AlignmentFlag.AlignRight)
+
+        if self.columns:
+            self._update_stats(self.columns[0])
+
+    def _update_stats(self, col_name):
+        if not col_name or col_name not in self.gdf.columns:
+            return
+        try:
+            stats = SpatialOps.get_column_statistics(self.gdf, col_name)
+            self.table.setRowCount(0)
+            items = [
+                ("Column", stats.get("column")),
+                ("Total Count", f"{stats.get('total_count', 0):,}"),
+                ("Valid Count", f"{stats.get('valid_count', 0):,}"),
+                ("Null Count", f"{stats.get('null_count', 0):,}")
+            ]
+            if stats.get("is_numeric"):
+                items.extend([
+                    ("Min", f"{stats.get('min'):,.4f}"),
+                    ("Max", f"{stats.get('max'):,.4f}"),
+                    ("Sum", f"{stats.get('sum'):,.4f}"),
+                    ("Mean", f"{stats.get('mean'):,.4f}"),
+                    ("Median", f"{stats.get('median'):,.4f}"),
+                    ("Std Dev", f"{stats.get('std'):,.4f}")
+                ])
+            else:
+                items.append(("Unique Values", f"{stats.get('unique_count', 0):,}"))
+                top = stats.get("top_values", {})
+                for val, cnt in top.items():
+                    items.append((f"Top: {val}", str(cnt)))
+
+            self.table.setRowCount(len(items))
+            for row_idx, (m, v) in enumerate(items):
+                self.table.setItem(row_idx, 0, QTableWidgetItem(str(m)))
+                self.table.setItem(row_idx, 1, QTableWidgetItem(str(v)))
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to compute statistics: {e}")
+
+
 class SpatialInfoDialog(QDialog):
 
     def __init__(self, summary: dict, file_path: str = None, parent=None):
@@ -327,4 +517,3 @@ class SpatialInfoDialog(QDialog):
         btn_close = QPushButton("Close")
         btn_close.clicked.connect(self.accept)
         layout.addWidget(btn_close, alignment=Qt.AlignmentFlag.AlignRight)
-

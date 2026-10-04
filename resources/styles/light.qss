@@ -221,34 +221,33 @@ QPushButton:pressed {
 
 
 /* --- Spatial Toolbar & View Controls --- */
-QWidget#spatialToolbar {
+QWidget#spatialToolbar, QWidget#tabToolbar {
     background-color: #f6f8fa;
     border-bottom: 1px solid #d1d5da;
 }
 
-QPushButton#viewModeBtn {
+QPushButton#viewModeBtn, QWidget#tabToolbar QPushButton {
     background-color: #ffffff;
     color: #24292e;
     border: 1px solid #d1d5da;
     padding: 4px 10px;
     border-radius: 3px;
     font-size: 11px;
-    min-width: 50px;
 }
 
-QPushButton#viewModeBtn:hover {
+QPushButton#viewModeBtn:hover, QWidget#tabToolbar QPushButton:hover {
     background-color: #f1f2f4;
 }
 
-QPushButton#viewModeBtn:checked {
+QPushButton#viewModeBtn:checked, QWidget#tabToolbar QPushButton:checked {
     background-color: #0366d6;
     color: #ffffff;
     border-color: #0366d6;
     font-weight: bold;
 }
 
-/* --- QTableWidget / Attributes Table --- */
-QTableWidget {
+/* --- QTableView / QTableWidget / Attributes Table --- */
+QTableView, QTableWidget {
     background-color: #ffffff;
     alternate-background-color: #f6f8fa;
     gridline-color: #e1e4e8;
@@ -292,5 +291,4 @@ QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
     padding: 0 4px;
-}
 }

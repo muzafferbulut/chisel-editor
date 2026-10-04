@@ -54,7 +54,10 @@ class MapPreviewPanel(AbstractPreviewPanel):
         <head>
             <meta charset="utf-8" />
             <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+            <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+            <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
             <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+            <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
             <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
             <style>
                 html, body, #map {{
@@ -113,6 +116,11 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     border-color: #007fd4;
                     font-weight: bold;
                 }}
+                .hud-slider {{
+                    width: 70px;
+                    cursor: pointer;
+                    vertical-align: middle;
+                }}
                 .leaflet-popup-content-wrapper {{
                     background: #252526 !important;
                     color: #cccccc !important;
@@ -153,6 +161,15 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     display: flex;
                     justify-content: space-between;
                 }}
+                .measure-tooltip {{
+                    background: rgba(0,0,0,0.8);
+                    color: #fff;
+                    padding: 3px 6px;
+                    border-radius: 3px;
+                    font-size: 11px;
+                    font-weight: bold;
+                    border: 1px solid #00a2ff;
+                }}
             </style>
         </head>
         <body>
@@ -161,7 +178,12 @@ class MapPreviewPanel(AbstractPreviewPanel):
             <div class="hud-panel hud-stats" id="statsPill">No layer loaded</div>
 
             <div class="hud-panel hud-toolbar">
-                <button class="hud-btn" id="btnFit" title="Zoom to layer bounds">🎯 Fit Bounds</button>
+                <button class="hud-btn" id="btnFit" title="Zoom to layer bounds">🎯 Fit</button>
+                <button class="hud-btn" id="btnMeasure" title="Measure Distance / Area">📏 Measure</button>
+                <button class="hud-btn" id="btnCluster" title="Toggle Marker Clustering">📍 Cluster: Off</button>
+                <span style="font-size:10px; color:#aaa; margin-left:4px;">Opacity:</span>
+                <input type="range" class="hud-slider" id="opacitySlider" min="10" max="100" value="85" title="Layer Opacity"/>
+                <span style="border-left: 1px solid #555; height: 16px; margin: 0 4px;"></span>
                 <button class="hud-btn" id="btnDark" onclick="setBaseMap('dark')">Dark</button>
                 <button class="hud-btn" id="btnLight" onclick="setBaseMap('light')">Light</button>
                 <button class="hud-btn" id="btnOsm" onclick="setBaseMap('osm')">Street</button>
@@ -212,7 +234,10 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
 
                 var geojsonLayer = null;
+                var clusterGroup = null;
+                var useClustering = false;
                 var layerIndexMap = {{}};
+                var currentOpacity = 0.85;
                 var pyBridge = null;
 
                 if (typeof QWebChannel !== 'undefined') {{
@@ -229,15 +254,101 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }});
 
                 document.getElementById('btnFit').onclick = function() {{
-                    if (geojsonLayer && geojsonLayer.getBounds().isValid()) {{
-                        map.fitBounds(geojsonLayer.getBounds(), {{ padding: [30, 30] }});
+                    fitLayerBounds();
+                }};
+
+                document.getElementById('opacitySlider').oninput = function(e) {{
+                    currentOpacity = e.target.value / 100.0;
+                    if (geojsonLayer) {{
+                        geojsonLayer.setStyle(function(feature) {{
+                            return {{
+                                fillOpacity: currentOpacity * 0.4,
+                                opacity: currentOpacity
+                            }};
+                        }});
                     }}
                 }};
 
+                document.getElementById('btnCluster').onclick = function() {{
+                    useClustering = !useClustering;
+                    this.textContent = useClustering ? '📍 Cluster: ON' : '📍 Cluster: Off';
+                    this.classList.toggle('active', useClustering);
+                    if (lastGeojsonData) {{
+                        updateMap(lastGeojsonData);
+                    }}
+                }};
+
+                // --- Measurement Ruler Tool ---
+                var measureActive = false;
+                var measurePoints = [];
+                var measureMarkers = [];
+                var measureLine = null;
+                var measurePolygon = null;
+                var measureTooltip = null;
+
+                document.getElementById('btnMeasure').onclick = function() {{
+                    measureActive = !measureActive;
+                    this.classList.toggle('active', measureActive);
+                    if (!measureActive) {{
+                        clearMeasure();
+                    }}
+                }};
+
+                map.on('click', function(e) {{
+                    if (!measureActive) return;
+                    measurePoints.push(e.latlng);
+
+                    var m = L.circleMarker(e.latlng, {{ radius: 5, color: '#e74c3c', fillColor: '#fff', fillOpacity: 1 }}).addTo(map);
+                    measureMarkers.push(m);
+
+                    if (measurePoints.length > 1) {{
+                        if (measureLine) map.removeLayer(measureLine);
+                        measureLine = L.polyline(measurePoints, {{ color: '#e74c3c', weight: 3, dashArray: '6, 6' }}).addTo(map);
+
+                        // Calculate Distance
+                        var totalDist = 0;
+                        for (var i = 1; i < measurePoints.length; i++) {{
+                            totalDist += measurePoints[i - 1].distanceTo(measurePoints[i]);
+                        }}
+                        var distText = totalDist > 1000 ? (totalDist / 1000).toFixed(2) + ' km' : totalDist.toFixed(1) + ' m';
+
+                        // Calculate Area if >= 3
+                        var areaText = '';
+                        if (measurePoints.length >= 3) {{
+                            if (measurePolygon) map.removeLayer(measurePolygon);
+                            measurePolygon = L.polygon(measurePoints, {{ color: '#e74c3c', fillOpacity: 0.15, weight: 1 }}).addTo(map);
+                        }}
+
+                        if (!measureTooltip) {{
+                            measureTooltip = L.tooltip({{ permanent: true, className: 'measure-tooltip' }});
+                        }}
+                        measureTooltip.setLatLng(e.latlng).setContent('📏 ' + distText).addTo(map);
+                    }}
+                }});
+
+                function clearMeasure() {{
+                    measurePoints = [];
+                    measureMarkers.forEach(m => map.removeLayer(m));
+                    measureMarkers = [];
+                    if (measureLine) map.removeLayer(measureLine);
+                    if (measurePolygon) map.removeLayer(measurePolygon);
+                    if (measureTooltip) map.removeLayer(measureTooltip);
+                    measureLine = null;
+                    measurePolygon = null;
+                    measureTooltip = null;
+                }}
+
+                var lastGeojsonData = null;
+
                 function updateMap(geojsonData) {{
+                    lastGeojsonData = geojsonData;
                     if (geojsonLayer) {{
                         map.removeLayer(geojsonLayer);
                         geojsonLayer = null;
+                    }}
+                    if (clusterGroup) {{
+                        map.removeLayer(clusterGroup);
+                        clusterGroup = null;
                     }}
                     layerIndexMap = {{}};
 
@@ -253,7 +364,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         featureCount = 1;
                     }}
 
-                    document.getElementById('statsPill').textContent = '📍 ' + featureCount + ' Features';
+                    document.getElementById('statsPill').textContent = '📍 ' + featureCount.toLocaleString() + ' Features';
 
                     var geomColors = {{
                         Point: '#00a2ff',
@@ -264,17 +375,27 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         MultiPolygon: '#2ecc71'
                     }};
 
+                    if (useClustering && typeof L.markerClusterGroup === 'function') {{
+                        clusterGroup = L.markerClusterGroup({{
+                            maxClusterRadius: 50,
+                            spiderfyOnMaxZoom: true,
+                            showCoverageOnHover: false
+                        }});
+                    }}
+
                     var featureIdx = 0;
                     geojsonLayer = L.geoJSON(geojsonData, {{
                         pointToLayer: function(feature, latlng) {{
-                            return L.circleMarker(latlng, {{
+                            var marker = L.circleMarker(latlng, {{
                                 radius: 7,
                                 fillColor: '#00a2ff',
                                 color: '#ffffff',
                                 weight: 2,
-                                opacity: 1,
-                                fillOpacity: 0.85
+                                opacity: currentOpacity,
+                                fillOpacity: currentOpacity * 0.9
                             }});
+                            if (clusterGroup) clusterGroup.addLayer(marker);
+                            return marker;
                         }},
                         style: function(feature) {{
                             var gtype = feature.geometry ? feature.geometry.type : 'Polygon';
@@ -282,16 +403,16 @@ class MapPreviewPanel(AbstractPreviewPanel):
                             return {{
                                 color: color,
                                 weight: 2,
-                                opacity: 0.9,
+                                opacity: currentOpacity,
                                 fillColor: color,
-                                fillOpacity: 0.3
+                                fillOpacity: currentOpacity * 0.35
                             }};
                         }},
                         onEachFeature: function(feature, layer) {{
                             var currentIdx = featureIdx++;
                             layerIndexMap[currentIdx] = layer;
 
-                            var title = (feature.properties && (feature.properties.name || feature.properties.NAME || feature.properties.city || feature.properties.title || feature.properties.id)) || ('Feature #' + currentIdx);
+                            var title = (feature.properties && (feature.properties.city || feature.properties.name || feature.properties.NAME || feature.properties.title || feature.properties.id)) || ('Feature #' + currentIdx);
                             layer.bindTooltip(String(title), {{ sticky: true }});
 
                             layer.on('click', function(e) {{
@@ -317,11 +438,15 @@ class MapPreviewPanel(AbstractPreviewPanel):
                                 }}
                             }});
                         }}
-                    }}).addTo(map);
+                    }});
 
-                    if (geojsonLayer.getBounds().isValid()) {{
-                        map.fitBounds(geojsonLayer.getBounds(), {{ padding: [30, 30] }});
+                    if (clusterGroup) {{
+                        map.addLayer(clusterGroup);
+                    }} else {{
+                        map.addLayer(geojsonLayer);
                     }}
+
+                    fitLayerBounds();
                 }}
 
                 function highlightFeature(idx) {{
@@ -330,7 +455,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         if (layer.getBounds && layer.getBounds().isValid()) {{
                             map.fitBounds(layer.getBounds(), {{ maxZoom: 16, padding: [40, 40] }});
                         }} else if (layer.getLatLng) {{
-                            map.setView(layer.getLatLng(), Math.max(map.getZoom(), 12));
+                            map.setView(layer.getLatLng(), Math.max(map.getZoom(), 14));
                         }}
                         if (layer.openPopup) layer.openPopup();
                     }}
@@ -435,5 +560,4 @@ class MarkdownPreviewPanel(AbstractPreviewPanel):
             """
             self.web_view.setHtml(styled_html)
         except Exception as e:
-            print(f"Markdown rendering error: {e}")
             print(f"Markdown rendering error: {e}")
