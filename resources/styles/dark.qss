@@ -219,3 +219,79 @@ QPushButton:hover {
 QPushButton:pressed {
     background-color: #094771;
 }
+
+
+/* --- Spatial Toolbar & View Controls --- */
+QWidget#spatialToolbar {
+    background-color: #252526;
+    border-bottom: 1px solid #333333;
+}
+
+QPushButton#viewModeBtn {
+    background-color: #2d2d2d;
+    color: #cccccc;
+    border: 1px solid #3c3c3c;
+    padding: 4px 10px;
+    border-radius: 3px;
+    font-size: 11px;
+    min-width: 50px;
+}
+
+QPushButton#viewModeBtn:hover {
+    background-color: #383838;
+}
+
+QPushButton#viewModeBtn:checked {
+    background-color: #0e639c;
+    color: #ffffff;
+    border-color: #007fd4;
+    font-weight: bold;
+}
+
+/* --- QTableWidget / Attributes Table --- */
+QTableWidget {
+    background-color: #1e1e1e;
+    alternate-background-color: #252526;
+    gridline-color: #333333;
+    border: 1px solid #333333;
+    color: #cccccc;
+    selection-background-color: #094771;
+    selection-color: #ffffff;
+}
+
+QHeaderView::section {
+    background-color: #2d2d2d;
+    color: #cccccc;
+    padding: 4px 8px;
+    border: 1px solid #333333;
+    font-weight: bold;
+    font-size: 11px;
+}
+
+QComboBox, QDoubleSpinBox {
+    background-color: #3c3c3c;
+    border: 1px solid #454545;
+    color: #cccccc;
+    padding: 4px 8px;
+    border-radius: 3px;
+}
+
+QComboBox:focus, QDoubleSpinBox:focus {
+    border: 1px solid #007fd4;
+}
+
+QGroupBox {
+    border: 1px solid #333333;
+    border-radius: 4px;
+    margin-top: 8px;
+    font-weight: bold;
+    color: #e0e0e0;
+    padding-top: 12px;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 4px;
+}
+}
