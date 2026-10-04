@@ -110,6 +110,27 @@ class MonacoEditor(QWidget):
                     }}
                 }}
 
+                function setupBridge() {{
+                    if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {{
+                        new QWebChannel(qt.webChannelTransport, function(channel) {{
+                            window.bridge = channel.objects.bridge;
+                            if (window.bridge) {{
+                                window.bridge.onEditorReady();
+                                if (window.editor) {{
+                                    window.editor.onDidChangeModelContent(function(e) {{
+                                        window.bridge.onTextChanged(window.editor.getValue());
+                                    }});
+                                    window.editor.onDidChangeCursorPosition(function(e) {{
+                                        window.bridge.onCursorPositionChanged(e.position.lineNumber, e.position.column);
+                                    }});
+                                }}
+                            }}
+                        }});
+                    }} else {{
+                        setTimeout(setupBridge, 100);
+                    }}
+                }}
+
                 require.config({{ paths: {{ 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }}}});
                 require(['vs/editor/editor.main'], function() {{
                     window.editor = monaco.editor.create(document.getElementById('container'), {{
@@ -127,21 +148,10 @@ class MonacoEditor(QWidget):
 
                     while (window._cmdQueue.length > 0) {{
                         var fn = window._cmdQueue.shift();
-                        try {{ fn(); }} catch(err) {{ console.error('Queue execution error:', err); }}
+                        try {{ fn(); }} catch(err) {{ console.error('Queue error:', err); }}
                     }}
 
-                    new QWebChannel(qt.webChannelTransport, function(channel) {{
-                        window.bridge = channel.objects.bridge;
-                        if (window.bridge) {{
-                            window.bridge.onEditorReady();
-                            window.editor.onDidChangeModelContent(function(e) {{
-                                window.bridge.onTextChanged(window.editor.getValue());
-                            }});
-                            window.editor.onDidChangeCursorPosition(function(e) {{
-                                window.bridge.onCursorPositionChanged(e.position.lineNumber, e.position.column);
-                            }});
-                        }}
-                    }});
+                    setupBridge();
                 }});
             </script>
         </head>

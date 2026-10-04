@@ -92,13 +92,11 @@ class MainWindow(QMainWindow):
         self.btn_status_crs.setStyleSheet("padding: 1px 6px; font-size: 11px;")
         self.btn_status_crs.setToolTip("Click to Set or Reproject CRS")
         self.btn_status_crs.clicked.connect(self._set_crs)
-        self.btn_status_crs.hide()
         self.status_bar.addWidget(self.btn_status_crs)
 
         self.btn_status_table = QPushButton("📊 Öznitelik Tablosu (F6)")
         self.btn_status_table.setStyleSheet("padding: 1px 8px; font-size: 11px;")
         self.btn_status_table.clicked.connect(self._toggle_attribute_table)
-        self.btn_status_table.hide()
         self.status_bar.addPermanentWidget(self.btn_status_table)
 
         self.cursor_label = QLabel("Ln 1, Col 1")
@@ -333,16 +331,13 @@ class MainWindow(QMainWindow):
         if tab:
             self.type_label.setText(tab.file_type)
             if tab.is_spatial:
-                self.btn_status_table.show()
                 crs_label = str(tab._current_gdf.crs) if tab._current_gdf is not None and tab._current_gdf.crs else "EPSG:4326"
                 self.btn_status_crs.setText(f"🌐 {crs_label}")
-                self.btn_status_crs.show()
                 feat_count = len(tab._current_gdf) if tab._current_gdf is not None and not tab._current_gdf.empty else 0
                 layer_name = os.path.basename(tab.current_file) if tab.current_file else "Sample GIS Layer"
                 self.side_bar.layers_panel.set_active_vector_layer(layer_name, feat_count)
             else:
-                self.btn_status_table.hide()
-                self.btn_status_crs.hide()
+                self.btn_status_crs.setText("🌐 EPSG:4326")
                 self.side_bar.layers_panel.set_active_vector_layer("", 0)
 
     def _update_cursor_info(self, line: int, col: int):
@@ -355,8 +350,16 @@ class MainWindow(QMainWindow):
 
     def _toggle_attribute_table(self):
         tab = self._get_current_tab()
-        if not tab or not tab.is_spatial:
-            ToastNotification.show_toast(self, "Öznitelik tablosu yalnızca mekansal verilerde kullanılabilir", "warning")
+        if not tab:
+            return
+        if not tab.is_spatial:
+            reply = QMessageBox.question(
+                self, "Örnek Mekansal Veri",
+                "Aktif sekmede henüz bir mekansal veri açılmadı.\nÖrnek Türkiye CBS verisini yüklemek ister misiniz?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._load_sample_spatial_data()
             return
 
         curr_left = tab.left_stack.currentIndex()
