@@ -28,6 +28,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self._is_loading = False
+        self._active_workers = set()
         self.spatial_worker = None
         self.wfs_worker = None
         self._wms_counter = 1
@@ -463,14 +464,23 @@ class MainWindow(QMainWindow):
         self.progress_bar.show()
         self._is_loading = True
 
-        self.worker = FileLoadWorker(file_path, **kwargs)
-        self.worker.finished.connect(self._on_file_loaded)
-        self.worker.multiple_layers_detected.connect(self._on_multiple_layers)
-        self.worker.start()
+        worker = FileLoadWorker(file_path, **kwargs)
+        self._active_workers.add(worker)
+        worker.finished.connect(lambda fp, c, sp, g, err, w=worker: self._handle_worker_finished(w, fp, c, sp, g, err))
+        worker.multiple_layers_detected.connect(self._on_multiple_layers)
+        worker.start()
+
+    def _handle_worker_finished(self, worker, file_path: str, content: str, is_spatial: bool, gdf: object, error: str):
+        self._active_workers.discard(worker)
+        if not self._active_workers:
+            self.progress_bar.hide()
+            self._is_loading = False
+        self._on_file_loaded(file_path, content, is_spatial, gdf, error)
 
     def _on_file_loaded(self, file_path: str, content: str, is_spatial: bool, gdf: object, error: str):
-        self.progress_bar.hide()
-        self._is_loading = False
+        if not self._active_workers:
+            self.progress_bar.hide()
+            self._is_loading = False
 
         if error:
             ToastNotification.show_toast(self, f"Hata: {error}", "error")

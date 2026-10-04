@@ -1,6 +1,7 @@
 import sys
 import os
 import ctypes
+from PyQt6 import QtWebEngineWidgets
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt

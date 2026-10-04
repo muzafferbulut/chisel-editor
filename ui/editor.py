@@ -52,8 +52,25 @@ class MonacoEditor(QWidget):
         self._is_ready = False
         self._pending_text = None
         self._pending_language = None
+        self._pending_theme = None
 
         self._init_editor()
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dropEvent(self, event):
+        urls = event.mimeData().urls()
+        if urls:
+            file_path = urls[0].toLocalFile()
+            if file_path:
+                self.file_dropped.emit(file_path)
+                event.acceptProposedAction()
+                return
+        super().dropEvent(event)
 
     def _init_editor(self):
         theme = "vs-dark" if ThemeManager._current_theme == "dark" else "vs"
@@ -65,21 +82,19 @@ class MonacoEditor(QWidget):
             <style>
                 body, html, #container {{ margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; }}
             </style>
-            <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
             <script>
                 window._editorReady = false;
                 window._cmdQueue = [];
 
-                function safeSetValue(val) {{
+                window.safeSetValue = function(val) {{
                     if (window._editorReady && window.editor) {{
                         window.editor.setValue(val);
                     }} else {{
                         window._cmdQueue.push(function() {{ window.editor.setValue(val); }});
                     }}
-                }}
+                }};
 
-                function safeSetLanguage(lang) {{
+                window.safeSetLanguage = function(lang) {{
                     if (window._editorReady && window.editor && typeof monaco !== 'undefined') {{
                         monaco.editor.setModelLanguage(window.editor.getModel(), lang);
                     }} else {{
@@ -87,17 +102,17 @@ class MonacoEditor(QWidget):
                             monaco.editor.setModelLanguage(window.editor.getModel(), lang);
                         }});
                     }}
-                }}
+                }};
 
-                function safeSetTheme(theme) {{
+                window.safeSetTheme = function(theme) {{
                     if (window._editorReady && typeof monaco !== 'undefined') {{
                         monaco.editor.setTheme(theme);
                     }} else {{
                         window._cmdQueue.push(function() {{ monaco.editor.setTheme(theme); }});
                     }}
-                }}
+                }};
 
-                function safeFindAndReplace(findText, replaceText) {{
+                window.safeFindAndReplace = function(findText, replaceText) {{
                     if (window._editorReady && window.editor) {{
                         var model = window.editor.getModel();
                         var matches = model.findMatches(findText, false, false, false, null, true);
@@ -107,6 +122,28 @@ class MonacoEditor(QWidget):
                             }});
                             window.editor.executeEdits('find-replace', edits);
                         }}
+                    }}
+                }};
+            </script>
+            <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
+            <script>
+                function initBridge() {{
+                    if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {{
+                        new QWebChannel(qt.webChannelTransport, function(channel) {{
+                            window.bridge = channel.objects.bridge;
+                            if (window.bridge) {{
+                                window.bridge.onEditorReady();
+                                window.editor.onDidChangeModelContent(function(e) {{
+                                    window.bridge.onTextChanged(window.editor.getValue());
+                                }});
+                                window.editor.onDidChangeCursorPosition(function(e) {{
+                                    window.bridge.onCursorPositionChanged(e.position.lineNumber, e.position.column);
+                                }});
+                            }}
+                        }});
+                    }} else {{
+                        setTimeout(initBridge, 20);
                     }}
                 }}
 
@@ -130,18 +167,7 @@ class MonacoEditor(QWidget):
                         try {{ fn(); }} catch(err) {{ console.error('Queue execution error:', err); }}
                     }}
 
-                    new QWebChannel(qt.webChannelTransport, function(channel) {{
-                        window.bridge = channel.objects.bridge;
-                        if (window.bridge) {{
-                            window.bridge.onEditorReady();
-                            window.editor.onDidChangeModelContent(function(e) {{
-                                window.bridge.onTextChanged(window.editor.getValue());
-                            }});
-                            window.editor.onDidChangeCursorPosition(function(e) {{
-                                window.bridge.onCursorPositionChanged(e.position.lineNumber, e.position.column);
-                            }});
-                        }}
-                    }});
+                    initBridge();
                 }});
             </script>
         </head>
@@ -154,12 +180,15 @@ class MonacoEditor(QWidget):
 
     def _on_editor_ready(self):
         self._is_ready = True
-        if self._pending_text is not None:
-            self.setPlainText(self._pending_text)
-            self._pending_text = None
+        if self._pending_theme is not None:
+            self.setTheme(self._pending_theme)
+            self._pending_theme = None
         if self._pending_language is not None:
             self.setLanguage(self._pending_language)
             self._pending_language = None
+        if self._pending_text is not None:
+            self.setPlainText(self._pending_text)
+            self._pending_text = None
 
     def _internal_text_changed(self, text):
         self._current_text = text
@@ -170,10 +199,16 @@ class MonacoEditor(QWidget):
 
     def setPlainText(self, text):
         self._current_text = text
+        if not self._is_ready:
+            self._pending_text = text
+            return
         escaped = json.dumps(text)
         self.web_view.page().runJavaScript(f"safeSetValue({escaped});")
 
     def setLanguage(self, language: str):
+        if not self._is_ready:
+            self._pending_language = language
+            return
         lang_map = {
             "JSON": "json",
             "GeoJSON": "json",
@@ -192,11 +227,16 @@ class MonacoEditor(QWidget):
         self.web_view.page().runJavaScript(f"safeSetLanguage({escaped});")
 
     def setTheme(self, theme: str):
+        if not self._is_ready:
+            self._pending_theme = theme
+            return
         monaco_theme = "vs-dark" if theme == "dark" else "vs"
         escaped = json.dumps(monaco_theme)
         self.web_view.page().runJavaScript(f"safeSetTheme({escaped});")
 
     def find_and_replace(self, find_text: str, replace_text: str):
+        if not self._is_ready:
+            return
         escaped_find = json.dumps(find_text)
         escaped_replace = json.dumps(replace_text)
         self.web_view.page().runJavaScript(f"safeFindAndReplace({escaped_find}, {escaped_replace});")
