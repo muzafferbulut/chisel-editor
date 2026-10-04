@@ -23,7 +23,7 @@ class SpatialHandler(BaseHandler):
     def is_spatial(self) -> bool:
         return True
 
-    def read(self, file_path: str, **kwargs) -> str:
+    def read_gdf(self, file_path: str, **kwargs) -> gpd.GeoDataFrame:
         try:
             merge_all = kwargs.get('merge_all', False)
             layer_name = kwargs.get('layer_name', None)
@@ -55,13 +55,16 @@ class SpatialHandler(BaseHandler):
             if gdf.crs is None:
                 gdf.set_crs("EPSG:4326", inplace=True)
 
-            clean_gdf = SpatialOps.sanitize_gdf_for_json(gdf)
-            return clean_gdf.to_json()
-
+            return gdf
         except MultipleLayersError:
             raise
         except Exception as e:
             raise RuntimeError(f"Failed to read spatial data: {str(e)}")
+
+    def read(self, file_path: str, **kwargs) -> str:
+        gdf = self.read_gdf(file_path, **kwargs)
+        clean_gdf = SpatialOps.sanitize_gdf_for_json(gdf)
+        return clean_gdf.to_json()
 
     def write(self, file_path: str, content: str) -> bool:
         try:

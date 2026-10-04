@@ -76,16 +76,33 @@ class EditorTab(QWidget):
         self._current_gdf = gdf
 
         if raw_geojson is None and gdf is not None and not gdf.empty:
-            raw_geojson = SpatialOps.to_geojson_str(gdf, indent=2)
+            raw_geojson = SpatialOps.to_geojson_str(gdf)
 
         self._is_loading = True
-        if raw_geojson:
-            self.text_editor.setPlainText(raw_geojson)
-            self.text_editor.setLanguage("GeoJSON")
-            self.map_panel.render_content(raw_geojson)
 
+        # 1. Load Virtual Attribute Table immediately (Instant 0ms overhead)
         if gdf is not None and not gdf.empty:
             self.table_panel.load_data(gdf)
+
+        # 2. Render Map via Leaflet
+        if raw_geojson:
+            self.map_panel.render_content(raw_geojson)
+
+        # 3. Monaco Editor: Avoid freezing WebEngine by buffering large text
+        if raw_geojson:
+            if len(raw_geojson) < 500_000:
+                self.text_editor.setPlainText(raw_geojson)
+            else:
+                count = len(gdf) if gdf is not None else 0
+                size_mb = len(raw_geojson) / (1024 * 1024)
+                preview = (
+                    f"// Mekansal Veri: {count:,} adet geometrik özellik yüklendi ({size_mb:.1f} MB).\n"
+                    f"// Tablo ve Harita görünümünde maksimum hız ve performans devrededir.\n\n"
+                    f"{raw_geojson[:1200]}\n\n... [Büyük veri performansı için metin editöründe sınırlandırıldı] ..."
+                )
+                self.text_editor.setPlainText(preview)
+            self.text_editor.setLanguage("GeoJSON")
+
         self._is_loading = False
 
         self.set_view_mode("table_map")
@@ -156,15 +173,16 @@ class EditorTab(QWidget):
         else:
             self.set_view_mode("table_map")
 
-    def configure_for_file_type(self, file_type: str, is_spatial: bool, content: str = ""):
+    def configure_for_file_type(self, file_type: str, is_spatial: bool, content: str = "", gdf: object = None):
         self.file_type = file_type
         self.is_spatial = is_spatial
 
         if is_spatial:
-            try:
-                gdf = SpatialOps.parse_geojson_str(content) if content.strip() else None
-            except Exception:
-                gdf = None
+            if gdf is None and content.strip():
+                try:
+                    gdf = SpatialOps.parse_geojson_str(content)
+                except Exception:
+                    gdf = None
             self.set_spatial_data(gdf, content)
         elif file_type == "Markdown":
             self.set_view_mode("markdown")
@@ -172,6 +190,7 @@ class EditorTab(QWidget):
         else:
             self.set_view_mode("code")
             self.text_editor.setPlainText(content)
+            self.text_editor.setLanguage(file_type)
 
     def _on_text_changed(self):
         if self._is_loading:

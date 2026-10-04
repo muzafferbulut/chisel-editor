@@ -9,7 +9,7 @@ import geopandas as gpd
 
 
 class FileLoadWorker(QThread):
-    finished = pyqtSignal(str, str, bool, str)
+    finished = pyqtSignal(str, str, bool, object, str)  # (file_path, content, is_spatial, gdf, error)
     multiple_layers_detected = pyqtSignal(str, list)
 
     def __init__(self, file_path: str, **kwargs):
@@ -20,12 +20,18 @@ class FileLoadWorker(QThread):
     def run(self):
         try:
             handler = HandlerFactory.get_handler(self.file_path)
-            content = handler.read(self.file_path, **self.kwargs)
-            self.finished.emit(self.file_path, content, handler.is_spatial, "")
+            if handler.is_spatial and hasattr(handler, 'read_gdf'):
+                gdf = handler.read_gdf(self.file_path, **self.kwargs)
+                clean_gdf = SpatialOps.sanitize_gdf_for_json(gdf)
+                content = clean_gdf.to_json()
+                self.finished.emit(self.file_path, content, True, clean_gdf, "")
+            else:
+                content = handler.read(self.file_path, **self.kwargs)
+                self.finished.emit(self.file_path, content, False, None, "")
         except MultipleLayersError as mle:
             self.multiple_layers_detected.emit(self.file_path, mle.layers)
         except Exception as e:
-            self.finished.emit(self.file_path, "", False, str(e))
+            self.finished.emit(self.file_path, "", False, None, str(e))
 
 
 class WFSWorker(QThread):

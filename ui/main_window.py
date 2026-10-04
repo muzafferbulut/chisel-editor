@@ -465,12 +465,12 @@ class MainWindow(QMainWindow):
         self.worker.multiple_layers_detected.connect(self._on_multiple_layers)
         self.worker.start()
 
-    def _on_file_loaded(self, file_path: str, content: str, is_spatial: bool, error: str):
+    def _on_file_loaded(self, file_path: str, content: str, is_spatial: bool, gdf: object, error: str):
         self.progress_bar.hide()
         self._is_loading = False
 
         if error:
-            ToastNotification.show_toast(self, f"Error: {error}", "error")
+            ToastNotification.show_toast(self, f"Hata: {error}", "error")
             return
 
         tab = self._get_current_tab()
@@ -488,7 +488,7 @@ class MainWindow(QMainWindow):
         }
         file_type = type_names.get(ext, "Plain Text")
 
-        tab.configure_for_file_type(file_type, is_spatial, content)
+        tab.configure_for_file_type(file_type, is_spatial, content, gdf=gdf)
         self._update_tab_title(tab)
         self._on_tab_changed(self.tab_widget.currentIndex())
         self._save_session_state()

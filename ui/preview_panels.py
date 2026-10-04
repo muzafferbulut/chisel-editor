@@ -464,7 +464,9 @@ class MapPreviewPanel(AbstractPreviewPanel):
                             layerIndexMap[currentIdx] = layer;
 
                             var title = (feature.properties && (feature.properties.city || feature.properties.name || feature.properties.NAME || feature.properties.title || feature.properties.id)) || ('Özellik #' + currentIdx);
-                            layer.bindTooltip(String(title), {{ sticky: true }});
+                            if (featureCount <= 1000) {{
+                                layer.bindTooltip(String(title), {{ sticky: true }});
+                            }}
 
                             layer.on('click', function(e) {{
                                 var props = feature.properties || {{}};
@@ -540,7 +542,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
             return
 
         try:
-            json.loads(content)
             js_code = f"updateMap({content});"
             self.web_view.page().runJavaScript(js_code)
         except Exception:

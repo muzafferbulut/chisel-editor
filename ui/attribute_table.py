@@ -53,7 +53,7 @@ class GeoDataFrameTableModel(QAbstractTableModel):
             return None
 
         col_name = self._columns[col_idx]
-        val = self._gdf.iloc[row][col_name]
+        val = self._gdf[col_name].iat[row]
 
         if role == Qt.ItemDataRole.DisplayRole:
             if col_name == getattr(self._gdf, 'geometry', None).name if hasattr(self._gdf, 'geometry') else None:
@@ -168,7 +168,10 @@ class AttributeTableWidget(QWidget):
 
         count = len(gdf) if gdf is not None and not gdf.empty else 0
         self.stats_label.setText(f"{count:,} özellik")
-        self.table_view.resizeColumnsToContents()
+        header = self.table_view.horizontalHeader()
+        header.setDefaultSectionSize(120)
+        for col in range(min(5, self.source_model.columnCount())):
+            header.resizeSection(col, 130)
 
     def _filter_table(self, text: str):
         self.proxy_model.setFilterFixedString(text)
