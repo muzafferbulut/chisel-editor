@@ -7,29 +7,8 @@ from handlers.spatial import MultipleLayersError
 from core.spatial_ops import SpatialOps
 import geopandas as gpd
 
-_ACTIVE_WORKERS = set()
 
-
-class SafeWorker(QThread):
-    """
-    Base worker class that manages its own reference lifecycle.
-    Prevents PyQt 'QThread: Destroyed while thread is still running' crashes
-    when worker references are reassigned or garbage collected before completion.
-    """
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.finished.connect(self._on_worker_finished_cleanup)
-
-    def start(self, priority=QThread.Priority.InheritPriority):
-        _ACTIVE_WORKERS.add(self)
-        super().start(priority)
-
-    def _on_worker_finished_cleanup(self):
-        _ACTIVE_WORKERS.discard(self)
-        self.deleteLater()
-
-
-class FileLoadWorker(SafeWorker):
+class FileLoadWorker(QThread):
     finished = pyqtSignal(str, str, bool, object, str)  # (file_path, content, is_spatial, gdf, error)
     multiple_layers_detected = pyqtSignal(str, list)
 
@@ -55,7 +34,7 @@ class FileLoadWorker(SafeWorker):
             self.finished.emit(self.file_path, "", False, None, str(e))
 
 
-class WFSWorker(SafeWorker):
+class WFSWorker(QThread):
     finished = pyqtSignal(str, object, str)  # (layer_name, GeoDataFrame, error)
 
     def __init__(self, url: str, type_name: str = "", limit: int = 500):
@@ -85,7 +64,7 @@ class WFSWorker(SafeWorker):
             self.finished.emit("", None, str(e))
 
 
-class SpatialOpWorker(SafeWorker):
+class SpatialOpWorker(QThread):
     finished = pyqtSignal(str, object, str)
 
     def __init__(self, op_name: str, gdf: gpd.GeoDataFrame, **params):

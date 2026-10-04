@@ -573,20 +573,12 @@ class MainWindow(QMainWindow):
         dlg = WFSDialog(self)
         if dlg.exec():
             self.progress_bar.show()
-            worker = WFSWorker(dlg.wfs_url, dlg.type_name, dlg.limit)
-            self._active_workers.add(worker)
-            worker.finished.connect(lambda name, gdf, err, w=worker: self._handle_wfs_download_finished(w, name, gdf, err))
-            worker.start()
-
-    def _handle_wfs_download_finished(self, worker, layer_name: str, gdf: object, error: str):
-        self._active_workers.discard(worker)
-        if not self._active_workers:
-            self.progress_bar.hide()
-        self._on_wfs_download_finished(layer_name, gdf, error)
+            self.wfs_worker = WFSWorker(dlg.wfs_url, dlg.type_name, dlg.limit)
+            self.wfs_worker.finished.connect(self._on_wfs_download_finished)
+            self.wfs_worker.start()
 
     def _on_wfs_download_finished(self, layer_name: str, gdf: object, error: str):
-        if not self._active_workers:
-            self.progress_bar.hide()
+        self.progress_bar.hide()
         if error:
             ToastNotification.show_toast(self, f"WFS Hatası: {error}", "error")
             return
@@ -618,20 +610,12 @@ class MainWindow(QMainWindow):
             return
 
         self.progress_bar.show()
-        worker = SpatialOpWorker(op_name, gdf, **params)
-        self._active_workers.add(worker)
-        worker.finished.connect(lambda op, res, err, w=worker: self._handle_spatial_op_finished(w, op, res, err))
-        worker.start()
-
-    def _handle_spatial_op_finished(self, worker, op_name: str, result: object, error: str):
-        self._active_workers.discard(worker)
-        if not self._active_workers:
-            self.progress_bar.hide()
-        self._on_spatial_op_finished(op_name, result, error)
+        self.spatial_worker = SpatialOpWorker(op_name, gdf, **params)
+        self.spatial_worker.finished.connect(self._on_spatial_op_finished)
+        self.spatial_worker.start()
 
     def _on_spatial_op_finished(self, op_name: str, result: object, error: str):
-        if not self._active_workers:
-            self.progress_bar.hide()
+        self.progress_bar.hide()
         if error:
             ToastNotification.show_toast(self, f"İşlem hatası: {error}", "error")
             return
@@ -806,7 +790,4 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._save_session_state()
-        for worker in list(self._active_workers):
-            if worker.isRunning():
-                worker.wait(1000)
         super().closeEvent(event)
