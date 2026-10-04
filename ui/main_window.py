@@ -6,8 +6,8 @@ from PyQt6.QtWidgets import (
     QLabel, QApplication, QTabWidget, QProgressBar, QPushButton,
     QWidget, QHBoxLayout, QSplitter
 )
-from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QKeySequence, QCursor
-from PyQt6.QtCore import Qt, QSettings, QEvent, QObject, QRect
+from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QKeySequence
+from PyQt6.QtCore import Qt
 
 from handlers.factory import HandlerFactory
 from ui.dialogs import (
@@ -21,38 +21,6 @@ from core.workers import FileLoadWorker, SpatialOpWorker, WFSWorker
 from core.theme import ThemeManager
 from core.spatial_ops import SpatialOps
 from ui.tabs import EditorTab
-
-
-class DraggableMenuBarFilter(QObject):
-    """
-    Enables native dragging and double-click maximizing when interacting
-    with the empty space of the menu bar, matching VS Code / modern editors.
-    """
-    def __init__(self, main_window):
-        super().__init__(main_window)
-        self.main_window = main_window
-
-    def eventFilter(self, watched, event):
-        if event.type() == QEvent.Type.MouseButtonPress:
-            if event.button() == Qt.MouseButton.LeftButton:
-                if isinstance(watched, QMenuBar):
-                    action = watched.actionAt(event.pos())
-                    if not action:
-                        handle = self.main_window.windowHandle()
-                        if handle:
-                            handle.startSystemMove()
-                            return True
-        elif event.type() == QEvent.Type.MouseButtonDblClick:
-            if event.button() == Qt.MouseButton.LeftButton:
-                if isinstance(watched, QMenuBar):
-                    action = watched.actionAt(event.pos())
-                    if not action:
-                        if self.main_window.isMaximized():
-                            self.main_window.showNormal()
-                        else:
-                            self.main_window.showMaximized()
-                        return True
-        return super().eventFilter(watched, event)
 
 
 class MainWindow(QMainWindow):
@@ -70,7 +38,7 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self):
         self.setWindowTitle("Chisel Editor")
-        self._apply_initial_geometry()
+        self.resize(1200, 750)
 
         # Main Central Container
         central_container = QWidget()
@@ -148,50 +116,8 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
         self._add_new_tab()
 
-    def _apply_initial_geometry(self):
-        settings = QSettings("ChiselEditor", "ChiselEditor")
-        saved_geom = settings.value("window_geometry")
-        restored = False
-        if saved_geom:
-            self.restoreGeometry(saved_geom)
-            # Ensure the top header/title bar is on a visible screen
-            frame = self.frameGeometry()
-            header_rect = QRect(frame.x(), frame.y(), frame.width(), 40)
-            if any(s.availableGeometry().intersects(header_rect) for s in QApplication.screens()):
-                restored = True
-
-        if not restored:
-            self._center_on_active_screen()
-
-    def _center_on_active_screen(self):
-        cursor_pos = QCursor.pos()
-        target_screen = None
-        for s in QApplication.screens():
-            if s.geometry().contains(cursor_pos):
-                target_screen = s
-                break
-        if not target_screen:
-            target_screen = QApplication.primaryScreen()
-
-        if target_screen:
-            avail = target_screen.availableGeometry()
-            # Constrain window to at most 88% width and 82% height of the screen
-            # to guarantee the titlebar and borders never get pushed off-screen
-            w = min(1200, max(800, int(avail.width() * 0.88)))
-            h = min(720, max(550, int(avail.height() * 0.82)))
-            self.resize(w, h)
-
-            # Center window strictly within the available screen area (accounts for taskbars)
-            x = avail.x() + (avail.width() - w) // 2
-            y = avail.y() + (avail.height() - h) // 2
-            self.move(x, y)
-        else:
-            self.resize(1100, 680)
-
     def _create_menus(self):
         menu_bar: QMenuBar = self.menuBar()
-        self._menu_drag_filter = DraggableMenuBarFilter(self)
-        menu_bar.installEventFilter(self._menu_drag_filter)
 
         # --- File Menu ---
         file_menu: QMenu = menu_bar.addMenu("File")
@@ -294,12 +220,6 @@ class MainWindow(QMainWindow):
         act_dark.triggered.connect(lambda: self._change_theme("dark"))
         theme_menu.addAction(act_light)
         theme_menu.addAction(act_dark)
-
-        view_menu.addSeparator()
-        act_center_window = QAction("🖥️ Center Window (Ekrana Ortala)", self)
-        act_center_window.setShortcut(QKeySequence("Ctrl+Shift+C"))
-        act_center_window.triggered.connect(self._center_on_active_screen)
-        view_menu.addAction(act_center_window)
 
         # --- GIS / Spatial Menu ---
         gis_menu: QMenu = menu_bar.addMenu("GIS")
@@ -785,8 +705,3 @@ class MainWindow(QMainWindow):
     def _handle_file_drop(self, file_path: str):
         if os.path.exists(file_path):
             self._load_file(file_path)
-
-    def closeEvent(self, event):
-        settings = QSettings("ChiselEditor", "ChiselEditor")
-        settings.setValue("window_geometry", self.saveGeometry())
-        super().closeEvent(event)

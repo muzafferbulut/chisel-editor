@@ -91,17 +91,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     gap: 5px;
                     align-items: center;
                     padding: 4px 8px;
-                    cursor: default;
-                }}
-                .hud-drag-handle {{
-                    cursor: grab;
-                    color: #888;
-                    user-select: none;
-                    padding: 0 4px;
-                    font-size: 13px;
-                }}
-                .hud-drag-handle:active {{
-                    cursor: grabbing;
                 }}
                 .hud-stats {{
                     top: 12px;
@@ -188,8 +177,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
             <div class="hud-panel hud-stats" id="statsPill">Mekansal Katman</div>
 
-            <div class="hud-panel hud-toolbar" id="hudToolbar">
-                <span class="hud-drag-handle" title="Sürükleyip Taşıyın">⋮⋮</span>
+            <div class="hud-panel hud-toolbar">
                 <button class="hud-btn" id="btnFit" title="Zoom to layer bounds">🎯 Fit</button>
                 <button class="hud-btn" id="btnMeasure" title="Measure Distance / Area">📏 Ölçüm</button>
                 <button class="hud-btn" id="btnCluster" title="Toggle Marker Clustering">📍 Cluster</button>
@@ -529,34 +517,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         map.fitBounds(geojsonLayer.getBounds(), {{ padding: [30, 30] }});
                     }}
                 }}
-
-                // Draggable HUD Toolbar
-                (function() {{
-                    var bar = document.getElementById('hudToolbar');
-                    if (!bar) return;
-                    var isDragging = false, startX, startY, origLeft, origTop;
-                    bar.addEventListener('mousedown', function(e) {{
-                        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
-                        isDragging = true;
-                        startX = e.clientX;
-                        startY = e.clientY;
-                        var rect = bar.getBoundingClientRect();
-                        origLeft = rect.left;
-                        origTop = rect.top;
-                        bar.style.right = 'auto';
-                        bar.style.left = origLeft + 'px';
-                        bar.style.top = origTop + 'px';
-                        e.preventDefault();
-                    }});
-                    document.addEventListener('mousemove', function(e) {{
-                        if (!isDragging) return;
-                        var dx = e.clientX - startX;
-                        var dy = e.clientY - startY;
-                        bar.style.left = Math.max(0, origLeft + dx) + 'px';
-                        bar.style.top = Math.max(0, origTop + dy) + 'px';
-                    }});
-                    document.addEventListener('mouseup', function() {{ isDragging = false; }});
-                }})();
             </script>
         </body>
         </html>
