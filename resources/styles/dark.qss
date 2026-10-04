@@ -231,14 +231,14 @@ QPushButton#activityBtn {
     background: transparent;
     border: none;
     font-size: 18px;
-    padding: 8px 4px;
-    border-radius: 4px;
+    padding: 10px 4px;
+    border-radius: 0px;
     color: #858585;
 }
 
 QPushButton#activityBtn:hover {
     color: #ffffff;
-    background-color: #3e3e42;
+    background-color: rgba(255, 255, 255, 0.08);
 }
 
 QPushButton#activityBtn:checked {
@@ -257,6 +257,12 @@ QTreeView, QTreeWidget {
     color: #cccccc;
     border: none;
     font-size: 12px;
+    outline: none;
+}
+
+QTreeView::item, QTreeWidget::item {
+    padding: 3px 6px;
+    border-radius: 4px;
 }
 
 QTreeView::item:hover, QTreeWidget::item:hover {

@@ -370,7 +370,7 @@ class MainWindow(QMainWindow):
         tab = EditorTab()
         tab.text_editor.cursorPositionChanged.connect(self._update_cursor_info)
         tab.text_editor.file_dropped.connect(self._handle_file_drop)
-        tab.state_changed.connect(lambda: self._update_tab_title(tab))
+        tab.state_changed.connect(lambda: self._on_tab_state_changed(tab))
 
         idx = self.tab_widget.addTab(tab, tab.get_title())
         self.tab_widget.setCurrentIndex(idx)
@@ -387,16 +387,29 @@ class MainWindow(QMainWindow):
         if idx != -1:
             self.tab_widget.setTabText(idx, tab.get_title())
 
+    def _on_tab_state_changed(self, tab: EditorTab):
+        self._update_tab_title(tab)
+        if tab == self._get_current_tab():
+            self._update_table_button_state(tab)
+
+    def _update_table_button_state(self, tab: EditorTab = None):
+        if tab is None:
+            tab = self._get_current_tab()
+        if not tab or not tab.is_spatial:
+            self.btn_status_table.hide()
+            return
+        self.btn_status_table.show()
+        if tab.left_stack.isVisible() and tab.left_stack.currentIndex() == 1:
+            self.btn_status_table.setText("🗺️ Sadece Harita (F6)")
+        else:
+            self.btn_status_table.setText("📊 Öznitelik Tablosu (F6)")
+
     def _on_tab_changed(self, index: int):
         tab = self.tab_widget.widget(index)
         if tab:
             self.type_label.setText(tab.file_type)
             if tab.is_spatial:
-                self.btn_status_table.show()
-                if tab.left_stack.currentIndex() == 1:
-                    self.btn_status_table.setText("📝 Kod Göster (F6)")
-                else:
-                    self.btn_status_table.setText("📊 Tablo Göster (F6)")
+                self._update_table_button_state(tab)
                 crs_label = str(tab._current_gdf.crs) if tab._current_gdf is not None and tab._current_gdf.crs else "EPSG:4326"
                 self.btn_status_crs.setText(f"🌐 {crs_label}")
                 self.btn_status_crs.show()
@@ -416,19 +429,14 @@ class MainWindow(QMainWindow):
         tab = self._get_current_tab()
         if tab:
             tab.set_view_mode(mode)
+            self._update_table_button_state(tab)
 
     def _toggle_attribute_table(self):
         tab = self._get_current_tab()
         if not tab or not tab.is_spatial:
             return
-
-        curr_left = tab.left_stack.currentIndex()
-        if curr_left == 1:
-            tab.set_view_mode("code_map")
-            self.btn_status_table.setText("📊 Tablo Göster (F6)")
-        else:
-            tab.set_view_mode("table_map")
-            self.btn_status_table.setText("📝 Kod Göster (F6)")
+        tab.toggle_table()
+        self._update_table_button_state(tab)
 
     def _fit_bounds(self):
         tab = self._get_current_tab()

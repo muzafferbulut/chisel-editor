@@ -61,6 +61,7 @@ class EditorTab(QWidget):
         # Bi-directional sync
         self.table_panel.feature_selected.connect(self.map_panel.highlight_feature)
         self.map_panel.feature_clicked.connect(self.table_panel.select_feature)
+        self.map_panel.table_toggle_requested.connect(self.toggle_table)
         self.table_panel.data_modified.connect(self._on_table_data_modified)
 
         # Auto-refresh timer for code edits
@@ -105,7 +106,8 @@ class EditorTab(QWidget):
 
         self._is_loading = False
 
-        self.set_view_mode("table_map")
+        # Open directly in full map view (user can open attribute table on demand)
+        self.set_view_mode("map")
         self.spatial_data_ready.emit(gdf)
 
     def update_spatial_gdf(self, gdf: gpd.GeoDataFrame):
@@ -163,6 +165,16 @@ class EditorTab(QWidget):
             self.right_stack.show()
             self.splitter.setSizes([500, 500])
 
+    def toggle_table(self):
+        """Toggles between full Map view and Table+Map split view."""
+        if not self.is_spatial:
+            return
+        if self.left_stack.isVisible() and self.left_stack.currentIndex() == 1:
+            self.set_view_mode("map")
+        else:
+            self.set_view_mode("table_map")
+        self.state_changed.emit()
+
     def toggle_spatial_left_view(self):
         """Toggles between Code (0) and Attribute Table (1) on the left side of split view."""
         if not self.is_spatial:
@@ -172,6 +184,7 @@ class EditorTab(QWidget):
             self.set_view_mode("code_map")
         else:
             self.set_view_mode("table_map")
+        self.state_changed.emit()
 
     def configure_for_file_type(self, file_type: str, is_spatial: bool, content: str = "", gdf: object = None):
         self.file_type = file_type

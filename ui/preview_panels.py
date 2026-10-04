@@ -9,10 +9,15 @@ from core.theme import ThemeManager
 
 class MapBridge(QObject):
     featureSelected = pyqtSignal(int)
+    tableToggleRequested = pyqtSignal()
 
     @pyqtSlot(int)
     def onFeatureClicked(self, index):
         self.featureSelected.emit(index)
+
+    @pyqtSlot()
+    def toggleTable(self):
+        self.tableToggleRequested.emit()
 
 
 class AbstractPreviewPanel(QWidget):
@@ -30,6 +35,7 @@ class AbstractPreviewPanel(QWidget):
 
 class MapPreviewPanel(AbstractPreviewPanel):
     feature_clicked = pyqtSignal(int)
+    table_toggle_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -38,6 +44,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
         self.bridge = MapBridge()
         self.bridge.featureSelected.connect(self.feature_clicked.emit)
+        self.bridge.tableToggleRequested.connect(self.table_toggle_requested.emit)
 
         self.channel = QWebChannel()
         self.channel.registerObject("mapBridge", self.bridge)
@@ -178,6 +185,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
             <div class="hud-panel hud-stats" id="statsPill">Mekansal Katman</div>
 
             <div class="hud-panel hud-toolbar">
+                <button class="hud-btn" id="btnTable" onclick="toggleTableHud()" title="Öznitelik Tablosunu Aç/Kapat (F6)" style="font-weight: 600; background: rgba(0, 127, 212, 0.4); border-color: #007fd4;">📊 Tablo</button>
                 <button class="hud-btn" id="btnFit" title="Zoom to layer bounds">🎯 Fit</button>
                 <button class="hud-btn" id="btnMeasure" title="Measure Distance / Area">📏 Ölçüm</button>
                 <button class="hud-btn" id="btnCluster" title="Toggle Marker Clustering">📍 Cluster</button>
@@ -267,6 +275,12 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }}
                 }}
                 setupBridge();
+
+                function toggleTableHud() {{
+                    if (pyBridge && pyBridge.toggleTable) {{
+                        pyBridge.toggleTable();
+                    }}
+                }}
 
                 // --- WMS Layer Management ---
                 function addWmsLayer(layerId, url, layers, format, transparent) {{
