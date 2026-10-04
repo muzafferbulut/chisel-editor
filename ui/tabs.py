@@ -13,8 +13,7 @@ from core.spatial_ops import SpatialOps
 
 class EditorTab(QWidget):
     state_changed = pyqtSignal()
-    spatial_data_ready = pyqtSignal(object)
-    load_sample_requested = pyqtSignal()
+    spatial_data_ready = pyqtSignal(object)  # Emits GeoDataFrame when spatial data is loaded
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -32,7 +31,7 @@ class EditorTab(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
 
-        # Tab Toolbar (View Mode Switchers + Quick Actions - ALWAYS VISIBLE!)
+        # Tab Toolbar (View Mode Switchers + Quick Actions)
         self.control_bar = QWidget()
         self.control_bar.setObjectName("tabToolbar")
         bar_layout = QHBoxLayout(self.control_bar)
@@ -50,7 +49,6 @@ class EditorTab(QWidget):
 
         self.btn_mode_code_map = QPushButton("⚡ Kod + Harita")
         self.btn_mode_code_map.setCheckable(True)
-        self.btn_mode_code_map.setChecked(True)
         self.btn_mode_code_map.clicked.connect(lambda: self.set_view_mode("code_map"))
         self.view_btn_group.addButton(self.btn_mode_code_map)
         bar_layout.addWidget(self.btn_mode_code_map)
@@ -81,6 +79,7 @@ class EditorTab(QWidget):
         bar_layout.addWidget(self.btn_quick_fit)
 
         self.layout.addWidget(self.control_bar)
+        self.control_bar.hide()
 
         # Splitter Layout
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -100,15 +99,13 @@ class EditorTab(QWidget):
 
         self.right_stack.addWidget(self.map_panel)
         self.right_stack.addWidget(self.markdown_panel)
+        self.right_stack.hide()
 
         self.splitter.addWidget(self.left_stack)
         self.splitter.addWidget(self.right_stack)
-        self.splitter.setSizes([500, 650])
+        self.splitter.setSizes([480, 680])
 
         self.layout.addWidget(self.splitter)
-
-        # Default mode: Code + Map
-        self.set_view_mode("code_map")
 
         # Bi-directional sync
         self.table_panel.feature_selected.connect(self.map_panel.highlight_feature)
@@ -140,6 +137,8 @@ class EditorTab(QWidget):
             self.table_panel.load_data(gdf)
         self._is_loading = False
 
+        self.control_bar.show()
+        self.btn_mode_table_map.setChecked(True)
         self.set_view_mode("table_map")
         self.spatial_data_ready.emit(gdf)
 
@@ -158,7 +157,7 @@ class EditorTab(QWidget):
         self.update_spatial_gdf(new_gdf)
 
     def _on_quick_fit(self):
-        if self.map_panel:
+        if self.is_spatial and self.map_panel:
             self.map_panel.fit_bounds()
 
     def set_view_mode(self, mode: str):
@@ -173,7 +172,7 @@ class EditorTab(QWidget):
             self.right_stack.setCurrentIndex(0)
             self.left_stack.show()
             self.right_stack.show()
-            self.splitter.setSizes([500, 650])
+            self.splitter.setSizes([450, 650])
             self.btn_mode_code_map.setChecked(True)
 
         elif mode == "table_map":
@@ -181,7 +180,7 @@ class EditorTab(QWidget):
             self.right_stack.setCurrentIndex(0)
             self.left_stack.show()
             self.right_stack.show()
-            self.splitter.setSizes([500, 650])
+            self.splitter.setSizes([450, 650])
             self.btn_mode_table_map.setChecked(True)
 
         elif mode == "map":
@@ -214,11 +213,17 @@ class EditorTab(QWidget):
                 gdf = None
             self.set_spatial_data(gdf, content)
         elif file_type == "Markdown":
-            self.set_view_mode("markdown")
+            self.control_bar.hide()
+            self.right_stack.setCurrentIndex(1)
+            self.left_stack.setCurrentIndex(0)
+            self.left_stack.show()
+            self.right_stack.show()
             self.markdown_panel.render_content(content)
         else:
-            self.set_view_mode("code")
-            self.text_editor.setPlainText(content)
+            self.control_bar.hide()
+            self.left_stack.setCurrentIndex(0)
+            self.left_stack.show()
+            self.right_stack.hide()
 
     def _on_text_changed(self):
         if self._is_loading:
