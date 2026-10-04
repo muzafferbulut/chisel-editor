@@ -18,27 +18,29 @@ class ActivityBar(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(46)
+        self.setFixedWidth(40)
         self.setObjectName("activityBar")
         self._current_view = "explorer"
         self._init_ui()
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 6, 0, 6)
-        layout.setSpacing(4)
+        layout.setContentsMargins(0, 4, 0, 4)
+        layout.setSpacing(2)
 
         self.btn_explorer = QPushButton("📁")
         self.btn_explorer.setObjectName("activityBtn")
         self.btn_explorer.setToolTip("Dosya Gezgini (Ctrl+Shift+E)")
         self.btn_explorer.setCheckable(True)
         self.btn_explorer.setChecked(True)
+        self.btn_explorer.setFixedSize(40, 36)
         self.btn_explorer.clicked.connect(lambda: self._on_btn_clicked("explorer"))
 
         self.btn_layers = QPushButton("🗺️")
         self.btn_layers.setObjectName("activityBtn")
         self.btn_layers.setToolTip("Mekansal Katmanlar & OGC Servisleri (WMS/WFS)")
         self.btn_layers.setCheckable(True)
+        self.btn_layers.setFixedSize(40, 36)
         self.btn_layers.clicked.connect(lambda: self._on_btn_clicked("layers"))
 
         layout.addWidget(self.btn_explorer)
@@ -91,16 +93,16 @@ class ExplorerPanel(QWidget):
         header.addStretch()
 
         self.btn_refresh = QPushButton("🔄")
-        self.btn_refresh.setFixedSize(24, 24)
+        self.btn_refresh.setObjectName("sidebarHeaderBtn")
+        self.btn_refresh.setFixedSize(22, 22)
         self.btn_refresh.setToolTip("Gezgini Yenile")
-        self.btn_refresh.setStyleSheet("QPushButton { border: none; background: transparent; border-radius: 3px; font-size: 11px; } QPushButton:hover { background: rgba(128, 128, 128, 0.2); }")
         self.btn_refresh.clicked.connect(self._refresh_tree)
         header.addWidget(self.btn_refresh)
 
         self.btn_open_folder = QPushButton("📂")
-        self.btn_open_folder.setFixedSize(24, 24)
+        self.btn_open_folder.setObjectName("sidebarHeaderBtn")
+        self.btn_open_folder.setFixedSize(22, 22)
         self.btn_open_folder.setToolTip("Klasör Aç / Değiştir (Ctrl+K, Ctrl+O)")
-        self.btn_open_folder.setStyleSheet("QPushButton { border: none; background: transparent; border-radius: 3px; font-size: 12px; } QPushButton:hover { background: rgba(128, 128, 128, 0.2); }")
         self.btn_open_folder.clicked.connect(self.folder_change_requested.emit)
         header.addWidget(self.btn_open_folder)
 
@@ -209,13 +211,13 @@ class LayersPanel(QWidget):
         header.addStretch()
 
         btn_wms = QPushButton("+ WMS")
+        btn_wms.setObjectName("sidebarPillBtn")
         btn_wms.setToolTip("WMS Web Harita Servisi Ekle")
-        btn_wms.setStyleSheet("padding: 2px 7px; font-size: 10px; font-weight: 600; border-radius: 3px;")
         btn_wms.clicked.connect(self.add_wms_requested.emit)
 
         btn_wfs = QPushButton("+ WFS")
+        btn_wfs.setObjectName("sidebarPillBtn")
         btn_wfs.setToolTip("WFS Vektör Veri Servisi İndir")
-        btn_wfs.setStyleSheet("padding: 2px 7px; font-size: 10px; font-weight: 600; border-radius: 3px;")
         btn_wfs.clicked.connect(self.add_wfs_requested.emit)
 
         header.addWidget(btn_wms)
@@ -245,13 +247,13 @@ class LayersPanel(QWidget):
         action_bar.setSpacing(6)
 
         btn_zoom = QPushButton("🎯 Sığdır")
+        btn_zoom.setObjectName("sidebarActionBtn")
         btn_zoom.setToolTip("Katman sınırlarına odaklan")
-        btn_zoom.setStyleSheet("padding: 4px 8px; font-size: 11px;")
         btn_zoom.clicked.connect(self.fit_bounds_requested.emit)
 
-        btn_table = QPushButton("📊 Tablo (F6)")
-        btn_table.setToolTip("Öznitelik Tablosunu Aç / Kapat")
-        btn_table.setStyleSheet("padding: 4px 8px; font-size: 11px; font-weight: 600;")
+        btn_table = QPushButton("📊 Tablo")
+        btn_table.setObjectName("sidebarActionBtn")
+        btn_table.setToolTip("Öznitelik Tablosunu Aç / Kapat (F6)")
         btn_table.clicked.connect(self.table_requested.emit)
 
         action_bar.addWidget(btn_zoom)
@@ -319,7 +321,7 @@ class SideBar(QWidget):
 
     def __init__(self, root_path: str = None, parent=None):
         super().__init__(parent)
-        self.setMinimumWidth(200)
+        self.setMinimumWidth(180)
         self.setObjectName("sideBar")
         self._init_ui(root_path)
 

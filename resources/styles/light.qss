@@ -226,21 +226,28 @@ QWidget#activityBar {
     border-right: 1px solid #d1d5da;
 }
 
-QPushButton#activityBtn {
+QWidget#activityBar QPushButton#activityBtn {
     background: transparent;
     border: none;
-    font-size: 18px;
-    padding: 10px 4px;
+    font-size: 16px;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    max-width: 38px;
+    min-height: 36px;
+    max-height: 38px;
+    padding: 0px;
+    margin: 0px;
     border-radius: 0px;
     color: #999999;
 }
 
-QPushButton#activityBtn:hover {
+QWidget#activityBar QPushButton#activityBtn:hover {
     color: #ffffff;
     background-color: rgba(255, 255, 255, 0.12);
 }
 
-QPushButton#activityBtn:checked {
+QWidget#activityBar QPushButton#activityBtn:checked {
     color: #ffffff;
     background-color: #f6f8fa;
     border-left: 2px solid #0366d6;
@@ -249,6 +256,62 @@ QPushButton#activityBtn:checked {
 QWidget#sideBar {
     background-color: #f6f8fa;
     border-right: 1px solid #d1d5da;
+}
+
+QWidget#sideBar QPushButton {
+    min-width: 0px;
+    min-height: 0px;
+}
+
+QWidget#sideBar QPushButton#sidebarHeaderBtn {
+    border: none;
+    background: transparent;
+    border-radius: 3px;
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    max-width: 22px;
+    min-height: 22px;
+    max-height: 22px;
+    padding: 0px;
+    font-size: 12px;
+    color: #586069;
+}
+
+QWidget#sideBar QPushButton#sidebarHeaderBtn:hover {
+    background-color: rgba(0, 0, 0, 0.08);
+}
+
+QWidget#sideBar QPushButton#sidebarPillBtn {
+    border: 1px solid #d1d5da;
+    background-color: #e1e4e8;
+    border-radius: 3px;
+    min-width: 44px;
+    max-width: 56px;
+    height: 22px;
+    padding: 1px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #24292e;
+}
+
+QWidget#sideBar QPushButton#sidebarPillBtn:hover {
+    background-color: #d1d5da;
+}
+
+QWidget#sideBar QPushButton#sidebarActionBtn {
+    border: 1px solid #d1d5da;
+    background-color: #e1e4e8;
+    border-radius: 3px;
+    min-width: 60px;
+    height: 26px;
+    padding: 2px 6px;
+    font-size: 11px;
+    color: #24292e;
+}
+
+QWidget#sideBar QPushButton#sidebarActionBtn:hover {
+    background-color: #d1d5da;
 }
 
 QTreeView, QTreeWidget {
