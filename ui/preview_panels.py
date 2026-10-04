@@ -91,6 +91,17 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     gap: 5px;
                     align-items: center;
                     padding: 4px 8px;
+                    cursor: default;
+                }}
+                .hud-drag-handle {{
+                    cursor: grab;
+                    color: #888;
+                    user-select: none;
+                    padding: 0 4px;
+                    font-size: 13px;
+                }}
+                .hud-drag-handle:active {{
+                    cursor: grabbing;
                 }}
                 .hud-stats {{
                     top: 12px;
@@ -175,9 +186,10 @@ class MapPreviewPanel(AbstractPreviewPanel):
         <body>
             <div id="map"></div>
 
-            <div class="hud-panel hud-stats" id="statsPill">No layer</div>
+            <div class="hud-panel hud-stats" id="statsPill">Mekansal Katman</div>
 
-            <div class="hud-panel hud-toolbar">
+            <div class="hud-panel hud-toolbar" id="hudToolbar">
+                <span class="hud-drag-handle" title="Sürükleyip Taşıyın">⋮⋮</span>
                 <button class="hud-btn" id="btnFit" title="Zoom to layer bounds">🎯 Fit</button>
                 <button class="hud-btn" id="btnMeasure" title="Measure Distance / Area">📏 Ölçüm</button>
                 <button class="hud-btn" id="btnCluster" title="Toggle Marker Clustering">📍 Cluster</button>
@@ -185,16 +197,15 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 <input type="range" class="hud-slider" id="opacitySlider" min="10" max="100" value="85" title="Layer Opacity"/>
                 <span style="border-left: 1px solid #555; height: 14px; margin: 0 4px;"></span>
                 <!-- ONLY 100% FREE BASEMAPS -->
-                <button class="hud-btn" id="btnOsm" onclick="setBaseMap('osm')" title="OpenStreetMap (Free)">OSM</button>
-                <button class="hud-btn" id="btnTopo" onclick="setBaseMap('topo')" title="OpenTopoMap (Free)">Topo</button>
-                <button class="hud-btn" id="btnDark" onclick="setBaseMap('dark')" title="CartoDB Dark Matter (Free CDN)">Dark</button>
-                <button class="hud-btn" id="btnLight" onclick="setBaseMap('light')" title="CartoDB Positron (Free CDN)">Light</button>
-                <button class="hud-btn" id="btnSat" onclick="setBaseMap('sat')" title="Esri World Imagery (Free)">Uydu</button>
-                <button class="hud-btn" id="btnNone" onclick="setBaseMap('none')" title="Altlık Yok (Empty Canvas)">Yok</button>
+                <button class="hud-btn" id="btnOsm" onclick="setBaseMap('osm')" title="OpenStreetMap (Tamamen Ücretsiz)">OSM</button>
+                <button class="hud-btn" id="btnSat" onclick="setBaseMap('sat')" title="Esri Uydu Görüntüsü (Ücretsiz)">Uydu</button>
+                <button class="hud-btn" id="btnTopo" onclick="setBaseMap('topo')" title="OpenTopoMap (Ücretsiz)">Topo</button>
+                <button class="hud-btn" id="btnDark" onclick="setBaseMap('dark')" title="Karanlık Mod Harita (Filtrelenmiş OSM)">Koyu</button>
+                <button class="hud-btn" id="btnNone" onclick="setBaseMap('none')" title="Altlık Yok (Boş Zemin)">Yok</button>
             </div>
 
             <div class="hud-panel hud-coords" id="coordsPill">
-                <span>Lat: 0.0000°</span><span>Lng: 0.0000°</span><span>Zoom: 2</span>
+                <span>Lat: 39.0000°</span><span>Lng: 35.0000°</span><span>Zoom: 5</span>
             </div>
 
             <script>
@@ -206,34 +217,45 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 L.control.scale({{ imperial: false, position: 'bottomleft' }}).addTo(map);
 
-                // STRICTLY FREE BASE TILES
+                // STRICTLY FREE BASE TILES (No API key, no watermark)
                 var freeTiles = {{
                     osm: L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{ maxZoom: 19 }}),
-                    topo: L.tileLayer('https://{{s}}.tile.opentopomap.org/{{z}}/{{x}}/{{y}}.png', {{ maxZoom: 17 }}),
-                    dark: L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{ maxZoom: 19 }}),
-                    light: L.tileLayer('https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{ maxZoom: 19 }}),
                     sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{{z}}/{{y}}/{{x}}', {{ maxZoom: 18 }}),
+                    topo: L.tileLayer('https://{{s}}.tile.opentopomap.org/{{z}}/{{x}}/{{y}}.png', {{ maxZoom: 17 }}),
+                    dark: L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{ maxZoom: 19 }}),
                     none: null
                 }};
 
-                var currentBase = '{theme}' === 'dark' ? 'dark' : 'light';
+                function applyTileFilter(type) {{
+                    var tilePane = map.getPane('tilePane');
+                    if (!tilePane) return;
+                    if (type === 'dark') {{
+                        tilePane.style.filter = 'invert(100%) hue-rotate(180deg) brightness(85%) contrast(90%)';
+                    }} else {{
+                        tilePane.style.filter = '';
+                    }}
+                }}
+
+                var currentBase = '{theme}' === 'dark' ? 'dark' : 'osm';
                 if (freeTiles[currentBase]) freeTiles[currentBase].addTo(map);
+                applyTileFilter(currentBase);
                 updateActiveBaseButton(currentBase);
 
                 function setBaseMap(type) {{
                     if (freeTiles[currentBase]) map.removeLayer(freeTiles[currentBase]);
                     currentBase = type;
                     if (freeTiles[type]) freeTiles[type].addTo(map);
+                    applyTileFilter(type);
                     bringVectorsToFront();
                     updateActiveBaseButton(type);
                 }}
 
                 function updateActiveBaseButton(type) {{
-                    ['btnOsm', 'btnTopo', 'btnDark', 'btnLight', 'btnSat', 'btnNone'].forEach(id => {{
+                    ['btnOsm', 'btnSat', 'btnTopo', 'btnDark', 'btnNone'].forEach(id => {{
                         var btn = document.getElementById(id);
                         if (btn) btn.classList.remove('active');
                     }});
-                    var mapBtn = {{ osm: 'btnOsm', topo: 'btnTopo', dark: 'btnDark', light: 'btnLight', sat: 'btnSat', none: 'btnNone' }}[type];
+                    var mapBtn = {{ osm: 'btnOsm', sat: 'btnSat', topo: 'btnTopo', dark: 'btnDark', none: 'btnNone' }}[type];
                     if (mapBtn && document.getElementById(mapBtn)) {{
                         document.getElementById(mapBtn).classList.add('active');
                     }}
@@ -247,11 +269,16 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 var pyBridge = null;
                 var wmsLayers = {{}};
 
-                if (typeof QWebChannel !== 'undefined') {{
-                    new QWebChannel(qt.webChannelTransport, function(channel) {{
-                        pyBridge = channel.objects.mapBridge;
-                    }});
+                function setupBridge() {{
+                    if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {{
+                        new QWebChannel(qt.webChannelTransport, function(channel) {{
+                            pyBridge = channel.objects.mapBridge;
+                        }});
+                    }} else {{
+                        setTimeout(setupBridge, 100);
+                    }}
                 }}
+                setupBridge();
 
                 // --- WMS Layer Management ---
                 function addWmsLayer(layerId, url, layers, format, transparent) {{
@@ -389,7 +416,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     layerIndexMap = {{}};
 
                     if (!geojsonData) {{
-                        document.getElementById('statsPill').textContent = 'No data';
+                        document.getElementById('statsPill').textContent = 'Mekansal Katman';
                         return;
                     }}
 
@@ -502,6 +529,34 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         map.fitBounds(geojsonLayer.getBounds(), {{ padding: [30, 30] }});
                     }}
                 }}
+
+                // Draggable HUD Toolbar
+                (function() {{
+                    var bar = document.getElementById('hudToolbar');
+                    if (!bar) return;
+                    var isDragging = false, startX, startY, origLeft, origTop;
+                    bar.addEventListener('mousedown', function(e) {{
+                        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+                        isDragging = true;
+                        startX = e.clientX;
+                        startY = e.clientY;
+                        var rect = bar.getBoundingClientRect();
+                        origLeft = rect.left;
+                        origTop = rect.top;
+                        bar.style.right = 'auto';
+                        bar.style.left = origLeft + 'px';
+                        bar.style.top = origTop + 'px';
+                        e.preventDefault();
+                    }});
+                    document.addEventListener('mousemove', function(e) {{
+                        if (!isDragging) return;
+                        var dx = e.clientX - startX;
+                        var dy = e.clientY - startY;
+                        bar.style.left = Math.max(0, origLeft + dx) + 'px';
+                        bar.style.top = Math.max(0, origTop + dy) + 'px';
+                    }});
+                    document.addEventListener('mouseup', function() {{ isDragging = false; }});
+                }})();
             </script>
         </body>
         </html>
