@@ -104,11 +104,26 @@ class MainWindow(QMainWindow):
         self.btn_status_crs.hide()
         self.status_bar.addWidget(self.btn_status_crs)
 
-        self.btn_status_table = QPushButton("📊 Öznitelik Tablosu (F6)")
+        self.btn_status_map = QPushButton("🗺️ Harita")
+        self.btn_status_map.setStyleSheet("padding: 1px 8px; font-size: 11px;")
+        self.btn_status_map.setToolTip("Saf Tam Ekran Harita")
+        self.btn_status_map.clicked.connect(self._show_pure_map)
+        self.btn_status_map.hide()
+        self.status_bar.addPermanentWidget(self.btn_status_map)
+
+        self.btn_status_table = QPushButton("📊 Tablo (F6)")
         self.btn_status_table.setStyleSheet("padding: 1px 8px; font-size: 11px;")
+        self.btn_status_table.setToolTip("Öznitelik Tablosunu Aç/Kapat")
         self.btn_status_table.clicked.connect(self._toggle_attribute_table)
         self.btn_status_table.hide()
         self.status_bar.addPermanentWidget(self.btn_status_table)
+
+        self.btn_status_code = QPushButton("📝 Kod")
+        self.btn_status_code.setStyleSheet("padding: 1px 8px; font-size: 11px;")
+        self.btn_status_code.setToolTip("Kod Editörünü Aç/Kapat")
+        self.btn_status_code.clicked.connect(self._toggle_code_view)
+        self.btn_status_code.hide()
+        self.status_bar.addPermanentWidget(self.btn_status_code)
 
         self.cursor_label = QLabel("Ln 1, Col 1")
         self.type_label = QLabel("Plain Text")
@@ -240,32 +255,31 @@ class MainWindow(QMainWindow):
         act_attr_table.triggered.connect(self._toggle_attribute_table)
         view_menu.addAction(act_attr_table)
 
-        view_menu.addSeparator()
-        mode_code = QAction("📝 Code View", self)
-        mode_code.setShortcut(QKeySequence("Alt+1"))
-        mode_code.triggered.connect(lambda: self._set_current_view_mode("code"))
-
-        mode_code_map = QAction("⚡ Code + Map View", self)
-        mode_code_map.setShortcut(QKeySequence("Alt+2"))
-        mode_code_map.triggered.connect(lambda: self._set_current_view_mode("code_map"))
-
-        mode_table_map = QAction("📊 Table + Map View", self)
-        mode_table_map.setShortcut(QKeySequence("Alt+3"))
-        mode_table_map.triggered.connect(lambda: self._set_current_view_mode("table_map"))
-
-        mode_map = QAction("🗺️ Full Map View", self)
-        mode_map.setShortcut(QKeySequence("Alt+4"))
+        mode_map = QAction("🗺️ Saf Harita", self)
+        mode_map.setShortcut(QKeySequence("Alt+1"))
         mode_map.triggered.connect(lambda: self._set_current_view_mode("map"))
 
-        mode_table = QAction("📋 Full Table View", self)
-        mode_table.setShortcut(QKeySequence("Alt+5"))
+        mode_table_map = QAction("📊 Harita + Tablo", self)
+        mode_table_map.setShortcut(QKeySequence("Alt+2"))
+        mode_table_map.triggered.connect(lambda: self._set_current_view_mode("table_map"))
+
+        mode_code_map = QAction("📝 Harita + Kod", self)
+        mode_code_map.setShortcut(QKeySequence("Alt+3"))
+        mode_code_map.triggered.connect(lambda: self._set_current_view_mode("code_map"))
+
+        mode_table = QAction("📋 Sadece Tablo", self)
+        mode_table.setShortcut(QKeySequence("Alt+4"))
         mode_table.triggered.connect(lambda: self._set_current_view_mode("table"))
 
-        view_menu.addAction(mode_code)
-        view_menu.addAction(mode_code_map)
-        view_menu.addAction(mode_table_map)
+        mode_code = QAction("💻 Sadece Kod", self)
+        mode_code.setShortcut(QKeySequence("Alt+5"))
+        mode_code.triggered.connect(lambda: self._set_current_view_mode("code"))
+
         view_menu.addAction(mode_map)
+        view_menu.addAction(mode_table_map)
+        view_menu.addAction(mode_code_map)
         view_menu.addAction(mode_table)
+        view_menu.addAction(mode_code)
 
         view_menu.addSeparator()
         theme_menu: QMenu = view_menu.addMenu("Theme")
@@ -396,13 +410,54 @@ class MainWindow(QMainWindow):
         if tab is None:
             tab = self._get_current_tab()
         if not tab or not tab.is_spatial:
+            self.btn_status_map.hide()
             self.btn_status_table.hide()
+            self.btn_status_code.hide()
             return
+
+        self.btn_status_map.show()
         self.btn_status_table.show()
-        if tab.left_stack.isVisible() and tab.left_stack.currentIndex() == 1:
-            self.btn_status_table.setText("🗺️ Sadece Harita (F6)")
-        else:
-            self.btn_status_table.setText("📊 Öznitelik Tablosu (F6)")
+        self.btn_status_code.show()
+
+        mode = getattr(tab, "current_view_mode", "map")
+        if mode == "map":
+            self.btn_status_map.setStyleSheet("padding: 1px 8px; font-size: 11px; font-weight: 700; color: #007fd4; border: 1px solid #007fd4; border-radius: 3px;")
+            self.btn_status_table.setStyleSheet("padding: 1px 8px; font-size: 11px;")
+            self.btn_status_code.setStyleSheet("padding: 1px 8px; font-size: 11px;")
+            self.btn_status_table.setText("📊 Tablo Aç (F6)")
+            self.btn_status_code.setText("📝 Kod Aç")
+        elif mode in ("table_map", "table"):
+            self.btn_status_map.setStyleSheet("padding: 1px 8px; font-size: 11px;")
+            self.btn_status_table.setStyleSheet("padding: 1px 8px; font-size: 11px; font-weight: 700; color: #007fd4; border: 1px solid #007fd4; border-radius: 3px;")
+            self.btn_status_code.setStyleSheet("padding: 1px 8px; font-size: 11px;")
+            self.btn_status_table.setText("📊 Tabloyu Kapat (F6)")
+            self.btn_status_code.setText("📝 Kod Aç")
+        elif mode in ("code_map", "code"):
+            self.btn_status_map.setStyleSheet("padding: 1px 8px; font-size: 11px;")
+            self.btn_status_table.setStyleSheet("padding: 1px 8px; font-size: 11px;")
+            self.btn_status_code.setStyleSheet("padding: 1px 8px; font-size: 11px; font-weight: 700; color: #007fd4; border: 1px solid #007fd4; border-radius: 3px;")
+            self.btn_status_table.setText("📊 Tablo Aç (F6)")
+            self.btn_status_code.setText("📝 Kodu Kapat")
+
+    def _show_pure_map(self):
+        tab = self._get_current_tab()
+        if tab and tab.is_spatial:
+            tab.show_pure_map()
+            self._update_table_button_state(tab)
+
+    def _toggle_attribute_table(self):
+        tab = self._get_current_tab()
+        if not tab or not tab.is_spatial:
+            return
+        tab.toggle_table()
+        self._update_table_button_state(tab)
+
+    def _toggle_code_view(self):
+        tab = self._get_current_tab()
+        if not tab or not tab.is_spatial:
+            return
+        tab.toggle_code()
+        self._update_table_button_state(tab)
 
     def _on_tab_changed(self, index: int):
         tab = self.tab_widget.widget(index)
@@ -417,7 +472,9 @@ class MainWindow(QMainWindow):
                 layer_name = os.path.basename(tab.current_file) if tab.current_file else "Sample GIS Layer"
                 self.side_bar.layers_panel.set_active_vector_layer(layer_name, feat_count)
             else:
+                self.btn_status_map.hide()
                 self.btn_status_table.hide()
+                self.btn_status_code.hide()
                 self.btn_status_crs.hide()
                 self.side_bar.layers_panel.set_active_vector_layer("", 0)
         self._save_session_state()
@@ -430,13 +487,6 @@ class MainWindow(QMainWindow):
         if tab:
             tab.set_view_mode(mode)
             self._update_table_button_state(tab)
-
-    def _toggle_attribute_table(self):
-        tab = self._get_current_tab()
-        if not tab or not tab.is_spatial:
-            return
-        tab.toggle_table()
-        self._update_table_button_state(tab)
 
     def _fit_bounds(self):
         tab = self._get_current_tab()
