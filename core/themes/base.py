@@ -199,25 +199,28 @@ QStatusBar {{
     background-color: {hdr_bg};
     color: {text};
     border-top: 1px solid {border};
-    font-size: 11px;
-    min-height: 20px;
-    max-height: 22px;
+    font-size: 10px;
+    min-height: 18px;
+    max-height: 20px;
 }}
 
 QStatusBar::item {{
     border: none;
+    margin: 0;
+    padding: 0;
 }}
 
 QStatusBar QLabel {{
     background-color: transparent;
     color: {text};
     padding: 0 4px;
+    font-size: 10px;
 }}
 
 QStatusBar QPushButton {{
-    padding: 0px 6px;
-    font-size: 11px;
-    height: 18px;
+    padding: 0px 5px;
+    font-size: 10px;
+    height: 16px;
     border-radius: 2px;
 }}
 
