@@ -12,7 +12,14 @@ QMainWindow {
 
 QSplitter::handle {
     background-color: #555555;
+}
+
+QSplitter::handle:horizontal {
     width: 2px;
+}
+
+QSplitter::handle:vertical {
+    height: 3px;
 }
 
 QSplitter::handle:hover {
@@ -140,13 +147,29 @@ QStatusBar {
     background-color: #323232;
     color: #e0e0e0;
     border-top: 1px solid #555555;
-    font-size: 11px;
+    font-size: 10px;
+    min-height: 18px;
+    max-height: 20px;
+}
+
+QStatusBar::item {
+    border: none;
+    margin: 0;
+    padding: 0;
 }
 
 QStatusBar QLabel {
     background-color: transparent;
     color: #e0e0e0;
     padding: 0 4px;
+    font-size: 10px;
+}
+
+QStatusBar QPushButton {
+    padding: 0px 5px;
+    font-size: 10px;
+    height: 16px;
+    border-radius: 2px;
 }
 
 QLineEdit {
