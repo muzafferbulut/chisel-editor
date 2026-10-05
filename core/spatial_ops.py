@@ -152,6 +152,96 @@ class SpatialOps:
         return new_gdf, orig_vertices, simplified_vertices
 
     @staticmethod
+    def ensure_wgs84(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """
+        Ensures GeoDataFrame is in EPSG:4326 for Leaflet map display.
+        """
+        if gdf is None or gdf.empty or 'geometry' not in gdf:
+            return gdf
+        if gdf.crs is None:
+            gdf = gdf.copy()
+            gdf.set_crs("EPSG:4326", inplace=True)
+            return gdf
+        try:
+            crs_obj = CRS.from_user_input(gdf.crs)
+            if not crs_obj.equals(CRS.from_epsg(4326)):
+                return gdf.to_crs("EPSG:4326")
+        except Exception:
+            pass
+        return gdf
+
+    @staticmethod
+    def should_simplify_for_lod(gdf: gpd.GeoDataFrame, raw_geojson_len: int = 0) -> bool:
+        """
+        Determines whether the spatial dataset is heavy enough to benefit from
+        dynamic Level-of-Detail (LOD) simplification at zoom levels <= 10.
+        Criteria:
+        - Contains polygon or linestring geometries (points are handled via clustering)
+        - High total vertex count (> 2,500) OR large GeoJSON string (> 400 KB) OR > 500 complex features.
+        """
+        if gdf is None or gdf.empty or 'geometry' not in gdf:
+            return False
+
+        try:
+            geom_types = set(gdf.geom_type.dropna().unique())
+        except Exception:
+            return False
+
+        has_complex = any(t in ('Polygon', 'MultiPolygon', 'LineString', 'MultiLineString') for t in geom_types)
+        if not has_complex:
+            return False
+
+        try:
+            vertex_count = SpatialOps.count_vertices(gdf)
+            if vertex_count > 2500:
+                return True
+        except Exception:
+            pass
+
+        if raw_geojson_len > 400_000:
+            return True
+
+        if len(gdf) > 500 and has_complex:
+            return True
+
+        return False
+
+    @staticmethod
+    def create_low_zoom_gdf(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """
+        Generates a simplified version of GeoDataFrame tailored for zoom levels <= 10.
+        Preserves all attributes and 1-to-1 feature row indices identically.
+        Uses adaptive Douglas-Peucker tolerance based on spatial extent.
+        """
+        if gdf is None or gdf.empty or 'geometry' not in gdf:
+            return None
+
+        wgs84_gdf = SpatialOps.ensure_wgs84(gdf)
+        try:
+            bounds = wgs84_gdf.total_bounds
+            span = max(bounds[2] - bounds[0], bounds[3] - bounds[1])
+        except Exception:
+            span = 1.0
+
+        if span < 0.05:
+            tol = max(0.0002, span / 250.0)
+        else:
+            tol = min(0.003, max(0.001, span / 300.0))
+
+        def _safe_simplify(geom):
+            if geom is None or geom.is_empty:
+                return geom
+            try:
+                s = geom.simplify(tol, preserve_topology=True)
+                return s if (s is not None and not s.is_empty) else geom
+            except Exception:
+                return geom
+
+        simplified_gdf = wgs84_gdf.copy()
+        simplified_gdf['geometry'] = simplified_gdf.geometry.apply(_safe_simplify)
+        return simplified_gdf
+
+    @staticmethod
     def buffer_geometries(gdf: gpd.GeoDataFrame, distance: float, unit: str = "meters") -> gpd.GeoDataFrame:
         """
         Buffers geometries. If CRS is geographic (degrees/EPSG:4326) and unit is 'meters',

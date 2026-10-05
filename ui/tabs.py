@@ -94,11 +94,24 @@ class EditorTab(QWidget):
         if gdf is not None and not gdf.empty:
             self.table_panel.load_data(gdf)
 
-        # 2. Render Map via Leaflet
-        if raw_geojson:
-            self.map_panel.render_content(raw_geojson)
+        # 2. Compute Level-of-Detail (LOD) simplified GeoJSON for Zoom <= 10 if dataset is heavy
+        simplified_geojson = None
+        if gdf is not None and not gdf.empty:
+            raw_len = len(raw_geojson) if raw_geojson else 0
+            if SpatialOps.should_simplify_for_lod(gdf, raw_len):
+                try:
+                    simplified_gdf = SpatialOps.create_low_zoom_gdf(gdf)
+                    if simplified_gdf is not None:
+                        simplified_geojson = SpatialOps.to_geojson_str(simplified_gdf)
+                except Exception as e:
+                    print(f"LOD simplification note: {e}")
+                    simplified_geojson = None
 
-        # 3. Monaco Editor: Avoid freezing WebEngine by buffering large text
+        # 3. Render Map via Leaflet (LOD: Simplified for Z<=10, Full Detail for Z>10)
+        if raw_geojson:
+            self.map_panel.render_content(raw_geojson, simplified_geojson)
+
+        # 4. Monaco Editor: Avoid freezing WebEngine by buffering large text
         if raw_geojson:
             if len(raw_geojson) < 500_000:
                 self.text_editor.setPlainText(raw_geojson)
@@ -125,7 +138,18 @@ class EditorTab(QWidget):
         self._is_loading = True
         self.text_editor.setPlainText(geojson_str)
         self.table_panel.load_data(gdf)
-        self.map_panel.render_content(geojson_str)
+
+        simplified_geojson = None
+        if gdf is not None and not gdf.empty:
+            if SpatialOps.should_simplify_for_lod(gdf, len(geojson_str)):
+                try:
+                    simplified_gdf = SpatialOps.create_low_zoom_gdf(gdf)
+                    if simplified_gdf is not None:
+                        simplified_geojson = SpatialOps.to_geojson_str(simplified_gdf)
+                except Exception:
+                    simplified_geojson = None
+
+        self.map_panel.render_content(geojson_str, simplified_geojson)
         self._is_loading = False
         self.is_dirty = True
         self.state_changed.emit()
@@ -327,13 +351,18 @@ class EditorTab(QWidget):
         content = self.text_editor.toPlainText()
         if self.is_spatial:
             if SpatialOps.is_valid_geojson_content(content):
-                self.map_panel.render_content(content)
+                simplified_geojson = None
                 try:
                     gdf = SpatialOps.parse_geojson_str(content)
                     self._current_gdf = gdf
                     self.table_panel.load_data(gdf)
+                    if SpatialOps.should_simplify_for_lod(gdf, len(content)):
+                        simplified_gdf = SpatialOps.create_low_zoom_gdf(gdf)
+                        if simplified_gdf is not None:
+                            simplified_geojson = SpatialOps.to_geojson_str(simplified_gdf)
                 except Exception:
                     pass
+                self.map_panel.render_content(content, simplified_geojson)
         elif self.file_type == "Markdown" and self.right_stack.isVisible():
             self.markdown_panel.render_content(content)
 

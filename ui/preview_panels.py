@@ -338,6 +338,49 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     font-weight: bold;
                     border: 1px solid #00a2ff;
                 }}
+                .pulse-ring {{
+                    pointer-events: none !important;
+                    animation: leaflet-pulse 1.4s infinite cubic-bezier(0.25, 0.46, 0.45, 0.94);
+                    transform-origin: center;
+                    transform-box: fill-box;
+                }}
+                @keyframes leaflet-pulse {{
+                    0% {{
+                        stroke-width: 2px;
+                        stroke-opacity: 1;
+                        fill-opacity: 0.4;
+                    }}
+                    70% {{
+                        stroke-width: 14px;
+                        stroke-opacity: 0.15;
+                        fill-opacity: 0.05;
+                    }}
+                    100% {{
+                        stroke-width: 18px;
+                        stroke-opacity: 0;
+                        fill-opacity: 0;
+                    }}
+                }}
+                .lod-badge {{
+                    display: inline-block;
+                    margin-left: 6px;
+                    padding: 2px 7px;
+                    border-radius: 10px;
+                    font-size: 10px;
+                    font-weight: 600;
+                    letter-spacing: 0.2px;
+                    vertical-align: middle;
+                }}
+                .lod-badge.lod-simplified {{
+                    background: rgba(234, 179, 8, 0.22);
+                    color: #facc15;
+                    border: 1px solid rgba(234, 179, 8, 0.55);
+                }}
+                .lod-badge.lod-full {{
+                    background: rgba(34, 197, 94, 0.22);
+                    color: #4ade80;
+                    border: 1px solid rgba(34, 197, 94, 0.55);
+                }}
             </style>
         </head>
         <body>
@@ -453,6 +496,59 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 var currentOpacity = 0.85;
                 var pyBridge = null;
                 var wmsLayers = {{}};
+                var rawFullData = null;
+                var rawSimplifiedData = null;
+                var isLodActive = false;
+                var currentLodMode = 'full';
+                var currentHighlightedLayer = null;
+                var highlightRing = null;
+
+                function resetPreviousHighlight() {{
+                    if (highlightRing) {{
+                        try {{ map.removeLayer(highlightRing); }} catch(e) {{}}
+                        highlightRing = null;
+                    }}
+                    if (currentHighlightedLayer) {{
+                        function resetOne(l) {{
+                            try {{
+                                if (l._isPoint && l.setRadius) {{
+                                    l.setRadius(l._defaultRadius || 6);
+                                }}
+                                if (l.setStyle && l._defaultStyle) {{
+                                    l.setStyle(l._defaultStyle);
+                                }}
+                            }} catch(e) {{}}
+                        }}
+                        if (typeof currentHighlightedLayer.eachLayer === 'function') {{
+                            currentHighlightedLayer.eachLayer(resetOne);
+                        }} else {{
+                            resetOne(currentHighlightedLayer);
+                        }}
+                        currentHighlightedLayer = null;
+                    }}
+                }}
+
+                function createPopupHtml(feature, idx) {{
+                    var props = feature.properties || {{}};
+                    var gType = feature.geometry ? feature.geometry.type : 'Unknown';
+                    var html = '<div class="prop-title"><span>Özellik #' + idx + '</span><span>[' + gType + ']</span></div>';
+                    html += '<table class="prop-table">';
+                    var keys = Object.keys(props);
+                    if (keys.length === 0) {{
+                        html += '<tr><td colspan="2"><i>Öznitelik yok</i></td></tr>';
+                    }} else {{
+                        keys.forEach(function(k) {{
+                            var val = props[k];
+                            if (val === null || val === undefined) val = '<i>null</i>';
+                            html += '<tr><th>' + k + '</th><td>' + val + '</td></tr>';
+                        }});
+                    }}
+                    html += '</table>';
+                    html += '<div style="margin-top: 8px; text-align: right; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 6px;">';
+                    html += '<button class="hud-popup-del-btn" onclick="deleteFeature(' + idx + ')">🗑️ Bu Geometriyi Sil</button>';
+                    html += '</div>';
+                    return html;
+                }}
 
                 function setupBridge() {{
                     if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {{
@@ -628,6 +724,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 // --- Geometry Deletion ---
                 function deleteFeature(idx) {{
                     if (map.closePopup) map.closePopup();
+                    resetPreviousHighlight();
                     selectedFeatureIndex = -1;
                     updateDeleteButtonState();
                     if (pyBridge && pyBridge.onFeatureDeleted) {{
@@ -805,8 +902,33 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 var lastGeojsonData = null;
 
-                function updateMap(geojsonData) {{
-                    lastGeojsonData = geojsonData;
+                function updateMap(geojsonData, simplifiedGeojsonData) {{
+                    rawFullData = geojsonData;
+                    rawSimplifiedData = simplifiedGeojsonData;
+                    isLodActive = (simplifiedGeojsonData !== null && simplifiedGeojsonData !== undefined);
+
+                    resetPreviousHighlight();
+                    selectedFeatureIndex = -1;
+                    updateDeleteButtonState();
+
+                    if (!rawFullData) {{
+                        if (geojsonLayer) {{ map.removeLayer(geojsonLayer); geojsonLayer = null; }}
+                        if (clusterGroup) {{ map.removeLayer(clusterGroup); clusterGroup = null; }}
+                        layerIndexMap = {{}};
+                        document.getElementById('statsPill').textContent = 'Mekansal Katman';
+                        return;
+                    }}
+
+                    var z = map.getZoom();
+                    currentLodMode = (isLodActive && z <= 10) ? 'simplified' : 'full';
+                    var dataToRender = (currentLodMode === 'simplified') ? rawSimplifiedData : rawFullData;
+
+                    renderGeoJsonLayer(dataToRender, true);
+                    updateStatsBadge();
+                }}
+
+                function renderGeoJsonLayer(data, autoFit) {{
+                    resetPreviousHighlight();
                     if (geojsonLayer) {{
                         map.removeLayer(geojsonLayer);
                         geojsonLayer = null;
@@ -817,19 +939,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }}
                     layerIndexMap = {{}};
 
-                    if (!geojsonData) {{
-                        document.getElementById('statsPill').textContent = 'Mekansal Katman';
-                        return;
-                    }}
-
-                    var featureCount = 0;
-                    if (geojsonData.type === 'FeatureCollection' && geojsonData.features) {{
-                        featureCount = geojsonData.features.length;
-                    }} else if (geojsonData.type === 'Feature') {{
-                        featureCount = 1;
-                    }}
-
-                    document.getElementById('statsPill').textContent = '📍 ' + featureCount.toLocaleString() + ' Özellik';
+                    if (!data) return;
 
                     var geomColors = {{
                         Point: '#00a2ff',
@@ -848,67 +958,77 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         }});
                     }}
 
+                    var featureCount = 0;
+                    if (data.type === 'FeatureCollection' && data.features) {{
+                        featureCount = data.features.length;
+                    }} else if (data.type === 'Feature') {{
+                        featureCount = 1;
+                    }}
+
                     var featureIdx = 0;
-                    geojsonLayer = L.geoJSON(geojsonData, {{
+                    geojsonLayer = L.geoJSON(data, {{
                         pointToLayer: function(feature, latlng) {{
-                            var marker = L.circleMarker(latlng, {{
+                            var defaultStyle = {{
                                 radius: 6,
                                 fillColor: '#00a2ff',
                                 color: '#ffffff',
                                 weight: 1.5,
                                 opacity: currentOpacity,
                                 fillOpacity: currentOpacity * 0.9
-                            }});
+                            }};
+                            var marker = L.circleMarker(latlng, defaultStyle);
+                            marker._isPoint = true;
+                            marker._defaultRadius = 6;
+                            marker._defaultStyle = defaultStyle;
                             if (clusterGroup) clusterGroup.addLayer(marker);
                             return marker;
                         }},
                         style: function(feature) {{
                             var gtype = feature.geometry ? feature.geometry.type : 'Polygon';
                             var color = geomColors[gtype] || '#3388ff';
-                            return {{
+                            var defaultStyle = {{
                                 color: color,
                                 weight: 2,
                                 opacity: currentOpacity,
                                 fillColor: color,
                                 fillOpacity: currentOpacity * 0.35
                             }};
+                            return defaultStyle;
                         }},
                         onEachFeature: function(feature, layer) {{
                             var currentIdx = featureIdx++;
                             layerIndexMap[currentIdx] = layer;
+
+                            function storeStyle(l) {{
+                                if (!l._defaultStyle && l.options) {{
+                                    l._defaultStyle = {{
+                                        color: l.options.color,
+                                        weight: l.options.weight,
+                                        opacity: l.options.opacity,
+                                        fillColor: l.options.fillColor,
+                                        fillOpacity: l.options.fillOpacity
+                                    }};
+                                }}
+                            }}
+                            if (typeof layer.eachLayer === 'function') {{
+                                layer.eachLayer(storeStyle);
+                            }} else {{
+                                storeStyle(layer);
+                            }}
 
                             var title = (feature.properties && (feature.properties.city || feature.properties.name || feature.properties.NAME || feature.properties.title || feature.properties.id)) || ('Özellik #' + currentIdx);
                             if (featureCount <= 1000) {{
                                 layer.bindTooltip(String(title), {{ sticky: true }});
                             }}
 
+                            var popupHtml = createPopupHtml(feature, currentIdx);
+                            layer.bindPopup(popupHtml, {{ maxWidth: 350, maxHeight: 300 }});
+
                             layer.on('click', function(e) {{
                                 if (drawMode || measureActive) {{
-                                    return; // Allow map click handler to draw or measure
+                                    return;
                                 }}
-                                selectedFeatureIndex = currentIdx;
-                                updateDeleteButtonState();
-
-                                var props = feature.properties || {{}};
-                                var gType = feature.geometry ? feature.geometry.type : 'Unknown';
-                                var html = '<div class="prop-title"><span>Özellik #' + currentIdx + '</span><span>[' + gType + ']</span></div>';
-                                html += '<table class="prop-table">';
-                                var keys = Object.keys(props);
-                                if (keys.length === 0) {{
-                                    html += '<tr><td colspan="2"><i>Öznitelik yok</i></td></tr>';
-                                }} else {{
-                                    keys.forEach(function(k) {{
-                                        var val = props[k];
-                                        if (val === null || val === undefined) val = '<i>null</i>';
-                                        html += '<tr><th>' + k + '</th><td>' + val + '</td></tr>';
-                                    }});
-                                }}
-                                html += '</table>';
-                                html += '<div style="margin-top: 8px; text-align: right; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 6px;">';
-                                html += '<button class="hud-popup-del-btn" onclick="deleteFeature(' + currentIdx + ')">🗑️ Bu Geometriyi Sil</button>';
-                                html += '</div>';
-                                layer.bindPopup(html, {{ maxWidth: 350, maxHeight: 300 }}).openPopup();
-
+                                highlightFeature(currentIdx, false);
                                 if (pyBridge) {{
                                     pyBridge.onFeatureClicked(currentIdx);
                                 }}
@@ -922,19 +1042,127 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         map.addLayer(geojsonLayer);
                     }}
 
-                    fitLayerBounds();
+                    if (autoFit) {{
+                        fitLayerBounds();
+                    }}
                 }}
 
-                function highlightFeature(idx) {{
+                // --- Zoom Listener for Dynamic LOD (Zoom <= 10: Simplified, Zoom > 10: Full) ---
+                map.on('zoomend', function() {{
+                    if (!isLodActive) return;
+                    var z = map.getZoom();
+                    var neededMode = (z <= 10) ? 'simplified' : 'full';
+                    if (neededMode !== currentLodMode) {{
+                        currentLodMode = neededMode;
+                        var targetData = (currentLodMode === 'simplified') ? rawSimplifiedData : rawFullData;
+                        var prevSelected = selectedFeatureIndex;
+                        renderGeoJsonLayer(targetData, false);
+                        if (prevSelected >= 0) {{
+                            highlightFeature(prevSelected, false);
+                        }}
+                    }}
+                    updateStatsBadge();
+                }});
+
+                function updateStatsBadge() {{
+                    var count = 0;
+                    if (rawFullData && rawFullData.features) {{
+                        count = rawFullData.features.length;
+                    }} else if (rawFullData) {{
+                        count = 1;
+                    }}
+
+                    var badgeHtml = '';
+                    if (isLodActive) {{
+                        if (currentLodMode === 'simplified') {{
+                            badgeHtml = ' <span class="lod-badge lod-simplified" title="Zoom ≤ 10: Yüksek sistem performansı için sadeleştirilmiş görünüm">⚡ Sadeleştirilmiş (Z≤10)</span>';
+                        }} else {{
+                            badgeHtml = ' <span class="lod-badge lod-full" title="Zoom > 10: Orijinal tam detaylı görünüm">🔍 Orijinal Detay (Z>10)</span>';
+                        }}
+                    }}
+
+                    var statsEl = document.getElementById('statsPill');
+                    if (statsEl) {{
+                        statsEl.innerHTML = '📍 ' + count.toLocaleString() + ' Özellik' + badgeHtml;
+                    }}
+                }}
+
+                function highlightFeature(idx, doFlyTo) {{
                     selectedFeatureIndex = idx;
                     updateDeleteButtonState();
+
+                    resetPreviousHighlight();
+
                     var layer = layerIndexMap[idx];
-                    if (layer) {{
-                        if (layer.getBounds && layer.getBounds().isValid()) {{
-                            map.fitBounds(layer.getBounds(), {{ maxZoom: 16, padding: [40, 40] }});
-                        }} else if (layer.getLatLng) {{
-                            map.setView(layer.getLatLng(), Math.max(map.getZoom(), 13));
+                    if (!layer) return;
+
+                    currentHighlightedLayer = layer;
+
+                    function applyHighlight(l) {{
+                        if (l.setStyle) {{
+                            if (l._isPoint && l.setRadius) {{
+                                l.setRadius(10);
+                                l.setStyle({{
+                                    fillColor: '#ffea00',
+                                    color: '#ffffff',
+                                    weight: 3,
+                                    opacity: 1.0,
+                                    fillOpacity: 1.0
+                                }});
+                            }} else {{
+                                l.setStyle({{
+                                    color: '#ffea00',
+                                    weight: 5,
+                                    opacity: 1.0,
+                                    fillColor: '#ffea00',
+                                    fillOpacity: 0.55
+                                }});
+                            }}
                         }}
+                        if (l.bringToFront) {{
+                            try {{ l.bringToFront(); }} catch(e) {{}}
+                        }}
+                    }}
+
+                    if (typeof layer.eachLayer === 'function') {{
+                        layer.eachLayer(applyHighlight);
+                    }} else {{
+                        applyHighlight(layer);
+                    }}
+
+                    var targetLatLng = null;
+                    if (layer.getLatLng) {{
+                        targetLatLng = layer.getLatLng();
+                    }} else if (layer.getBounds && layer.getBounds().isValid()) {{
+                        targetLatLng = layer.getBounds().getCenter();
+                    }}
+
+                    if (targetLatLng) {{
+                        highlightRing = L.circleMarker(targetLatLng, {{
+                            radius: 18,
+                            color: '#ffea00',
+                            weight: 3,
+                            fillColor: '#ffea00',
+                            fillOpacity: 0.25,
+                            interactive: false,
+                            className: 'pulse-ring'
+                        }}).addTo(map);
+                    }}
+
+                    if (doFlyTo !== false) {{
+                        if (clusterGroup && typeof clusterGroup.hasLayer === 'function' && clusterGroup.hasLayer(layer)) {{
+                            clusterGroup.zoomToShowLayer(layer, function() {{
+                                if (layer.openPopup) layer.openPopup();
+                            }});
+                        }} else {{
+                            if (layer.getBounds && layer.getBounds().isValid()) {{
+                                map.flyToBounds(layer.getBounds(), {{ maxZoom: 16, padding: [60, 60], duration: 0.6 }});
+                            }} else if (layer.getLatLng) {{
+                                map.flyTo(layer.getLatLng(), Math.max(map.getZoom(), 14), {{ duration: 0.6 }});
+                            }}
+                            if (layer.openPopup) layer.openPopup();
+                        }}
+                    }} else {{
                         if (layer.openPopup) layer.openPopup();
                     }}
                 }}
@@ -954,27 +1182,33 @@ class MapPreviewPanel(AbstractPreviewPanel):
         if ok:
             self._is_loaded = True
             if self._pending_content:
-                self.render_content(self._pending_content)
+                self.render_content(self._pending_content, getattr(self, '_pending_simplified', None))
                 self._pending_content = None
+                self._pending_simplified = None
 
-    def render_content(self, content: str):
+    def render_content(self, content: str, simplified_content: str = None):
         if not self._is_loaded:
             self._pending_content = content
+            self._pending_simplified = simplified_content
             return
 
         if not content or not content.strip():
-            self.web_view.page().runJavaScript("updateMap(null);")
+            self.web_view.page().runJavaScript("updateMap(null, null);")
             return
 
         try:
-            js_code = f"updateMap({content});"
+            simp_js = simplified_content if (simplified_content and simplified_content.strip()) else "null"
+            js_code = f"updateMap({content}, {simp_js});"
             self.web_view.page().runJavaScript(js_code)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error in render_content: {e}")
 
     def highlight_feature(self, index: int):
         if self._is_loaded:
-            self.web_view.page().runJavaScript(f"highlightFeature({index});")
+            if index is not None and index >= 0:
+                self.web_view.page().runJavaScript(f"highlightFeature({index}, true);")
+            else:
+                self.web_view.page().runJavaScript("resetPreviousHighlight();")
 
     def fit_bounds(self):
         if self._is_loaded:

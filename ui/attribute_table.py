@@ -55,6 +55,11 @@ class GeoDataFrameTableModel(QAbstractTableModel):
         col_name = self._columns[col_idx]
         val = self._gdf[col_name].iat[row]
 
+        if role == Qt.ItemDataRole.EditRole:
+            if pd.isna(val):
+                return None
+            return val
+
         if role == Qt.ItemDataRole.DisplayRole:
             if col_name == getattr(self._gdf, 'geometry', None).name if hasattr(self._gdf, 'geometry') else None:
                 if val is not None and hasattr(val, 'geom_type'):
@@ -84,17 +89,26 @@ class GeoDataFrameTableModel(QAbstractTableModel):
             return str(section + 1)
         return None
 
-    def sort(self, column, order=Qt.SortOrder.AscendingOrder):
-        if self._gdf is None or self._gdf.empty or column >= len(self._columns):
-            return
-        self.layoutAboutToBeChanged.emit()
-        col_name = self._columns[column]
-        ascending = (order == Qt.SortOrder.AscendingOrder)
+
+class GeoSortFilterProxyModel(QSortFilterProxyModel):
+    """
+    Enhanced proxy model supporting natural numeric sorting and filtering.
+    Preserves original source row indices when mapped back to source.
+    """
+    def lessThan(self, left, right):
+        left_val = self.sourceModel().data(left, Qt.ItemDataRole.EditRole)
+        right_val = self.sourceModel().data(right, Qt.ItemDataRole.EditRole)
+        if left_val is None and right_val is not None:
+            return True
+        if left_val is not None and right_val is None:
+            return False
+        if left_val is None and right_val is None:
+            return False
         try:
-            self._gdf = self._gdf.sort_values(by=col_name, ascending=ascending).reset_index(drop=True)
-        except Exception:
+            return float(left_val) < float(right_val)
+        except (ValueError, TypeError):
             pass
-        self.layoutChanged.emit()
+        return str(left_val) < str(right_val)
 
 
 class AttributeTableWidget(QWidget):
@@ -164,7 +178,7 @@ class AttributeTableWidget(QWidget):
         self.table_view.verticalHeader().setDefaultSectionSize(25)
 
         self.source_model = GeoDataFrameTableModel()
-        self.proxy_model = QSortFilterProxyModel(self)
+        self.proxy_model = GeoSortFilterProxyModel(self)
         self.proxy_model.setSourceModel(self.source_model)
         self.proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.proxy_model.setFilterKeyColumn(-1)
