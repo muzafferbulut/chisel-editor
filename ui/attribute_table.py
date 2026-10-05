@@ -18,6 +18,7 @@ class GeoDataFrameTableModel(QAbstractTableModel):
     def __init__(self, gdf: gpd.GeoDataFrame = None):
         super().__init__()
         self._gdf = gdf if gdf is not None and not gdf.empty else gpd.GeoDataFrame()
+        self._feature_indices = list(range(len(self._gdf)))
         self._columns = []
         self._update_columns()
 
@@ -34,8 +35,20 @@ class GeoDataFrameTableModel(QAbstractTableModel):
     def set_data(self, gdf: gpd.GeoDataFrame):
         self.beginResetModel()
         self._gdf = gdf if gdf is not None and not gdf.empty else gpd.GeoDataFrame()
+        self._feature_indices = list(range(len(self._gdf)))
         self._update_columns()
         self.endResetModel()
+
+    def get_feature_index(self, row: int) -> int:
+        if 0 <= row < len(self._feature_indices):
+            return self._feature_indices[row]
+        return row
+
+    def get_row_for_feature_index(self, feature_idx: int) -> int:
+        try:
+            return self._feature_indices.index(feature_idx)
+        except (ValueError, IndexError):
+            return feature_idx
 
     def rowCount(self, parent=QModelIndex()):
         return len(self._gdf) if self._gdf is not None and not self._gdf.empty else 0
@@ -66,6 +79,16 @@ class GeoDataFrameTableModel(QAbstractTableModel):
                 return f"{val:.4f}" if abs(val) < 10000 else f"{val:,.2f}"
             return str(val)
 
+        elif role in (Qt.ItemDataRole.EditRole, Qt.ItemDataRole.UserRole):
+            if pd.isna(val):
+                return None
+            if hasattr(val, 'item'):
+                try:
+                    return val.item()
+                except Exception:
+                    pass
+            return val
+
         elif role == Qt.ItemDataRole.TextAlignmentRole:
             if isinstance(val, (int, float)) and not pd.isna(val):
                 return int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -81,7 +104,8 @@ class GeoDataFrameTableModel(QAbstractTableModel):
             if section < len(self._columns):
                 return str(self._columns[section])
         elif orientation == Qt.Orientation.Vertical:
-            return str(section + 1)
+            orig_idx = self.get_feature_index(section)
+            return str(orig_idx + 1)
         return None
 
     def sort(self, column, order=Qt.SortOrder.AscendingOrder):
@@ -91,7 +115,11 @@ class GeoDataFrameTableModel(QAbstractTableModel):
         col_name = self._columns[column]
         ascending = (order == Qt.SortOrder.AscendingOrder)
         try:
-            self._gdf = self._gdf.sort_values(by=col_name, ascending=ascending).reset_index(drop=True)
+            sorted_indices = self._gdf[col_name].argsort(kind='mergesort')
+            if not ascending:
+                sorted_indices = sorted_indices[::-1]
+            self._gdf = self._gdf.iloc[sorted_indices].reset_index(drop=True)
+            self._feature_indices = [self._feature_indices[i] for i in sorted_indices]
         except Exception:
             pass
         self.layoutChanged.emit()
@@ -168,9 +196,12 @@ class AttributeTableWidget(QWidget):
         self.proxy_model.setSourceModel(self.source_model)
         self.proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.proxy_model.setFilterKeyColumn(-1)
+        self.proxy_model.setSortRole(Qt.ItemDataRole.UserRole)
 
         self.table_view.setModel(self.proxy_model)
         self.table_view.selectionModel().selectionChanged.connect(self._on_selection_changed)
+        self.table_view.clicked.connect(self._on_table_cell_clicked)
+        self.table_view.doubleClicked.connect(self._on_table_cell_clicked)
 
         layout.addWidget(self.table_view)
 
@@ -195,21 +226,47 @@ class AttributeTableWidget(QWidget):
             self.stats_label.setText(f"{total:,} özellik")
 
     def _on_selection_changed(self, selected, deselected):
+        if getattr(self, "_is_selecting_programmatically", False):
+            return
         indexes = self.table_view.selectionModel().selectedRows()
+        if not indexes:
+            indexes = self.table_view.selectionModel().selectedIndexes()
         if not indexes:
             return
         proxy_idx = indexes[0]
         source_idx = self.proxy_model.mapToSource(proxy_idx)
-        self.feature_selected.emit(source_idx.row())
+        feat_idx = self.source_model.get_feature_index(source_idx.row())
+        self.feature_selected.emit(feat_idx)
+
+    def _on_table_cell_clicked(self, proxy_idx: QModelIndex):
+        if not proxy_idx.isValid() or getattr(self, "_is_selecting_programmatically", False):
+            return
+        source_idx = self.proxy_model.mapToSource(proxy_idx)
+        feat_idx = self.source_model.get_feature_index(source_idx.row())
+        self.feature_selected.emit(feat_idx)
 
     def select_feature(self, index: int):
-        if index < 0 or index >= self.source_model.rowCount():
+        if index < 0:
+            self._is_selecting_programmatically = True
+            try:
+                self.table_view.clearSelection()
+            finally:
+                self._is_selecting_programmatically = False
             return
-        source_idx = self.source_model.index(index, 0)
-        proxy_idx = self.proxy_model.mapFromSource(source_idx)
-        if proxy_idx.isValid():
-            self.table_view.selectRow(proxy_idx.row())
-            self.table_view.scrollTo(proxy_idx, QTableView.ScrollHint.PositionAtCenter)
+
+        source_row = self.source_model.get_row_for_feature_index(index)
+        if source_row < 0 or source_row >= self.source_model.rowCount():
+            return
+
+        self._is_selecting_programmatically = True
+        try:
+            source_idx = self.source_model.index(source_row, 0)
+            proxy_idx = self.proxy_model.mapFromSource(source_idx)
+            if proxy_idx.isValid():
+                self.table_view.selectRow(proxy_idx.row())
+                self.table_view.scrollTo(proxy_idx, QTableView.ScrollHint.PositionAtCenter)
+        finally:
+            self._is_selecting_programmatically = False
 
     def _show_column_statistics(self):
         if self._current_gdf is None or self._current_gdf.empty:
