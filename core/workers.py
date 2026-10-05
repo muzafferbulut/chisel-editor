@@ -1,7 +1,6 @@
 import io
 import os
 import requests
-import warnings
 from PyQt6.QtCore import QThread, pyqtSignal
 from handlers.factory import HandlerFactory
 from handlers.spatial import MultipleLayersError
@@ -22,11 +21,7 @@ class FileLoadWorker(QThread):
         try:
             handler = HandlerFactory.get_handler(self.file_path)
             if handler.is_spatial and hasattr(handler, 'read_gdf'):
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", category=RuntimeWarning)
-                    warnings.filterwarnings("ignore", message=".*Several features with id.*")
-                    warnings.filterwarnings("ignore", module="pyogrio.*")
-                    gdf = handler.read_gdf(self.file_path, **self.kwargs)
+                gdf = handler.read_gdf(self.file_path, **self.kwargs)
                 clean_gdf = SpatialOps.sanitize_gdf_for_json(gdf)
                 content = clean_gdf.to_json()
                 self.finished.emit(self.file_path, content, True, clean_gdf, "")
