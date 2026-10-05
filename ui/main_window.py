@@ -90,22 +90,22 @@ class MainWindow(QMainWindow):
         central_layout.addWidget(self.main_splitter)
         self.setCentralWidget(central_container)
 
-        # Modern Status Bar
+        # Modern Status Bar (Compact, VS Code style)
         self.status_bar = self.statusBar()
-
-        self.lbl_folder = QLabel(f"📁 {os.path.basename(self._current_folder) or self._current_folder}")
-        self.lbl_folder.setStyleSheet("color: #858585; padding-left: 8px;")
-        self.status_bar.addWidget(self.lbl_folder)
+        self.status_bar.setFixedHeight(22)
+        self.status_bar.setContentsMargins(4, 0, 4, 0)
 
         self.btn_status_crs = QPushButton("🌐 EPSG:4326")
-        self.btn_status_crs.setStyleSheet("padding: 1px 6px; font-size: 11px;")
+        self.btn_status_crs.setFixedHeight(18)
+        self.btn_status_crs.setStyleSheet("padding: 0px 6px; font-size: 11px;")
         self.btn_status_crs.setToolTip("Click to Set or Reproject CRS")
         self.btn_status_crs.clicked.connect(self._set_crs)
         self.btn_status_crs.hide()
         self.status_bar.addWidget(self.btn_status_crs)
 
         self.btn_status_table = QPushButton("📊 Öznitelik Tablosu (F6)")
-        self.btn_status_table.setStyleSheet("padding: 1px 8px; font-size: 11px;")
+        self.btn_status_table.setFixedHeight(18)
+        self.btn_status_table.setStyleSheet("padding: 0px 8px; font-size: 11px;")
         self.btn_status_table.clicked.connect(self._toggle_attribute_table)
         self.btn_status_table.hide()
         self.status_bar.addPermanentWidget(self.btn_status_table)
@@ -118,7 +118,8 @@ class MainWindow(QMainWindow):
         self.progress_bar = QProgressBar()
         self.progress_bar.setMaximum(0)
         self.progress_bar.setMinimum(0)
-        self.progress_bar.setFixedWidth(130)
+        self.progress_bar.setFixedWidth(110)
+        self.progress_bar.setFixedHeight(12)
         self.progress_bar.hide()
         self.status_bar.addPermanentWidget(self.progress_bar)
 
@@ -448,7 +449,6 @@ class MainWindow(QMainWindow):
         if folder:
             self._current_folder = folder
             self.side_bar.explorer_panel.set_root_path(folder)
-            self.lbl_folder.setText(f"📁 {os.path.basename(folder) or folder}")
             self.activity_bar.set_active_view("explorer")
             self.side_bar.show_view("explorer")
             self._save_session_state()

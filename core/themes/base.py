@@ -200,12 +200,25 @@ QStatusBar {{
     color: {text};
     border-top: 1px solid {border};
     font-size: 11px;
+    min-height: 20px;
+    max-height: 22px;
+}}
+
+QStatusBar::item {{
+    border: none;
 }}
 
 QStatusBar QLabel {{
     background-color: transparent;
     color: {text};
     padding: 0 4px;
+}}
+
+QStatusBar QPushButton {{
+    padding: 0px 6px;
+    font-size: 11px;
+    height: 18px;
+    border-radius: 2px;
 }}
 
 QLineEdit {{
