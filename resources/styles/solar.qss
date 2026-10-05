@@ -147,9 +147,9 @@ QStatusBar {
     background-color: #001e26;
     color: #93a1a1;
     border-top: 1px solid #586e75;
-    font-size: 10px;
-    min-height: 18px;
-    max-height: 20px;
+    font-size: 12px;
+    min-height: 22px;
+    max-height: 24px;
 }
 
 QStatusBar::item {
@@ -161,15 +161,29 @@ QStatusBar::item {
 QStatusBar QLabel {
     background-color: transparent;
     color: #93a1a1;
-    padding: 0 4px;
-    font-size: 10px;
+    padding: 0 6px;
+    font-size: 12px;
 }
 
 QStatusBar QPushButton {
-    padding: 0px 5px;
-    font-size: 10px;
-    height: 16px;
-    border-radius: 2px;
+    background-color: transparent;
+    border: 1px solid transparent;
+    padding: 0px 6px 1px 6px;
+    font-size: 12px;
+    min-height: 0px;
+    max-height: 18px;
+    height: 18px;
+    border-radius: 3px;
+    margin: 0px 2px;
+}
+
+QStatusBar QPushButton:hover {
+    background-color: rgba(181, 137, 0, 0.15);
+    border: 1px solid rgba(181, 137, 0, 0.3);
+}
+
+QStatusBar QPushButton:pressed {
+    background-color: rgba(181, 137, 0, 0.25);
 }
 
 QLineEdit {

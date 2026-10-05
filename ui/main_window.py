@@ -90,22 +90,38 @@ class MainWindow(QMainWindow):
         central_layout.addWidget(self.main_splitter)
         self.setCentralWidget(central_container)
 
-        # Modern Ultra-Compact Status Bar
+        # Modern Compact Status Bar
         self.status_bar = self.statusBar()
-        self.status_bar.setFixedHeight(20)
-        self.status_bar.setContentsMargins(4, 0, 4, 0)
+        self.status_bar.setFixedHeight(24)
+        self.status_bar.setSizeGripEnabled(False)
+        self.status_bar.setContentsMargins(6, 0, 6, 0)
+
+        self.cursor_label = QLabel("Ln 1, Col 1")
+        self.cursor_label.setStyleSheet("font-size: 12px; padding: 0 6px;")
+        self.type_label = QLabel("Plain Text")
+        self.type_label.setStyleSheet("font-size: 12px; padding: 0 6px;")
+        self.status_bar.addPermanentWidget(self.cursor_label)
+        self.status_bar.addPermanentWidget(self.type_label)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMaximum(0)
+        self.progress_bar.setMinimum(0)
+        self.progress_bar.setFixedWidth(90)
+        self.progress_bar.setFixedHeight(10)
+        self.progress_bar.hide()
+        self.status_bar.addPermanentWidget(self.progress_bar)
 
         status_btn_style = (
             "QPushButton {"
             " background-color: transparent;"
             " border: 1px solid transparent;"
-            " padding: 0px 5px 1px 5px;"
-            " font-size: 10px;"
+            " padding: 0px 6px 1px 6px;"
+            " font-size: 12px;"
             " min-height: 0px;"
-            " max-height: 16px;"
-            " height: 16px;"
-            " border-radius: 2px;"
-            " margin: 0px;"
+            " max-height: 18px;"
+            " height: 18px;"
+            " border-radius: 3px;"
+            " margin: 0px 2px;"
             "}"
             "QPushButton:hover {"
             " background-color: rgba(128, 128, 128, 0.2);"
@@ -117,36 +133,13 @@ class MainWindow(QMainWindow):
         )
 
         self.btn_status_crs = QPushButton("🌐 EPSG:4326")
-        self.btn_status_crs.setFixedHeight(16)
+        self.btn_status_crs.setFixedHeight(18)
         self.btn_status_crs.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_status_crs.setStyleSheet(status_btn_style)
         self.btn_status_crs.setToolTip("Click to Set or Reproject CRS")
         self.btn_status_crs.clicked.connect(self._set_crs)
         self.btn_status_crs.hide()
-        self.status_bar.addWidget(self.btn_status_crs)
-
-        self.btn_status_table = QPushButton("📊 Öznitelik Tablosu (F6)")
-        self.btn_status_table.setFixedHeight(16)
-        self.btn_status_table.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_status_table.setStyleSheet(status_btn_style)
-        self.btn_status_table.clicked.connect(self._toggle_attribute_table)
-        self.btn_status_table.hide()
-        self.status_bar.addPermanentWidget(self.btn_status_table)
-
-        self.cursor_label = QLabel("Ln 1, Col 1")
-        self.cursor_label.setStyleSheet("font-size: 10px; padding: 0 4px;")
-        self.type_label = QLabel("Plain Text")
-        self.type_label.setStyleSheet("font-size: 10px; padding: 0 4px;")
-        self.status_bar.addPermanentWidget(self.cursor_label)
-        self.status_bar.addPermanentWidget(self.type_label)
-
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setMaximum(0)
-        self.progress_bar.setMinimum(0)
-        self.progress_bar.setFixedWidth(90)
-        self.progress_bar.setFixedHeight(10)
-        self.progress_bar.hide()
-        self.status_bar.addPermanentWidget(self.progress_bar)
+        self.status_bar.addPermanentWidget(self.btn_status_crs)
 
         self.setAcceptDrops(True)
 
@@ -419,23 +412,13 @@ class MainWindow(QMainWindow):
             self._update_table_button_state(tab)
 
     def _update_table_button_state(self, tab: EditorTab = None):
-        if tab is None:
-            tab = self._get_current_tab()
-        if not tab or not tab.is_spatial:
-            self.btn_status_table.hide()
-            return
-        self.btn_status_table.show()
-        if tab.is_table_visible():
-            self.btn_status_table.setText("🗺️ Sadece Harita (F6)")
-        else:
-            self.btn_status_table.setText("📊 Öznitelik Tablosu (F6)")
+        pass
 
     def _on_tab_changed(self, index: int):
         tab = self.tab_widget.widget(index)
         if tab:
             self.type_label.setText(tab.file_type)
             if tab.is_spatial:
-                self._update_table_button_state(tab)
                 crs_label = str(tab._current_gdf.crs) if tab._current_gdf is not None and tab._current_gdf.crs else "EPSG:4326"
                 self.btn_status_crs.setText(f"🌐 {crs_label}")
                 self.btn_status_crs.show()
@@ -443,7 +426,6 @@ class MainWindow(QMainWindow):
                 layer_name = os.path.basename(tab.current_file) if tab.current_file else "Sample GIS Layer"
                 self.side_bar.layers_panel.set_active_vector_layer(layer_name, feat_count)
             else:
-                self.btn_status_table.hide()
                 self.btn_status_crs.hide()
                 self.side_bar.layers_panel.set_active_vector_layer("", 0)
         self._save_session_state()
