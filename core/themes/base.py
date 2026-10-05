@@ -64,7 +64,14 @@ QMainWindow {{
 
 QSplitter::handle {{
     background-color: {border};
+}}
+
+QSplitter::handle:horizontal {{
     width: 2px;
+}}
+
+QSplitter::handle:vertical {{
+    height: 3px;
 }}
 
 QSplitter::handle:hover {{

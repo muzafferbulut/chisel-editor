@@ -399,7 +399,7 @@ class MainWindow(QMainWindow):
             self.btn_status_table.hide()
             return
         self.btn_status_table.show()
-        if tab.left_stack.isVisible() and tab.left_stack.currentIndex() == 1:
+        if tab.is_table_visible():
             self.btn_status_table.setText("🗺️ Sadece Harita (F6)")
         else:
             self.btn_status_table.setText("📊 Öznitelik Tablosu (F6)")
