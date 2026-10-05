@@ -95,9 +95,31 @@ class MainWindow(QMainWindow):
         self.status_bar.setFixedHeight(20)
         self.status_bar.setContentsMargins(4, 0, 4, 0)
 
+        status_btn_style = (
+            "QPushButton {"
+            " background-color: transparent;"
+            " border: 1px solid transparent;"
+            " padding: 0px 5px 1px 5px;"
+            " font-size: 10px;"
+            " min-height: 0px;"
+            " max-height: 16px;"
+            " height: 16px;"
+            " border-radius: 2px;"
+            " margin: 0px;"
+            "}"
+            "QPushButton:hover {"
+            " background-color: rgba(128, 128, 128, 0.2);"
+            " border: 1px solid rgba(128, 128, 128, 0.35);"
+            "}"
+            "QPushButton:pressed {"
+            " background-color: rgba(128, 128, 128, 0.35);"
+            "}"
+        )
+
         self.btn_status_crs = QPushButton("🌐 EPSG:4326")
         self.btn_status_crs.setFixedHeight(16)
-        self.btn_status_crs.setStyleSheet("padding: 0px 5px; font-size: 10px; border-radius: 2px;")
+        self.btn_status_crs.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_status_crs.setStyleSheet(status_btn_style)
         self.btn_status_crs.setToolTip("Click to Set or Reproject CRS")
         self.btn_status_crs.clicked.connect(self._set_crs)
         self.btn_status_crs.hide()
@@ -105,7 +127,8 @@ class MainWindow(QMainWindow):
 
         self.btn_status_table = QPushButton("📊 Öznitelik Tablosu (F6)")
         self.btn_status_table.setFixedHeight(16)
-        self.btn_status_table.setStyleSheet("padding: 0px 6px; font-size: 10px; border-radius: 2px;")
+        self.btn_status_table.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_status_table.setStyleSheet(status_btn_style)
         self.btn_status_table.clicked.connect(self._toggle_attribute_table)
         self.btn_status_table.hide()
         self.status_bar.addPermanentWidget(self.btn_status_table)
