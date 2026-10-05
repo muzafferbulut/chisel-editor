@@ -32,14 +32,6 @@ class ThemeManager:
     def apply_theme(cls, app: QApplication, theme_name: str = "light"):
         cls._current_theme = theme_name
         
-        try:
-            from core.themes import THEMES
-            if theme_name in THEMES:
-                app.setStyleSheet(THEMES[theme_name].generate_qss())
-                return
-        except Exception:
-            pass
-        
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         qss_path = os.path.join(base_dir, "resources", "styles", f"{theme_name}.qss")
         
