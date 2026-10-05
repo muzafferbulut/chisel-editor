@@ -63,6 +63,8 @@ class EditorTab(QWidget):
         self.map_panel.feature_clicked.connect(self.table_panel.select_feature)
         self.map_panel.table_toggle_requested.connect(self.toggle_table)
         self.table_panel.data_modified.connect(self._on_table_data_modified)
+        self.map_panel.feature_deleted.connect(self._on_feature_deleted)
+        self.map_panel.feature_added.connect(self._on_feature_added)
 
         # Auto-refresh timer for code edits
         self.preview_timer = QTimer()
@@ -123,6 +125,61 @@ class EditorTab(QWidget):
 
     def _on_table_data_modified(self, new_gdf):
         self.update_spatial_gdf(new_gdf)
+
+    def _on_feature_deleted(self, index: int):
+        if self._current_gdf is None or self._current_gdf.empty:
+            return
+        if index < 0 or index >= len(self._current_gdf):
+            return
+        try:
+            new_gdf = self._current_gdf.drop(self._current_gdf.index[index]).reset_index(drop=True)
+            self.update_spatial_gdf(new_gdf)
+            from ui.toast import ToastNotification
+            ToastNotification.show_toast(self.window(), f"🗑️ Geometri silindi. (Kalan: {len(new_gdf)})", "info")
+        except Exception as e:
+            print(f"Error deleting feature: {e}")
+
+    def _on_feature_added(self, feature_json_str: str):
+        try:
+            import json
+            import pandas as pd
+            from shapely.geometry import shape
+            from ui.toast import ToastNotification
+
+            feat_data = json.loads(feature_json_str)
+            geom_data = feat_data.get("geometry", feat_data)
+            shapely_geom = shape(geom_data)
+
+            if not shapely_geom.is_valid:
+                from shapely.validation import make_valid
+                shapely_geom = make_valid(shapely_geom)
+
+            if self._current_gdf is None or self._current_gdf.empty:
+                new_gdf = gpd.GeoDataFrame([{"geometry": shapely_geom}], crs="EPSG:4326")
+            else:
+                target_crs = self._current_gdf.crs or "EPSG:4326"
+                new_row = {col: None for col in self._current_gdf.columns if col != "geometry"}
+                new_row["geometry"] = shapely_geom
+
+                for id_name in ["id", "ID", "fid", "FID", "gid", "objectid"]:
+                    if id_name in new_row:
+                        new_row[id_name] = len(self._current_gdf) + 1
+
+                row_gdf = gpd.GeoDataFrame([new_row], crs="EPSG:4326")
+                if target_crs != "EPSG:4326" and target_crs is not None:
+                    try:
+                        row_gdf = row_gdf.to_crs(target_crs)
+                    except Exception:
+                        pass
+                new_gdf = pd.concat([self._current_gdf, row_gdf], ignore_index=True)
+
+            self.update_spatial_gdf(new_gdf)
+            geom_name = "Nokta" if shapely_geom.geom_type == "Point" else ("Çokgen" if "Polygon" in shapely_geom.geom_type else shapely_geom.geom_type)
+            ToastNotification.show_toast(self.window(), f"➕ Yeni {geom_name} eklendi! (Toplam: {len(new_gdf)})", "success")
+        except Exception as e:
+            print(f"Error adding feature: {e}")
+            from ui.toast import ToastNotification
+            ToastNotification.show_toast(self.window(), f"Geometri ekleme hatası: {e}", "error")
 
     def _on_quick_fit(self):
         if self.map_panel:

@@ -9,11 +9,21 @@ from core.theme import ThemeManager
 
 class MapBridge(QObject):
     featureSelected = pyqtSignal(int)
+    featureDeleted = pyqtSignal(int)
+    featureAdded = pyqtSignal(str)
     tableToggleRequested = pyqtSignal()
 
     @pyqtSlot(int)
     def onFeatureClicked(self, index):
         self.featureSelected.emit(index)
+
+    @pyqtSlot(int)
+    def onFeatureDeleted(self, index):
+        self.featureDeleted.emit(index)
+
+    @pyqtSlot(str)
+    def onFeatureAdded(self, featureJson):
+        self.featureAdded.emit(featureJson)
 
     @pyqtSlot()
     def toggleTable(self):
@@ -35,6 +45,8 @@ class AbstractPreviewPanel(QWidget):
 
 class MapPreviewPanel(AbstractPreviewPanel):
     feature_clicked = pyqtSignal(int)
+    feature_deleted = pyqtSignal(int)
+    feature_added = pyqtSignal(str)
     table_toggle_requested = pyqtSignal()
 
     def __init__(self, parent=None):
@@ -44,6 +56,8 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
         self.bridge = MapBridge()
         self.bridge.featureSelected.connect(self.feature_clicked.emit)
+        self.bridge.featureDeleted.connect(self.feature_deleted.emit)
+        self.bridge.featureAdded.connect(self.feature_added.emit)
         self.bridge.tableToggleRequested.connect(self.table_toggle_requested.emit)
 
         self.channel = QWebChannel()
@@ -91,40 +105,187 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     display: flex;
                     gap: 12px;
                 }}
-                .hud-toolbar {{
-                    top: 12px;
-                    right: 12px;
+                .hud-toolbar-v {{
+                    position: absolute;
+                    top: 14px;
+                    right: 14px;
                     display: flex;
-                    gap: 5px;
+                    flex-direction: column;
                     align-items: center;
-                    padding: 4px 8px;
+                    gap: 5px;
+                    background: rgba(24, 28, 34, 0.92);
+                    backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255, 255, 255, 0.14);
+                    border-radius: 8px;
+                    padding: 6px 5px;
+                    z-index: 1000;
+                    box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+                    user-select: none;
                 }}
-                .hud-stats {{
-                    top: 12px;
-                    left: 54px;
+                .hud-vbtn {{
+                    position: relative;
+                    width: 30px;
+                    height: 30px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: rgba(255, 255, 255, 0.08);
+                    border: 1px solid rgba(255, 255, 255, 0.14);
+                    color: #e0e0e0;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    font-size: 13px;
+                    transition: all 0.15s ease;
+                    padding: 0;
+                    margin: 0;
+                    box-sizing: border-box;
+                }}
+                .hud-vbtn:hover {{
+                    background: #0078d4;
+                    border-color: #4cc2ff;
+                    color: #ffffff;
+                }}
+                .hud-vbtn.active {{
+                    background: #0078d4;
+                    border-color: #4cc2ff;
+                    color: #ffffff;
+                    font-weight: bold;
+                }}
+                .hud-vbtn-del:hover {{
+                    background: #d32f2f !important;
+                    border-color: #f44336 !important;
+                    color: #ffffff !important;
+                }}
+                .hud-vbtn-del.has-selection {{
+                    background: rgba(231, 76, 60, 0.3);
+                    border-color: #e74c3c;
+                    color: #ff6b6b;
+                }}
+                .hud-vdivider {{
+                    width: 20px;
+                    height: 1px;
+                    background: rgba(255, 255, 255, 0.15);
+                    margin: 2px 0;
+                }}
+                .hud-vbtn[data-tip]::after {{
+                    content: attr(data-tip);
+                    position: absolute;
+                    right: calc(100% + 9px);
+                    top: 50%;
+                    transform: translateY(-50%);
+                    background: rgba(15, 23, 42, 0.95);
+                    color: #ffffff;
+                    font-size: 11px;
                     font-weight: 500;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    border: 1px solid rgba(255, 255, 255, 0.18);
+                    white-space: nowrap;
+                    pointer-events: none;
+                    opacity: 0;
+                    visibility: hidden;
+                    transition: opacity 0.15s ease, transform 0.15s ease;
+                    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+                    z-index: 2000;
                 }}
-                .hud-btn {{
-                    background: rgba(255, 255, 255, 0.12);
-                    border: 1px solid rgba(255, 255, 255, 0.2);
-                    color: #fff;
+                .hud-vbtn:hover[data-tip]::after {{
+                    opacity: 1;
+                    visibility: visible;
+                    transform: translateY(-50%) translateX(-2px);
+                }}
+                .hud-flyout {{
+                    position: absolute;
+                    right: 38px;
+                    top: 0;
+                    display: none;
+                    background: rgba(24, 28, 34, 0.95);
+                    backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255, 255, 255, 0.18);
+                    border-radius: 6px;
+                    padding: 4px;
+                    gap: 4px;
+                    box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+                    z-index: 1002;
+                    white-space: nowrap;
+                }}
+                .hud-flyout.open {{
+                    display: flex;
+                }}
+                .hud-flyout-btn {{
+                    background: rgba(255, 255, 255, 0.1);
+                    border: 1px solid rgba(255, 255, 255, 0.15);
+                    color: #e0e0e0;
                     padding: 4px 8px;
                     border-radius: 4px;
                     cursor: pointer;
                     font-size: 11px;
                     transition: all 0.15s ease;
                 }}
-                .hud-btn:hover {{
-                    background: #007fd4;
-                    border-color: #007fd4;
+                .hud-flyout-btn:hover {{
+                    background: #0078d4;
+                    border-color: #0078d4;
+                    color: #fff;
                 }}
-                .hud-btn.active {{
-                    background: #007fd4;
-                    border-color: #007fd4;
+                .hud-flyout-btn.active {{
+                    background: #0078d4;
+                    border-color: #0078d4;
+                    color: #fff;
                     font-weight: bold;
                 }}
+                .hud-banner {{
+                    position: absolute;
+                    top: 14px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: rgba(0, 120, 212, 0.94);
+                    color: #fff;
+                    padding: 6px 14px;
+                    border-radius: 20px;
+                    font-size: 12px;
+                    font-weight: 500;
+                    display: none;
+                    align-items: center;
+                    gap: 12px;
+                    z-index: 1005;
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+                    backdrop-filter: blur(6px);
+                }}
+                .hud-banner.active {{
+                    display: flex;
+                }}
+                .hud-banner-cancel {{
+                    background: rgba(255, 255, 255, 0.2);
+                    border: none;
+                    color: #fff;
+                    padding: 2px 8px;
+                    border-radius: 10px;
+                    font-size: 11px;
+                    cursor: pointer;
+                }}
+                .hud-banner-cancel:hover {{
+                    background: rgba(255, 255, 255, 0.35);
+                }}
+                .hud-popup-del-btn {{
+                    background: #e74c3c;
+                    color: #fff;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 4px 10px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: background 0.15s ease;
+                }}
+                .hud-popup-del-btn:hover {{
+                    background: #c0392b;
+                }}
+                .hud-stats {{
+                    top: 12px;
+                    left: 54px;
+                    font-weight: 500;
+                }}
                 .hud-slider {{
-                    width: 60px;
+                    width: 70px;
                     cursor: pointer;
                     vertical-align: middle;
                 }}
@@ -184,20 +345,48 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
             <div class="hud-panel hud-stats" id="statsPill">Mekansal Katman</div>
 
-            <div class="hud-panel hud-toolbar">
-                <button class="hud-btn" id="btnTable" onclick="toggleTableHud()" title="Öznitelik Tablosunu Aç/Kapat (F6)" style="font-weight: 600; background: rgba(0, 127, 212, 0.4); border-color: #007fd4;">📊 Tablo</button>
-                <button class="hud-btn" id="btnFit" title="Zoom to layer bounds">🎯 Fit</button>
-                <button class="hud-btn" id="btnMeasure" title="Measure Distance / Area">📏 Ölçüm</button>
-                <button class="hud-btn" id="btnCluster" title="Toggle Marker Clustering">📍 Cluster</button>
-                <span style="font-size:10px; color:#aaa; margin-left:3px;">Opaklık:</span>
-                <input type="range" class="hud-slider" id="opacitySlider" min="10" max="100" value="85" title="Layer Opacity"/>
-                <span style="border-left: 1px solid #555; height: 14px; margin: 0 4px;"></span>
-                <!-- ONLY 100% FREE BASEMAPS -->
-                <button class="hud-btn" id="btnOsm" onclick="setBaseMap('osm')" title="OpenStreetMap (Tamamen Ücretsiz)">OSM</button>
-                <button class="hud-btn" id="btnSat" onclick="setBaseMap('sat')" title="Esri Uydu Görüntüsü (Ücretsiz)">Uydu</button>
-                <button class="hud-btn" id="btnTopo" onclick="setBaseMap('topo')" title="OpenTopoMap (Ücretsiz)">Topo</button>
-                <button class="hud-btn" id="btnDark" onclick="setBaseMap('dark')" title="Karanlık Mod Harita (Filtrelenmiş OSM)">Koyu</button>
-                <button class="hud-btn" id="btnNone" onclick="setBaseMap('none')" title="Altlık Yok (Boş Zemin)">Yok</button>
+            <div class="hud-banner" id="drawBanner">
+                <span id="drawBannerText">Haritaya tıklayarak nokta ekleyin</span>
+                <button class="hud-banner-cancel" onclick="cancelDrawMode()">İptal (Esc)</button>
+            </div>
+
+            <!-- Vertical Action Toolbar on the Far Right -->
+            <div class="hud-toolbar-v">
+                <button class="hud-vbtn" id="btnTable" onclick="toggleTableHud()" data-tip="Öznitelik Tablosu (F6)" title="Öznitelik Tablosu (F6)">📊</button>
+                <button class="hud-vbtn" id="btnFit" onclick="fitLayerBounds()" data-tip="Katman Sınırlarına Odaklan" title="Katman Sınırlarına Odaklan">🎯</button>
+                
+                <div class="hud-vdivider"></div>
+                
+                <button class="hud-vbtn" id="btnAddPoint" onclick="toggleDrawMode('point')" data-tip="Nokta Ekle (Haritaya Tıkla)" title="Nokta Ekle">📍+</button>
+                <button class="hud-vbtn" id="btnAddPolygon" onclick="toggleDrawMode('polygon')" data-tip="Çokgen Ekle (Çiz & Çift Tıkla)" title="Çokgen Ekle">📐+</button>
+                <button class="hud-vbtn hud-vbtn-del" id="btnDelete" onclick="deleteSelectedFeature()" data-tip="Seçili Geometriyi Sil" title="Seçili Geometriyi Sil">🗑️</button>
+                
+                <div class="hud-vdivider"></div>
+                
+                <button class="hud-vbtn" id="btnMeasure" onclick="toggleMeasure()" data-tip="Mesafe / Alan Ölçümü" title="Ölçüm">📏</button>
+                <button class="hud-vbtn" id="btnCluster" onclick="toggleCluster()" data-tip="Nokta Kümeleme (Cluster)" title="Cluster">📍</button>
+                
+                <div class="hud-vdivider"></div>
+                
+                <div style="position: relative;">
+                    <button class="hud-vbtn" id="btnBasemap" onclick="toggleBasemapFlyout()" data-tip="Altlık Harita Değiştir" title="Altlık Harita">🗺️</button>
+                    <div class="hud-flyout" id="basemapFlyout">
+                        <button class="hud-flyout-btn active" id="btnOsm" onclick="setBaseMap('osm')" title="OpenStreetMap">OSM</button>
+                        <button class="hud-flyout-btn" id="btnSat" onclick="setBaseMap('sat')" title="Esri Uydu">Uydu</button>
+                        <button class="hud-flyout-btn" id="btnTopo" onclick="setBaseMap('topo')" title="OpenTopoMap">Topo</button>
+                        <button class="hud-flyout-btn" id="btnDark" onclick="setBaseMap('dark')" title="Karanlık Mod">Koyu</button>
+                        <button class="hud-flyout-btn" id="btnNone" onclick="setBaseMap('none')" title="Boş Zemin">Yok</button>
+                    </div>
+                </div>
+                
+                <div style="position: relative;">
+                    <button class="hud-vbtn" id="btnOpacity" onclick="toggleOpacityFlyout()" data-tip="Katman Opaklığı" title="Opaklık">👁️</button>
+                    <div class="hud-flyout" id="opacityFlyout" style="align-items: center;">
+                        <span style="font-size:10px; color:#aaa; margin-right:4px;">Opaklık:</span>
+                        <input type="range" class="hud-slider" id="opacitySlider" min="10" max="100" value="85"/>
+                        <span id="opacityVal" style="font-size:10px; color:#fff; min-width: 28px; margin-left:4px;">85%</span>
+                    </div>
+                </div>
             </div>
 
             <div class="hud-panel hud-coords" id="coordsPill">
@@ -322,12 +511,31 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         '<span>Zoom: ' + map.getZoom() + '</span>';
                 }});
 
-                document.getElementById('btnFit').onclick = function() {{
-                    fitLayerBounds();
-                }};
+                // --- Flyout Controls ---
+                function toggleBasemapFlyout() {{
+                    var bFlyout = document.getElementById('basemapFlyout');
+                    var oFlyout = document.getElementById('opacityFlyout');
+                    if (oFlyout) oFlyout.classList.remove('open');
+                    if (bFlyout) bFlyout.classList.toggle('open');
+                }}
+
+                function toggleOpacityFlyout() {{
+                    var bFlyout = document.getElementById('basemapFlyout');
+                    var oFlyout = document.getElementById('opacityFlyout');
+                    if (bFlyout) bFlyout.classList.remove('open');
+                    if (oFlyout) oFlyout.classList.toggle('open');
+                }}
+
+                function closeAllFlyouts() {{
+                    var bFlyout = document.getElementById('basemapFlyout');
+                    var oFlyout = document.getElementById('opacityFlyout');
+                    if (bFlyout) bFlyout.classList.remove('open');
+                    if (oFlyout) oFlyout.classList.remove('open');
+                }}
 
                 document.getElementById('opacitySlider').oninput = function(e) {{
                     currentOpacity = e.target.value / 100.0;
+                    document.getElementById('opacityVal').textContent = e.target.value + '%';
                     if (geojsonLayer) {{
                         geojsonLayer.setStyle(function(feature) {{
                             return {{
@@ -338,13 +546,106 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }}
                 }};
 
-                document.getElementById('btnCluster').onclick = function() {{
+                function toggleCluster() {{
                     useClustering = !useClustering;
-                    this.classList.toggle('active', useClustering);
+                    var btn = document.getElementById('btnCluster');
+                    if (btn) btn.classList.toggle('active', useClustering);
                     if (lastGeojsonData) {{
                         updateMap(lastGeojsonData);
                     }}
-                }};
+                }}
+
+                // --- Geometry Addition & Drawing Modes ---
+                var drawMode = null; // null | 'point' | 'polygon'
+                var polyDrawPoints = [];
+                var polyDrawMarkers = [];
+                var polyDrawLine = null;
+                var polyDrawPoly = null;
+                var selectedFeatureIndex = -1;
+
+                function toggleDrawMode(mode) {{
+                    if (drawMode === mode) {{
+                        cancelDrawMode();
+                        return;
+                    }}
+                    cancelDrawMode();
+                    if (measureActive) toggleMeasure();
+                    closeAllFlyouts();
+                    drawMode = mode;
+
+                    var bPoint = document.getElementById('btnAddPoint');
+                    var bPoly = document.getElementById('btnAddPolygon');
+                    if (mode === 'point' && bPoint) bPoint.classList.add('active');
+                    if (mode === 'polygon' && bPoly) bPoly.classList.add('active');
+
+                    var banner = document.getElementById('drawBanner');
+                    var bannerText = document.getElementById('drawBannerText');
+                    if (mode === 'point') {{
+                        bannerText.textContent = '📍 Haritaya tıklayarak yeni nokta ekleyin';
+                        map.getContainer().style.cursor = 'crosshair';
+                    }} else if (mode === 'polygon') {{
+                        bannerText.textContent = '📐 Köşeleri tıklayın. Bitirmek için çift tıklayın';
+                        map.getContainer().style.cursor = 'crosshair';
+                        map.doubleClickZoom.disable();
+                    }}
+                    if (banner) banner.classList.add('active');
+                }}
+
+                function cancelDrawMode() {{
+                    drawMode = null;
+                    map.getContainer().style.cursor = '';
+                    map.doubleClickZoom.enable();
+
+                    var bPoint = document.getElementById('btnAddPoint');
+                    var bPoly = document.getElementById('btnAddPolygon');
+                    if (bPoint) bPoint.classList.remove('active');
+                    if (bPoly) bPoly.classList.remove('active');
+
+                    var banner = document.getElementById('drawBanner');
+                    if (banner) banner.classList.remove('active');
+
+                    clearPolyDraw();
+                }}
+
+                function clearPolyDraw() {{
+                    polyDrawPoints = [];
+                    polyDrawMarkers.forEach(function(m) {{ map.removeLayer(m); }});
+                    polyDrawMarkers = [];
+                    if (polyDrawLine) map.removeLayer(polyDrawLine);
+                    if (polyDrawPoly) map.removeLayer(polyDrawPoly);
+                    polyDrawLine = null;
+                    polyDrawPoly = null;
+                }}
+
+                // --- Geometry Deletion ---
+                function deleteFeature(idx) {{
+                    if (map.closePopup) map.closePopup();
+                    selectedFeatureIndex = -1;
+                    updateDeleteButtonState();
+                    if (pyBridge && pyBridge.onFeatureDeleted) {{
+                        pyBridge.onFeatureDeleted(idx);
+                    }}
+                }}
+
+                function deleteSelectedFeature() {{
+                    if (selectedFeatureIndex >= 0) {{
+                        deleteFeature(selectedFeatureIndex);
+                    }} else {{
+                        alert("Lütfen önce haritadan silmek istediğiniz geometriyi seçin.");
+                    }}
+                }}
+
+                function updateDeleteButtonState() {{
+                    var btn = document.getElementById('btnDelete');
+                    if (!btn) return;
+                    if (selectedFeatureIndex >= 0) {{
+                        btn.classList.add('has-selection');
+                        btn.setAttribute('data-tip', 'Seçili Geometriyi Sil (#' + selectedFeatureIndex + ')');
+                    }} else {{
+                        btn.classList.remove('has-selection');
+                        btn.setAttribute('data-tip', 'Seçili Geometriyi Sil (Önce Geometri Seçin)');
+                    }}
+                }}
 
                 // --- Measurement Ruler Tool ---
                 var measureActive = false;
@@ -354,46 +655,21 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 var measurePolygon = null;
                 var measureTooltip = null;
 
-                document.getElementById('btnMeasure').onclick = function() {{
+                function toggleMeasure() {{
                     measureActive = !measureActive;
-                    this.classList.toggle('active', measureActive);
+                    var btn = document.getElementById('btnMeasure');
+                    if (btn) btn.classList.toggle('active', measureActive);
                     if (!measureActive) {{
                         clearMeasure();
+                    }} else {{
+                        cancelDrawMode();
+                        closeAllFlyouts();
                     }}
-                }};
-
-                map.on('click', function(e) {{
-                    if (!measureActive) return;
-                    measurePoints.push(e.latlng);
-
-                    var m = L.circleMarker(e.latlng, {{ radius: 4, color: '#e74c3c', fillColor: '#fff', fillOpacity: 1 }}).addTo(map);
-                    measureMarkers.push(m);
-
-                    if (measurePoints.length > 1) {{
-                        if (measureLine) map.removeLayer(measureLine);
-                        measureLine = L.polyline(measurePoints, {{ color: '#e74c3c', weight: 2.5, dashArray: '5, 5' }}).addTo(map);
-
-                        var totalDist = 0;
-                        for (var i = 1; i < measurePoints.length; i++) {{
-                            totalDist += measurePoints[i - 1].distanceTo(measurePoints[i]);
-                        }}
-                        var distText = totalDist > 1000 ? (totalDist / 1000).toFixed(2) + ' km' : totalDist.toFixed(1) + ' m';
-
-                        if (measurePoints.length >= 3) {{
-                            if (measurePolygon) map.removeLayer(measurePolygon);
-                            measurePolygon = L.polygon(measurePoints, {{ color: '#e74c3c', fillOpacity: 0.15, weight: 1 }}).addTo(map);
-                        }}
-
-                        if (!measureTooltip) {{
-                            measureTooltip = L.tooltip({{ permanent: true, className: 'measure-tooltip' }});
-                        }}
-                        measureTooltip.setLatLng(e.latlng).setContent('📏 ' + distText).addTo(map);
-                    }}
-                }});
+                }}
 
                 function clearMeasure() {{
                     measurePoints = [];
-                    measureMarkers.forEach(m => map.removeLayer(m));
+                    measureMarkers.forEach(function(m) {{ map.removeLayer(m); }});
                     measureMarkers = [];
                     if (measureLine) map.removeLayer(measureLine);
                     if (measurePolygon) map.removeLayer(measurePolygon);
@@ -402,6 +678,122 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     measurePolygon = null;
                     measureTooltip = null;
                 }}
+
+                // --- Map Click Handler ---
+                map.on('click', function(e) {{
+                    closeAllFlyouts();
+
+                    if (measureActive) {{
+                        measurePoints.push(e.latlng);
+                        var m = L.circleMarker(e.latlng, {{ radius: 4, color: '#e74c3c', fillColor: '#fff', fillOpacity: 1 }}).addTo(map);
+                        measureMarkers.push(m);
+
+                        if (measurePoints.length > 1) {{
+                            if (measureLine) map.removeLayer(measureLine);
+                            measureLine = L.polyline(measurePoints, {{ color: '#e74c3c', weight: 2.5, dashArray: '5, 5' }}).addTo(map);
+
+                            var totalDist = 0;
+                            for (var i = 1; i < measurePoints.length; i++) {{
+                                totalDist += measurePoints[i - 1].distanceTo(measurePoints[i]);
+                            }}
+                            var distText = totalDist > 1000 ? (totalDist / 1000).toFixed(2) + ' km' : totalDist.toFixed(1) + ' m';
+
+                            if (measurePoints.length >= 3) {{
+                                if (measurePolygon) map.removeLayer(measurePolygon);
+                                measurePolygon = L.polygon(measurePoints, {{ color: '#e74c3c', fillOpacity: 0.15, weight: 1 }}).addTo(map);
+                            }}
+
+                            if (!measureTooltip) {{
+                                measureTooltip = L.tooltip({{ permanent: true, className: 'measure-tooltip' }});
+                            }}
+                            measureTooltip.setLatLng(e.latlng).setContent('📏 ' + distText).addTo(map);
+                        }}
+                        return;
+                    }}
+
+                    if (drawMode === 'point') {{
+                        var feat = {{
+                            type: "Feature",
+                            geometry: {{
+                                type: "Point",
+                                coordinates: [e.latlng.lng, e.latlng.lat]
+                            }},
+                            properties: {{}}
+                        }};
+                        cancelDrawMode();
+                        if (pyBridge && pyBridge.onFeatureAdded) {{
+                            pyBridge.onFeatureAdded(JSON.stringify(feat));
+                        }}
+                        return;
+                    }}
+
+                    if (drawMode === 'polygon') {{
+                        polyDrawPoints.push(e.latlng);
+                        var pm = L.circleMarker(e.latlng, {{
+                            radius: 5,
+                            color: '#0078d4',
+                            fillColor: '#ffffff',
+                            fillOpacity: 1,
+                            weight: 2
+                        }}).addTo(map);
+                        polyDrawMarkers.push(pm);
+
+                        if (polyDrawPoints.length > 1) {{
+                            if (polyDrawLine) map.removeLayer(polyDrawLine);
+                            polyDrawLine = L.polyline(polyDrawPoints, {{
+                                color: '#0078d4',
+                                weight: 2.5,
+                                dashArray: '4, 4'
+                            }}).addTo(map);
+                        }}
+                        if (polyDrawPoints.length >= 3) {{
+                            if (polyDrawPoly) map.removeLayer(polyDrawPoly);
+                            polyDrawPoly = L.polygon(polyDrawPoints, {{
+                                color: '#0078d4',
+                                weight: 1,
+                                fillOpacity: 0.2
+                            }}).addTo(map);
+                        }}
+                        return;
+                    }}
+                }});
+
+                // --- Double Click Handler for Polygon Finish ---
+                map.on('dblclick', function(e) {{
+                    if (drawMode === 'polygon') {{
+                        if (polyDrawPoints.length >= 3) {{
+                            var coords = polyDrawPoints.map(function(p) {{ return [p.lng, p.lat]; }});
+                            coords.push([coords[0][0], coords[0][1]]); // close polygon ring
+                            var feat = {{
+                                type: "Feature",
+                                geometry: {{
+                                    type: "Polygon",
+                                    coordinates: [coords]
+                                }},
+                                properties: {{}}
+                            }};
+                            cancelDrawMode();
+                            if (pyBridge && pyBridge.onFeatureAdded) {{
+                                pyBridge.onFeatureAdded(JSON.stringify(feat));
+                            }}
+                        }} else {{
+                            cancelDrawMode();
+                        }}
+                    }}
+                }});
+
+                // --- Keyboard Handlers ---
+                document.addEventListener('keydown', function(e) {{
+                    if (e.key === 'Escape') {{
+                        if (drawMode) cancelDrawMode();
+                        if (measureActive) toggleMeasure();
+                        closeAllFlyouts();
+                    }} else if (e.key === 'Delete' || e.key === 'Backspace') {{
+                        if (selectedFeatureIndex >= 0 && !drawMode && !measureActive) {{
+                            deleteSelectedFeature();
+                        }}
+                    }}
+                }});
 
                 var lastGeojsonData = null;
 
@@ -483,6 +875,12 @@ class MapPreviewPanel(AbstractPreviewPanel):
                             }}
 
                             layer.on('click', function(e) {{
+                                if (drawMode || measureActive) {{
+                                    return; // Allow map click handler to draw or measure
+                                }}
+                                selectedFeatureIndex = currentIdx;
+                                updateDeleteButtonState();
+
                                 var props = feature.properties || {{}};
                                 var gType = feature.geometry ? feature.geometry.type : 'Unknown';
                                 var html = '<div class="prop-title"><span>Özellik #' + currentIdx + '</span><span>[' + gType + ']</span></div>';
@@ -498,7 +896,10 @@ class MapPreviewPanel(AbstractPreviewPanel):
                                     }});
                                 }}
                                 html += '</table>';
-                                layer.bindPopup(html, {{ maxWidth: 350, maxHeight: 280 }}).openPopup();
+                                html += '<div style="margin-top: 8px; text-align: right; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 6px;">';
+                                html += '<button class="hud-popup-del-btn" onclick="deleteFeature(' + currentIdx + ')">🗑️ Bu Geometriyi Sil</button>';
+                                html += '</div>';
+                                layer.bindPopup(html, {{ maxWidth: 350, maxHeight: 300 }}).openPopup();
 
                                 if (pyBridge) {{
                                     pyBridge.onFeatureClicked(currentIdx);
@@ -517,6 +918,8 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
 
                 function highlightFeature(idx) {{
+                    selectedFeatureIndex = idx;
+                    updateDeleteButtonState();
                     var layer = layerIndexMap[idx];
                     if (layer) {{
                         if (layer.getBounds && layer.getBounds().isValid()) {{
