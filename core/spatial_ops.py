@@ -9,6 +9,9 @@ import shapely
 from shapely.geometry import Point, Polygon, LineString, MultiPolygon
 from pyproj import CRS
 
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="Several features with id.*")
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="pyogrio.*")
+
 
 class SpatialOps:
     """
