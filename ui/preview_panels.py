@@ -182,13 +182,17 @@ class MapPreviewPanel(AbstractPreviewPanel):
         <body>
             <div id="map"></div>
 
-            <div class="hud-panel hud-stats" id="statsPill">Mekansal Katman</div>
+            <div class="hud-panel hud-stats" id="statsPill">
+                <span id="statsFeatures">Mekansal Katman</span>
+                <span id="lodBadge" style="margin-left: 8px; border-left: 1px solid rgba(255,255,255,0.25); padding-left: 8px;"></span>
+            </div>
 
             <div class="hud-panel hud-toolbar">
                 <button class="hud-btn" id="btnTable" onclick="toggleTableHud()" title="Öznitelik Tablosunu Aç/Kapat (F6)" style="font-weight: 600; background: rgba(0, 127, 212, 0.4); border-color: #007fd4;">📊 Tablo</button>
-                <button class="hud-btn" id="btnFit" title="Zoom to layer bounds">🎯 Fit</button>
-                <button class="hud-btn" id="btnMeasure" title="Measure Distance / Area">📏 Ölçüm</button>
-                <button class="hud-btn" id="btnCluster" title="Toggle Marker Clustering">📍 Cluster</button>
+                <button class="hud-btn" id="btnFit" title="Katmana Odaklan">🎯 Fit</button>
+                <button class="hud-btn active" id="btnLod" onclick="toggleLod()" title="Akıllı Zoom Detay Seviyesi (Sektör Standardı LOD: Düşük zoomda akıcı genel hatlar, yüksek zoomda %100 tam detay)">⚡ Akıllı LOD</button>
+                <button class="hud-btn" id="btnMeasure" title="Mesafe / Alan Ölçümü">📏 Ölçüm</button>
+                <button class="hud-btn" id="btnCluster" title="Noktaları Kümele">📍 Cluster</button>
                 <span style="font-size:10px; color:#aaa; margin-left:3px;">Opaklık:</span>
                 <input type="range" class="hud-slider" id="opacitySlider" min="10" max="100" value="85" title="Layer Opacity"/>
                 <span style="border-left: 1px solid #555; height: 14px; margin: 0 4px;"></span>
@@ -329,10 +333,13 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 document.getElementById('opacitySlider').oninput = function(e) {{
                     currentOpacity = e.target.value / 100.0;
                     if (geojsonLayer) {{
+                        var strokeW = (currentLodLevel === 0) ? 1.2 : (currentLodLevel === 1 ? 1.8 : 2.5);
+                        var fillOp = (currentLodLevel === 0) ? currentOpacity * 0.25 : (currentLodLevel === 1 ? currentOpacity * 0.35 : currentOpacity * 0.45);
                         geojsonLayer.setStyle(function(feature) {{
                             return {{
-                                fillOpacity: currentOpacity * 0.4,
-                                opacity: currentOpacity
+                                fillOpacity: fillOp,
+                                opacity: currentOpacity,
+                                weight: strokeW
                             }};
                         }});
                     }}
@@ -341,8 +348,8 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 document.getElementById('btnCluster').onclick = function() {{
                     useClustering = !useClustering;
                     this.classList.toggle('active', useClustering);
-                    if (lastGeojsonData) {{
-                        updateMap(lastGeojsonData);
+                    if (rawGeojsonData && currentLodLevel !== -1) {{
+                        renderGeojsonAtLod(currentLodLevel);
                     }}
                 }};
 
@@ -403,10 +410,163 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     measureTooltip = null;
                 }}
 
-                var lastGeojsonData = null;
+                // --- High-Performance 2D Douglas-Peucker Simplification (GIS Industry Standard) ---
+                function getSqSegDist(p, p1, p2) {{
+                    var x = p1[0], y = p1[1], dx = p2[0] - x, dy = p2[1] - y;
+                    if (dx !== 0 || dy !== 0) {{
+                        var t = ((p[0] - x) * dx + (p[1] - y) * dy) / (dx * dx + dy * dy);
+                        if (t > 1) {{ x = p2[0]; y = p2[1]; }}
+                        else if (t > 0) {{ x += dx * t; y += dy * t; }}
+                    }}
+                    dx = p[0] - x; dy = p[1] - y;
+                    return dx * dx + dy * dy;
+                }}
 
-                function updateMap(geojsonData) {{
-                    lastGeojsonData = geojsonData;
+                function simplifyDPStep(points, first, last, sqTolerance, simplified) {{
+                    var maxSqDist = sqTolerance, index = -1;
+                    for (var i = first + 1; i < last; i++) {{
+                        var sqDist = getSqSegDist(points[i], points[first], points[last]);
+                        if (sqDist > maxSqDist) {{
+                            index = i;
+                            maxSqDist = sqDist;
+                        }}
+                    }}
+                    if (index !== -1) {{
+                        if (index - first > 1) simplifyDPStep(points, first, index, sqTolerance, simplified);
+                        simplified.push(points[index]);
+                        if (last - index > 1) simplifyDPStep(points, index, last, sqTolerance, simplified);
+                    }}
+                }}
+
+                function simplifyPoints(points, tolerance) {{
+                    if (!points || points.length <= 2 || tolerance <= 0) return points;
+                    var sqTolerance = tolerance * tolerance;
+                    var simplified = [points[0]];
+                    simplifyDPStep(points, 0, points.length - 1, sqTolerance, simplified);
+                    simplified.push(points[points.length - 1]);
+                    return simplified;
+                }}
+
+                function simplifyGeometry(geom, tolerance) {{
+                    if (!geom || tolerance <= 0) return geom;
+                    var type = geom.type;
+                    if (type === 'Point' || type === 'MultiPoint') return geom;
+                    if (type === 'LineString') {{
+                        return {{ type: type, coordinates: simplifyPoints(geom.coordinates, tolerance) }};
+                    }}
+                    if (type === 'MultiLineString') {{
+                        return {{
+                            type: type,
+                            coordinates: geom.coordinates.map(function(l) {{ return simplifyPoints(l, tolerance); }})
+                        }};
+                    }}
+                    if (type === 'Polygon') {{
+                        return {{
+                            type: type,
+                            coordinates: geom.coordinates.map(function(r) {{
+                                var s = simplifyPoints(r, tolerance);
+                                return s.length < 4 ? r : s;
+                            }})
+                        }};
+                    }}
+                    if (type === 'MultiPolygon') {{
+                        return {{
+                            type: type,
+                            coordinates: geom.coordinates.map(function(p) {{
+                                return p.map(function(r) {{
+                                    var s = simplifyPoints(r, tolerance);
+                                    return s.length < 4 ? r : s;
+                                }});
+                            }})
+                        }};
+                    }}
+                    if (type === 'GeometryCollection') {{
+                        return {{
+                            type: type,
+                            geometries: geom.geometries.map(function(g) {{ return simplifyGeometry(g, tolerance); }})
+                        }};
+                    }}
+                    return geom;
+                }}
+
+                // --- Multi-Scale Zoom Level of Detail (LOD) Management ---
+                var rawGeojsonData = null;
+                var lodEnabled = true;
+                var currentLodLevel = -1; // 0: Düşük (<7), 1: Orta (7-11), 2: Yüksek (>=11)
+                var lodCache = {{}};
+
+                function toggleLod() {{
+                    lodEnabled = !lodEnabled;
+                    var btn = document.getElementById('btnLod');
+                    if (btn) btn.classList.toggle('active', lodEnabled);
+                    if (!lodEnabled) {{
+                        currentLodLevel = 2;
+                        renderGeojsonAtLod(2);
+                        updateLodBadge(map.getZoom(), 2);
+                    }} else {{
+                        currentLodLevel = -1;
+                        checkZoomLod();
+                    }}
+                }}
+
+                function getTargetLodLevel(zoom) {{
+                    if (!lodEnabled) return 2;
+                    if (zoom < 7) return 0;   // Ülke / Kıta genel bakış ölçeği
+                    if (zoom < 11) return 1;  // Bölge / İl ölçeği
+                    return 2;                 // İlçe / Sokak / Parsel ölçeği (%100 orijinal detay)
+                }}
+
+                function getLodData(level) {{
+                    if (level === 2 || !lodEnabled) return rawGeojsonData;
+                    if (lodCache[level]) return lodCache[level];
+                    if (!rawGeojsonData) return null;
+
+                    var tol = (level === 0) ? 0.015 : 0.002;
+                    var simFeatures = [];
+                    if (rawGeojsonData.type === 'FeatureCollection' && rawGeojsonData.features) {{
+                        simFeatures = rawGeojsonData.features.map(function(f, idx) {{
+                            return {{
+                                type: 'Feature',
+                                id: f.id !== undefined ? f.id : idx,
+                                properties: f.properties,
+                                geometry: simplifyGeometry(f.geometry, tol)
+                            }};
+                        }});
+                    }} else if (rawGeojsonData.type === 'Feature') {{
+                        simFeatures = [{{
+                            type: 'Feature',
+                            properties: rawGeojsonData.properties,
+                            geometry: simplifyGeometry(rawGeojsonData.geometry, tol)
+                        }}];
+                    }}
+                    var simData = {{
+                        type: 'FeatureCollection',
+                        features: simFeatures
+                    }};
+                    lodCache[level] = simData;
+                    return simData;
+                }}
+
+                function updateLodBadge(zoom, level) {{
+                    var badge = document.getElementById('lodBadge');
+                    if (!badge) return;
+                    if (!lodEnabled) {{
+                        badge.innerHTML = '<span style="color:#aaa;">⚡ LOD: Kapalı (Tam Detay)</span>';
+                        return;
+                    }}
+                    if (level === 0) {{
+                        badge.innerHTML = '<span style="color:#4fc3f7; font-weight:600;" title="Genel Bakış Modu (z:' + zoom + '): Büyük ölçekte ekran çözünürlüğüne optimize edilmiş genel hatlar">⚡ LOD: Düşük (z:' + zoom + ')</span>';
+                    }} else if (level === 1) {{
+                        badge.innerHTML = '<span style="color:#81c784; font-weight:600;" title="Bölgesel Mod (z:' + zoom + '): Dengeli detay ve akıcı performans">⚡ LOD: Orta (z:' + zoom + ')</span>';
+                    }} else {{
+                        badge.innerHTML = '<span style="color:#ffb74d; font-weight:600;" title="Tam Detay Modu (z:' + zoom + '): %100 orijinal köşe noktaları çiziliyor">⚡ LOD: Tam Detay (z:' + zoom + ')</span>';
+                    }}
+                }}
+
+                function renderGeojsonAtLod(level) {{
+                    var dataToRender = getLodData(level);
+                    if (!dataToRender) return;
+
                     if (geojsonLayer) {{
                         map.removeLayer(geojsonLayer);
                         geojsonLayer = null;
@@ -417,19 +577,15 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }}
                     layerIndexMap = {{}};
 
-                    if (!geojsonData) {{
-                        document.getElementById('statsPill').textContent = 'Mekansal Katman';
-                        return;
-                    }}
-
                     var featureCount = 0;
-                    if (geojsonData.type === 'FeatureCollection' && geojsonData.features) {{
-                        featureCount = geojsonData.features.length;
-                    }} else if (geojsonData.type === 'Feature') {{
+                    if (rawGeojsonData.type === 'FeatureCollection' && rawGeojsonData.features) {{
+                        featureCount = rawGeojsonData.features.length;
+                    }} else if (rawGeojsonData.type === 'Feature') {{
                         featureCount = 1;
                     }}
 
-                    document.getElementById('statsPill').textContent = '📍 ' + featureCount.toLocaleString() + ' Özellik';
+                    var statsEl = document.getElementById('statsFeatures');
+                    if (statsEl) statsEl.textContent = '📍 ' + featureCount.toLocaleString() + ' Özellik';
 
                     var geomColors = {{
                         Point: '#00a2ff',
@@ -440,19 +596,25 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         MultiPolygon: '#2ecc71'
                     }};
 
-                    if (useClustering && typeof L.markerClusterGroup === 'function') {{
+                    // Adaptive stroke weight & fill opacity according to zoom/LOD level
+                    var strokeW = (level === 0) ? 1.2 : (level === 1 ? 1.8 : 2.5);
+                    var fillOp = (level === 0) ? currentOpacity * 0.25 : (level === 1 ? currentOpacity * 0.35 : currentOpacity * 0.45);
+
+                    // Automatic point clustering at low and mid zoom levels
+                    var shouldCluster = useClustering || (level < 2 && featureCount > 60);
+                    if (shouldCluster && typeof L.markerClusterGroup === 'function') {{
                         clusterGroup = L.markerClusterGroup({{
-                            maxClusterRadius: 45,
+                            maxClusterRadius: level === 0 ? 50 : 35,
                             spiderfyOnMaxZoom: true,
                             showCoverageOnHover: false
                         }});
                     }}
 
                     var featureIdx = 0;
-                    geojsonLayer = L.geoJSON(geojsonData, {{
+                    geojsonLayer = L.geoJSON(dataToRender, {{
                         pointToLayer: function(feature, latlng) {{
                             var marker = L.circleMarker(latlng, {{
-                                radius: 6,
+                                radius: level === 0 ? 4 : (level === 1 ? 5 : 6),
                                 fillColor: '#00a2ff',
                                 color: '#ffffff',
                                 weight: 1.5,
@@ -467,10 +629,10 @@ class MapPreviewPanel(AbstractPreviewPanel):
                             var color = geomColors[gtype] || '#3388ff';
                             return {{
                                 color: color,
-                                weight: 2,
+                                weight: strokeW,
                                 opacity: currentOpacity,
                                 fillColor: color,
-                                fillOpacity: currentOpacity * 0.35
+                                fillOpacity: fillOp
                             }};
                         }},
                         onEachFeature: function(feature, layer) {{
@@ -512,8 +674,53 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }} else {{
                         map.addLayer(geojsonLayer);
                     }}
+                    bringVectorsToFront();
+                }}
 
-                    fitLayerBounds();
+                function checkZoomLod() {{
+                    if (!rawGeojsonData) return;
+                    var z = map.getZoom();
+                    var targetLevel = getTargetLodLevel(z);
+                    updateLodBadge(z, targetLevel);
+                    if (targetLevel !== currentLodLevel) {{
+                        currentLodLevel = targetLevel;
+                        renderGeojsonAtLod(currentLodLevel);
+                    }}
+                }}
+
+                map.on('zoomend', function() {{
+                    checkZoomLod();
+                }});
+
+                function updateMap(geojsonData) {{
+                    rawGeojsonData = geojsonData;
+                    lodCache = {{ 2: geojsonData }};
+                    currentLodLevel = -1;
+
+                    if (!geojsonData) {{
+                        if (geojsonLayer) {{ map.removeLayer(geojsonLayer); geojsonLayer = null; }}
+                        if (clusterGroup) {{ map.removeLayer(clusterGroup); clusterGroup = null; }}
+                        var statsEl = document.getElementById('statsFeatures');
+                        if (statsEl) statsEl.textContent = 'Mekansal Katman';
+                        var badgeEl = document.getElementById('lodBadge');
+                        if (badgeEl) badgeEl.innerHTML = '';
+                        return;
+                    }}
+
+                    // Calculate initial layer bounds and zoom level
+                    var tempLayer = L.geoJSON(geojsonData);
+                    var bounds = tempLayer.getBounds();
+                    if (bounds && bounds.isValid()) {{
+                        map.fitBounds(bounds, {{ padding: [30, 30] }});
+                        var initZoom = map.getZoom();
+                        currentLodLevel = getTargetLodLevel(initZoom);
+                        updateLodBadge(initZoom, currentLodLevel);
+                        renderGeojsonAtLod(currentLodLevel);
+                    }} else {{
+                        currentLodLevel = 2;
+                        updateLodBadge(map.getZoom(), 2);
+                        renderGeojsonAtLod(2);
+                    }}
                 }}
 
                 function highlightFeature(idx) {{
@@ -529,8 +736,11 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
 
                 function fitLayerBounds() {{
-                    if (geojsonLayer && geojsonLayer.getBounds().isValid()) {{
-                        map.fitBounds(geojsonLayer.getBounds(), {{ padding: [30, 30] }});
+                    if (!rawGeojsonData) return;
+                    var tempLayer = L.geoJSON(rawGeojsonData);
+                    var bounds = tempLayer.getBounds();
+                    if (bounds && bounds.isValid()) {{
+                        map.fitBounds(bounds, {{ padding: [30, 30] }});
                     }}
                 }}
             </script>
