@@ -338,29 +338,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     font-weight: bold;
                     border: 1px solid #00a2ff;
                 }}
-                .pulse-ring {{
-                    pointer-events: none !important;
-                    animation: leaflet-pulse 1.4s infinite cubic-bezier(0.25, 0.46, 0.45, 0.94);
-                    transform-origin: center;
-                    transform-box: fill-box;
-                }}
-                @keyframes leaflet-pulse {{
-                    0% {{
-                        stroke-width: 2px;
-                        stroke-opacity: 1;
-                        fill-opacity: 0.4;
-                    }}
-                    70% {{
-                        stroke-width: 14px;
-                        stroke-opacity: 0.15;
-                        fill-opacity: 0.05;
-                    }}
-                    100% {{
-                        stroke-width: 18px;
-                        stroke-opacity: 0;
-                        fill-opacity: 0;
-                    }}
-                }}
             </style>
         </head>
         <body>
@@ -476,55 +453,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 var currentOpacity = 0.85;
                 var pyBridge = null;
                 var wmsLayers = {{}};
-                var currentHighlightedLayer = null;
-                var highlightRing = null;
-
-                function resetPreviousHighlight() {{
-                    if (highlightRing) {{
-                        try {{ map.removeLayer(highlightRing); }} catch(e) {{}}
-                        highlightRing = null;
-                    }}
-                    if (currentHighlightedLayer) {{
-                        function resetOne(l) {{
-                            try {{
-                                if (l._isPoint && l.setRadius) {{
-                                    l.setRadius(l._defaultRadius || 6);
-                                }}
-                                if (l.setStyle && l._defaultStyle) {{
-                                    l.setStyle(l._defaultStyle);
-                                }}
-                            }} catch(e) {{}}
-                        }}
-                        if (typeof currentHighlightedLayer.eachLayer === 'function') {{
-                            currentHighlightedLayer.eachLayer(resetOne);
-                        }} else {{
-                            resetOne(currentHighlightedLayer);
-                        }}
-                        currentHighlightedLayer = null;
-                    }}
-                }}
-
-                function createPopupHtml(feature, idx) {{
-                    var props = feature.properties || {{}};
-                    var gType = feature.geometry ? feature.geometry.type : 'Unknown';
-                    var html = '<div class="prop-title"><span>Özellik #' + idx + '</span><span>[' + gType + ']</span></div>';
-                    html += '<table class="prop-table">';
-                    var keys = Object.keys(props);
-                    if (keys.length === 0) {{
-                        html += '<tr><td colspan="2"><i>Öznitelik yok</i></td></tr>';
-                    }} else {{
-                        keys.forEach(function(k) {{
-                            var val = props[k];
-                            if (val === null || val === undefined) val = '<i>null</i>';
-                            html += '<tr><th>' + k + '</th><td>' + val + '</td></tr>';
-                        }});
-                    }}
-                    html += '</table>';
-                    html += '<div style="margin-top: 8px; text-align: right; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 6px;">';
-                    html += '<button class="hud-popup-del-btn" onclick="deleteFeature(' + idx + ')">🗑️ Bu Geometriyi Sil</button>';
-                    html += '</div>';
-                    return html;
-                }}
 
                 function setupBridge() {{
                     if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {{
@@ -700,7 +628,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 // --- Geometry Deletion ---
                 function deleteFeature(idx) {{
                     if (map.closePopup) map.closePopup();
-                    resetPreviousHighlight();
                     selectedFeatureIndex = -1;
                     updateDeleteButtonState();
                     if (pyBridge && pyBridge.onFeatureDeleted) {{
@@ -880,7 +807,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 function updateMap(geojsonData) {{
                     lastGeojsonData = geojsonData;
-                    resetPreviousHighlight();
                     if (geojsonLayer) {{
                         map.removeLayer(geojsonLayer);
                         geojsonLayer = null;
@@ -925,61 +851,63 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     var featureIdx = 0;
                     geojsonLayer = L.geoJSON(geojsonData, {{
                         pointToLayer: function(feature, latlng) {{
-                            var defaultStyle = {{
+                            var marker = L.circleMarker(latlng, {{
                                 radius: 6,
                                 fillColor: '#00a2ff',
                                 color: '#ffffff',
                                 weight: 1.5,
                                 opacity: currentOpacity,
                                 fillOpacity: currentOpacity * 0.9
-                            }};
-                            var marker = L.circleMarker(latlng, defaultStyle);
-                            marker._defaultStyle = defaultStyle;
-                            marker._defaultRadius = 6;
-                            marker._isPoint = true;
+                            }});
                             if (clusterGroup) clusterGroup.addLayer(marker);
                             return marker;
                         }},
                         style: function(feature) {{
                             var gtype = feature.geometry ? feature.geometry.type : 'Polygon';
                             var color = geomColors[gtype] || '#3388ff';
-                            var defaultStyle = {{
+                            return {{
                                 color: color,
                                 weight: 2,
                                 opacity: currentOpacity,
                                 fillColor: color,
                                 fillOpacity: currentOpacity * 0.35
                             }};
-                            return defaultStyle;
                         }},
                         onEachFeature: function(feature, layer) {{
                             var currentIdx = featureIdx++;
                             layerIndexMap[currentIdx] = layer;
-
-                            if (!layer._defaultStyle && layer.options) {{
-                                layer._defaultStyle = {{
-                                    color: layer.options.color,
-                                    weight: layer.options.weight,
-                                    opacity: layer.options.opacity,
-                                    fillColor: layer.options.fillColor,
-                                    fillOpacity: layer.options.fillOpacity
-                                }};
-                            }}
 
                             var title = (feature.properties && (feature.properties.city || feature.properties.name || feature.properties.NAME || feature.properties.title || feature.properties.id)) || ('Özellik #' + currentIdx);
                             if (featureCount <= 1000) {{
                                 layer.bindTooltip(String(title), {{ sticky: true }});
                             }}
 
-                            // Pre-bind popup content so it is immediately available on highlight
-                            var popupHtml = createPopupHtml(feature, currentIdx);
-                            layer.bindPopup(popupHtml, {{ maxWidth: 350, maxHeight: 300 }});
-
                             layer.on('click', function(e) {{
                                 if (drawMode || measureActive) {{
                                     return; // Allow map click handler to draw or measure
                                 }}
-                                highlightFeature(currentIdx);
+                                selectedFeatureIndex = currentIdx;
+                                updateDeleteButtonState();
+
+                                var props = feature.properties || {{}};
+                                var gType = feature.geometry ? feature.geometry.type : 'Unknown';
+                                var html = '<div class="prop-title"><span>Özellik #' + currentIdx + '</span><span>[' + gType + ']</span></div>';
+                                html += '<table class="prop-table">';
+                                var keys = Object.keys(props);
+                                if (keys.length === 0) {{
+                                    html += '<tr><td colspan="2"><i>Öznitelik yok</i></td></tr>';
+                                }} else {{
+                                    keys.forEach(function(k) {{
+                                        var val = props[k];
+                                        if (val === null || val === undefined) val = '<i>null</i>';
+                                        html += '<tr><th>' + k + '</th><td>' + val + '</td></tr>';
+                                    }});
+                                }}
+                                html += '</table>';
+                                html += '<div style="margin-top: 8px; text-align: right; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 6px;">';
+                                html += '<button class="hud-popup-del-btn" onclick="deleteFeature(' + currentIdx + ')">🗑️ Bu Geometriyi Sil</button>';
+                                html += '</div>';
+                                layer.bindPopup(html, {{ maxWidth: 350, maxHeight: 300 }}).openPopup();
 
                                 if (pyBridge) {{
                                     pyBridge.onFeatureClicked(currentIdx);
@@ -1000,78 +928,12 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 function highlightFeature(idx) {{
                     selectedFeatureIndex = idx;
                     updateDeleteButtonState();
-
-                    resetPreviousHighlight();
-
                     var layer = layerIndexMap[idx];
-                    if (!layer) return;
-
-                    currentHighlightedLayer = layer;
-
-                    // Apply prominent highlight style (Bright Gold / Neon Yellow)
-                    function applyStyle(l) {{
-                        if (l.setStyle) {{
-                            if (l._isPoint && l.setRadius) {{
-                                l.setRadius(10);
-                                l.setStyle({{
-                                    fillColor: '#ffea00',
-                                    color: '#ffffff',
-                                    weight: 3,
-                                    opacity: 1.0,
-                                    fillOpacity: 1.0
-                                }});
-                            }} else {{
-                                l.setStyle({{
-                                    color: '#ffea00',
-                                    weight: 5,
-                                    opacity: 1.0,
-                                    fillColor: '#ffea00',
-                                    fillOpacity: 0.55
-                                }});
-                            }}
-                        }}
-                        if (l.bringToFront) {{
-                            try {{ l.bringToFront(); }} catch(e) {{}}
-                        }}
-                    }}
-
-                    if (typeof layer.eachLayer === 'function') {{
-                        layer.eachLayer(applyStyle);
-                    }} else {{
-                        applyStyle(layer);
-                    }}
-
-                    // Add pulsing glow indicator for geometry centroid
-                    var targetLatLng = null;
-                    if (layer.getLatLng) {{
-                        targetLatLng = layer.getLatLng();
-                    }} else if (layer.getBounds && layer.getBounds().isValid()) {{
-                        targetLatLng = layer.getBounds().getCenter();
-                    }}
-
-                    if (targetLatLng) {{
-                        highlightRing = L.circleMarker(targetLatLng, {{
-                            radius: 18,
-                            color: '#ffea00',
-                            weight: 3,
-                            fillColor: '#ffea00',
-                            fillOpacity: 0.25,
-                            interactive: false,
-                            className: 'pulse-ring'
-                        }}).addTo(map);
-                    }}
-
-                    // Handle Marker Clusters
-                    if (clusterGroup && typeof clusterGroup.hasLayer === 'function' && clusterGroup.hasLayer(layer)) {{
-                        clusterGroup.zoomToShowLayer(layer, function() {{
-                            if (layer.openPopup) layer.openPopup();
-                        }});
-                    }} else {{
-                        // Smooth fly to geometry
+                    if (layer) {{
                         if (layer.getBounds && layer.getBounds().isValid()) {{
-                            map.flyToBounds(layer.getBounds(), {{ maxZoom: 16, padding: [60, 60], duration: 0.6 }});
+                            map.fitBounds(layer.getBounds(), {{ maxZoom: 16, padding: [40, 40] }});
                         }} else if (layer.getLatLng) {{
-                            map.flyTo(layer.getLatLng(), Math.max(map.getZoom(), 14), {{ duration: 0.6 }});
+                            map.setView(layer.getLatLng(), Math.max(map.getZoom(), 13));
                         }}
                         if (layer.openPopup) layer.openPopup();
                     }}
@@ -1112,10 +974,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
     def highlight_feature(self, index: int):
         if self._is_loaded:
-            if index is not None and index >= 0:
-                self.web_view.page().runJavaScript(f"highlightFeature({index});")
-            else:
-                self.web_view.page().runJavaScript("resetPreviousHighlight();")
+            self.web_view.page().runJavaScript(f"highlightFeature({index});")
 
     def fit_bounds(self):
         if self._is_loaded:
