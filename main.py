@@ -3,7 +3,7 @@ import os
 import ctypes
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import Qt, QSettings
+from PyQt6.QtCore import Qt
 from ui.main_window import MainWindow
 from core.theme import ThemeManager
 
@@ -26,9 +26,7 @@ def main():
     else:
         print(f"Uyarı: İkon dosyası bulunamadı -> {icon_path}")
         
-    settings = QSettings("ChiselEditor", "ChiselEditor")
-    saved_theme = settings.value("theme", "light")
-    ThemeManager.apply_theme(app, str(saved_theme))
+    ThemeManager.apply_theme(app, "light")
     window = MainWindow()
     window.show()
     sys.exit(app.exec())

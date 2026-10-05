@@ -72,17 +72,8 @@ class MonacoEditor(QWidget):
                 return
         super().dropEvent(event)
 
-    def _init_map_or_editor_theme(self) -> str:
-        current_key = getattr(ThemeManager, "_current_theme", "light")
-        if current_key == "high_contrast":
-            return "hc-black"
-        theme_obj = ThemeManager.get_theme(current_key)
-        if theme_obj and theme_obj.is_dark:
-            return "vs-dark"
-        return "vs"
-
     def _init_editor(self):
-        theme = self._init_map_or_editor_theme()
+        theme = "vs-dark" if ThemeManager._current_theme == "dark" else "vs"
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -239,16 +230,7 @@ class MonacoEditor(QWidget):
         if not self._is_ready:
             self._pending_theme = theme
             return
-        if theme == "high_contrast":
-            monaco_theme = "hc-black"
-        else:
-            theme_obj = ThemeManager.get_theme(theme)
-            if theme_obj and theme_obj.is_dark:
-                monaco_theme = "vs-dark"
-            elif theme == "dark":
-                monaco_theme = "vs-dark"
-            else:
-                monaco_theme = "vs"
+        monaco_theme = "vs-dark" if theme == "dark" else "vs"
         escaped = json.dumps(monaco_theme)
         self.web_view.page().runJavaScript(f"safeSetTheme({escaped});")
 

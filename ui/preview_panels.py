@@ -54,8 +54,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
         self._init_map()
 
     def _init_map(self):
-        current_theme_obj = ThemeManager.current_theme()
-        map_style = current_theme_obj.map_style if current_theme_obj else ("carto_dark" if ThemeManager.is_dark() else "osm")
+        theme = ThemeManager._current_theme
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -197,7 +196,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 <button class="hud-btn" id="btnOsm" onclick="setBaseMap('osm')" title="OpenStreetMap (Tamamen Ücretsiz)">OSM</button>
                 <button class="hud-btn" id="btnSat" onclick="setBaseMap('sat')" title="Esri Uydu Görüntüsü (Ücretsiz)">Uydu</button>
                 <button class="hud-btn" id="btnTopo" onclick="setBaseMap('topo')" title="OpenTopoMap (Ücretsiz)">Topo</button>
-                <button class="hud-btn" id="btnDark" onclick="setBaseMap('carto_dark')" title="Karanlık Mod Harita (CartoDB Dark Matter)">Koyu</button>
+                <button class="hud-btn" id="btnDark" onclick="setBaseMap('dark')" title="Karanlık Mod Harita (Filtrelenmiş OSM)">Koyu</button>
                 <button class="hud-btn" id="btnNone" onclick="setBaseMap('none')" title="Altlık Yok (Boş Zemin)">Yok</button>
             </div>
 
@@ -217,20 +216,23 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 // STRICTLY FREE BASE TILES (No API key, no watermark)
                 var freeTiles = {{
                     osm: L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{ maxZoom: 19 }}),
-                    carto_dark: L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{ maxZoom: 20, subdomains: 'abcd' }}),
                     sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{{z}}/{{y}}/{{x}}', {{ maxZoom: 18 }}),
                     topo: L.tileLayer('https://{{s}}.tile.opentopomap.org/{{z}}/{{x}}/{{y}}.png', {{ maxZoom: 17 }}),
-                    dark: L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{ maxZoom: 20, subdomains: 'abcd' }}),
+                    dark: L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{ maxZoom: 19 }}),
                     none: null
                 }};
 
                 function applyTileFilter(type) {{
                     var tilePane = map.getPane('tilePane');
                     if (!tilePane) return;
-                    tilePane.style.filter = '';
+                    if (type === 'dark') {{
+                        tilePane.style.filter = 'invert(100%) hue-rotate(180deg) brightness(85%) contrast(90%)';
+                    }} else {{
+                        tilePane.style.filter = '';
+                    }}
                 }}
 
-                var currentBase = '{map_style}';
+                var currentBase = '{theme}' === 'dark' ? 'dark' : 'osm';
                 if (freeTiles[currentBase]) freeTiles[currentBase].addTo(map);
                 applyTileFilter(currentBase);
                 updateActiveBaseButton(currentBase);
@@ -249,7 +251,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         var btn = document.getElementById(id);
                         if (btn) btn.classList.remove('active');
                     }});
-                    var mapBtn = {{ osm: 'btnOsm', sat: 'btnSat', topo: 'btnTopo', carto_dark: 'btnDark', dark: 'btnDark', none: 'btnNone' }}[type];
+                    var mapBtn = {{ osm: 'btnOsm', sat: 'btnSat', topo: 'btnTopo', dark: 'btnDark', none: 'btnNone' }}[type];
                     if (mapBtn && document.getElementById(mapBtn)) {{
                         document.getElementById(mapBtn).classList.add('active');
                     }}
@@ -589,8 +591,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
     def set_theme_tiles(self, theme_name: str):
         if self._is_loaded:
-            theme_obj = ThemeManager.get_theme(theme_name)
-            tile_key = theme_obj.map_style if theme_obj else ("carto_dark" if ThemeManager.is_dark() else "osm")
+            tile_key = 'dark' if theme_name == 'dark' else 'light'
             self.web_view.page().runJavaScript(f"setBaseMap('{tile_key}');")
 
 
@@ -599,14 +600,11 @@ class MarkdownPreviewPanel(AbstractPreviewPanel):
     def render_content(self, content: str):
         try:
             raw_html = markdown.markdown(content, extensions=['extra', 'codehilite', 'tables'])
-            theme_obj = ThemeManager.current_theme()
-            p = theme_obj.palette if theme_obj else {}
-            is_dark = ThemeManager.is_dark()
-            bg_color = p.get('background', "#1e1e1e" if is_dark else "#ffffff")
-            text_color = p.get('text', "#cccccc" if is_dark else "#24292e")
-            code_bg = p.get('input_bg', "#2d2d2d" if is_dark else "#f6f8fa")
-            border_col = p.get('border', "#3c3c3c" if is_dark else "#e1e4e8")
-            primary_col = p.get('primary', "#007fd4")
+            is_dark = ThemeManager._current_theme == "dark"
+            bg_color = "#1e1e1e" if is_dark else "#ffffff"
+            text_color = "#cccccc" if is_dark else "#24292e"
+            code_bg = "#2d2d2d" if is_dark else "#f6f8fa"
+            border_col = "#3c3c3c" if is_dark else "#e1e4e8"
 
             styled_html = f"""
             <!DOCTYPE html>
@@ -634,7 +632,7 @@ class MarkdownPreviewPanel(AbstractPreviewPanel):
                     th, td {{ border: 1px solid {border_col}; padding: 8px 12px; }}
                     th {{ background-color: {code_bg}; }}
                     blockquote {{
-                        border-left: 4px solid {primary_col};
+                        border-left: 4px solid #007fd4;
                         margin: 0;
                         padding-left: 14px;
                         color: #858585;
