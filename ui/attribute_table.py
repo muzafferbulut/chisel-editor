@@ -100,7 +100,6 @@ class GeoDataFrameTableModel(QAbstractTableModel):
 class AttributeTableWidget(QWidget):
     feature_selected = pyqtSignal(int)
     data_modified = pyqtSignal(object)
-    close_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -139,17 +138,6 @@ class AttributeTableWidget(QWidget):
         self.btn_export_csv.setToolTip("Öznitelik tablosunu CSV olarak kaydet")
         self.btn_export_csv.clicked.connect(self._export_csv)
         toolbar.addWidget(self.btn_export_csv)
-
-        self.btn_close = QPushButton("✕")
-        self.btn_close.setToolTip("Öznitelik Tablosunu Kapat (F6)")
-        self.btn_close.setFixedSize(24, 24)
-        self.btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_close.setStyleSheet(
-            "QPushButton { border: 1px solid transparent; font-weight: bold; font-size: 13px; border-radius: 4px; padding: 0px; } "
-            "QPushButton:hover { background-color: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); }"
-        )
-        self.btn_close.clicked.connect(self.close_requested.emit)
-        toolbar.addWidget(self.btn_close)
 
         layout.addLayout(toolbar)
 

@@ -1,14 +1,10 @@
 import os
 import io
-import warnings
 import geopandas as gpd
 import fiona
 from .base import BaseHandler
 import pandas as pd
 from core.spatial_ops import SpatialOps
-
-warnings.filterwarnings("ignore", category=RuntimeWarning, message="Several features with id.*")
-warnings.filterwarnings("ignore", category=RuntimeWarning, module="pyogrio.*")
 
 fiona.drvsupport.supported_drivers['KML'] = 'rw'
 fiona.drvsupport.supported_drivers['LIBKML'] = 'rw'

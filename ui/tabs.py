@@ -29,46 +29,39 @@ class EditorTab(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
 
-        # Main Splitter (Left: Code Editor, Right: Spatial / Markdown)
+        # Splitter Layout (direct workspace, no intermediate toolbar)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setHandleWidth(2)
 
-        # Code Editor on the left
+        # Left Container: Monaco Editor (0) or Attribute Table (1)
+        self.left_stack = QStackedWidget()
         self.text_editor = MonacoEditor()
-        self.splitter.addWidget(self.text_editor)
-
-        # Right Container: Spatial (0) or Markdown (1)
-        self.right_stack = QStackedWidget()
-
-        # Spatial View: Vertical splitter with Map on top and Attribute Table docked at bottom
-        self.spatial_splitter = QSplitter(Qt.Orientation.Vertical)
-        self.spatial_splitter.setHandleWidth(3)
-
-        self.map_panel = MapPreviewPanel()
         self.table_panel = AttributeTableWidget()
 
-        self.spatial_splitter.addWidget(self.map_panel)
-        self.spatial_splitter.addWidget(self.table_panel)
-        self.table_panel.hide()
+        self.left_stack.addWidget(self.text_editor)
+        self.left_stack.addWidget(self.table_panel)
 
+        # Right Container: Map (0) or Markdown (1)
+        self.right_stack = QStackedWidget()
+        self.map_panel = MapPreviewPanel()
         self.markdown_panel = MarkdownPreviewPanel()
 
-        self.right_stack.addWidget(self.spatial_splitter)  # index 0: Spatial
-        self.right_stack.addWidget(self.markdown_panel)    # index 1: Markdown
+        self.right_stack.addWidget(self.map_panel)
+        self.right_stack.addWidget(self.markdown_panel)
 
+        self.splitter.addWidget(self.left_stack)
         self.splitter.addWidget(self.right_stack)
         self.splitter.setSizes([500, 650])
 
         self.layout.addWidget(self.splitter)
 
-        # Default mode for new/unopened tab: Pure code view (preview hidden)
+        # Default mode for new/unopened tab: Pure code view (map hidden)
         self.set_view_mode("code")
 
-        # Bi-directional sync & interactions
+        # Bi-directional sync
         self.table_panel.feature_selected.connect(self.map_panel.highlight_feature)
         self.map_panel.feature_clicked.connect(self.table_panel.select_feature)
         self.map_panel.table_toggle_requested.connect(self.toggle_table)
-        self.table_panel.close_requested.connect(self.toggle_table)
         self.table_panel.data_modified.connect(self._on_table_data_modified)
         self.map_panel.feature_deleted.connect(self._on_feature_deleted)
         self.map_panel.feature_added.connect(self._on_feature_added)
@@ -192,108 +185,63 @@ class EditorTab(QWidget):
         if self.map_panel:
             self.map_panel.fit_bounds()
 
-    def is_table_visible(self) -> bool:
-        return (
-            self.is_spatial
-            and self.table_panel.isVisible()
-            and self.right_stack.isVisible()
-            and self.right_stack.currentIndex() == 0
-        )
-
-    def _adjust_spatial_splitter_sizes(self):
-        total_h = self.spatial_splitter.height()
-        if total_h < 300:
-            total_h = self.height() if self.height() > 300 else 700
-        table_h = getattr(self, "_last_table_height", None) or max(220, int(total_h * 0.35))
-        map_h = max(200, total_h - table_h)
-        self.spatial_splitter.setSizes([map_h, table_h])
-
     def set_view_mode(self, mode: str):
         if mode == "code":
-            self.text_editor.show()
+            self.left_stack.setCurrentIndex(0)
+            self.left_stack.show()
             self.right_stack.hide()
 
         elif mode == "code_map":
-            self.text_editor.show()
+            self.left_stack.setCurrentIndex(0)
             self.right_stack.setCurrentIndex(0)
+            self.left_stack.show()
             self.right_stack.show()
-            self.map_panel.show()
-            self.table_panel.hide()
-            self.map_panel.set_table_active(False)
             self.splitter.setSizes([500, 650])
 
         elif mode == "table_map":
-            self.text_editor.hide()
+            self.left_stack.setCurrentIndex(1)
             self.right_stack.setCurrentIndex(0)
+            self.left_stack.show()
             self.right_stack.show()
-            self.map_panel.show()
-            self.table_panel.show()
-            self.map_panel.set_table_active(True)
-            self._adjust_spatial_splitter_sizes()
+            self.splitter.setSizes([500, 650])
 
         elif mode == "map":
-            self.text_editor.hide()
             self.right_stack.setCurrentIndex(0)
+            self.left_stack.hide()
             self.right_stack.show()
-            self.map_panel.show()
-            self.table_panel.hide()
-            self.map_panel.set_table_active(False)
 
         elif mode == "table":
-            self.text_editor.hide()
-            self.right_stack.setCurrentIndex(0)
-            self.right_stack.show()
-            self.map_panel.hide()
-            self.table_panel.show()
-            self.map_panel.set_table_active(True)
+            self.left_stack.setCurrentIndex(1)
+            self.left_stack.show()
+            self.right_stack.hide()
 
         elif mode == "markdown":
-            self.text_editor.show()
+            self.left_stack.setCurrentIndex(0)
             self.right_stack.setCurrentIndex(1)
+            self.left_stack.show()
             self.right_stack.show()
             self.splitter.setSizes([500, 500])
 
     def toggle_table(self):
-        """Toggles bottom attribute table under the map."""
+        """Toggles between full Map view and Table+Map split view."""
         if not self.is_spatial:
             return
-
-        # If spatial container is not visible, switch to spatial view with table
-        if not self.right_stack.isVisible() or self.right_stack.currentIndex() != 0:
-            self.set_view_mode("table_map")
-            self.state_changed.emit()
-            return
-
-        if self.table_panel.isVisible():
-            sizes = self.spatial_splitter.sizes()
-            if len(sizes) > 1 and sizes[1] > 50:
-                self._last_table_height = sizes[1]
-            self.table_panel.hide()
-            self.map_panel.show()
-            self.map_panel.set_table_active(False)
+        if self.left_stack.isVisible() and self.left_stack.currentIndex() == 1:
+            self.set_view_mode("map")
         else:
-            self.table_panel.show()
-            self.map_panel.show()
-            self.map_panel.set_table_active(True)
-            self._adjust_spatial_splitter_sizes()
-
+            self.set_view_mode("table_map")
         self.state_changed.emit()
 
     def toggle_spatial_left_view(self):
-        """Toggle bottom attribute table under the map."""
-        self.toggle_table()
-
-    @property
-    def left_stack(self):
-        """Compatibility property for legacy callers referencing left_stack."""
-        class _CompatStack:
-            def __init__(self, tab):
-                self._tab = tab
-            def isVisible(self):
-                return self._tab.is_table_visible()
-            def currentIndex(self):
-                return 1 if self._tab.is_table_visible() else 0
-        return _CompatStack(self)
+        """Toggles between Code (0) and Attribute Table (1) on the left side of split view."""
+        if not self.is_spatial:
+            return
+        curr = self.left_stack.currentIndex()
+        if curr == 1:
+            self.set_view_mode("code_map")
+        else:
+            self.set_view_mode("table_map")
+        self.state_changed.emit()
 
     def configure_for_file_type(self, file_type: str, is_spatial: bool, content: str = "", gdf: object = None):
         self.file_type = file_type

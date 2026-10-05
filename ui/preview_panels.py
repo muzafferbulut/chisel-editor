@@ -471,14 +471,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }}
                 }}
 
-                function setTableButtonActive(active) {{
-                    var btn = document.getElementById('btnTable');
-                    if (btn) {{
-                        if (active) btn.classList.add('active');
-                        else btn.classList.remove('active');
-                    }}
-                }}
-
                 // --- WMS Layer Management ---
                 function addWmsLayer(layerId, url, layers, format, transparent) {{
                     if (wmsLayers[layerId]) map.removeLayer(wmsLayers[layerId]);
@@ -1004,11 +996,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
         if self._is_loaded:
             tile_key = 'dark' if theme_name == 'dark' else 'light'
             self.web_view.page().runJavaScript(f"setBaseMap('{tile_key}');")
-
-    def set_table_active(self, active: bool):
-        if self._is_loaded:
-            act_str = "true" if active else "false"
-            self.web_view.page().runJavaScript(f"setTableButtonActive({act_str});")
 
 
 class MarkdownPreviewPanel(AbstractPreviewPanel):

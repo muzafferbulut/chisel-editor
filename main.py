@@ -1,12 +1,6 @@
 import sys
 import os
 import ctypes
-import warnings
-
-# Suppress pyogrio/GDAL duplicate FID runtime warnings
-warnings.filterwarnings("ignore", category=RuntimeWarning, message="Several features with id.*")
-warnings.filterwarnings("ignore", category=RuntimeWarning, module="pyogrio.*")
-
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt
