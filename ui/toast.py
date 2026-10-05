@@ -11,15 +11,15 @@ class ToastNotification(QWidget):
     def __init__(self, parent, message, notification_type="info", duration=3000):
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        is_dark = ThemeManager._current_theme == "dark"
-        bg_color = "#333333" if is_dark else "#24292e"
-        text_color = "#ffffff"
+        theme_obj = ThemeManager.current_theme()
+        p = theme_obj.palette if theme_obj else {}
+        bg_color = p.get('header_bg', '#333333' if ThemeManager.is_dark() else '#24292e')
+        text_color = p.get('text', '#ffffff')
         border_color = {
-            "info": "#007fd4",
+            "info": p.get('primary', "#007fd4"),
             "success": "#4CAF50",
             "error": "#F44336"
-        }.get(notification_type, "#007fd4")
+        }.get(notification_type, p.get('primary', "#007fd4"))
 
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)

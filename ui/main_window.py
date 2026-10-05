@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QLabel, QApplication, QTabWidget, QProgressBar, QPushButton,
     QWidget, QHBoxLayout, QSplitter
 )
-from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QKeySequence
+from PyQt6.QtGui import QAction, QActionGroup, QDragEnterEvent, QDropEvent, QKeySequence
 from PyQt6.QtCore import Qt, QSettings
 
 from handlers.factory import HandlerFactory
@@ -159,6 +159,7 @@ class MainWindow(QMainWindow):
     def _save_session_state(self):
         settings = QSettings("ChiselEditor", "ChiselEditor")
         settings.setValue("last_folder", self._current_folder)
+        settings.setValue("theme", ThemeManager._current_theme)
         open_files = []
         active_file = ""
         curr_idx = self.tab_widget.currentIndex()
@@ -269,12 +270,18 @@ class MainWindow(QMainWindow):
 
         view_menu.addSeparator()
         theme_menu: QMenu = view_menu.addMenu("Theme")
-        act_light = QAction("Light", self)
-        act_dark = QAction("Dark", self)
-        act_light.triggered.connect(lambda: self._change_theme("light"))
-        act_dark.triggered.connect(lambda: self._change_theme("dark"))
-        theme_menu.addAction(act_light)
-        theme_menu.addAction(act_dark)
+        self.theme_action_group = QActionGroup(self)
+        self.theme_action_group.setExclusive(True)
+
+        current_theme_key = getattr(ThemeManager, "_current_theme", "light")
+        for key, name in ThemeManager.get_available_themes().items():
+            act = QAction(name, self)
+            act.setCheckable(True)
+            if key == current_theme_key:
+                act.setChecked(True)
+            act.triggered.connect(lambda checked, k=key: self._change_theme(k))
+            self.theme_action_group.addAction(act)
+            theme_menu.addAction(act)
 
         # --- GIS / Spatial Menu ---
         gis_menu: QMenu = menu_bar.addMenu("GIS")
@@ -753,11 +760,17 @@ class MainWindow(QMainWindow):
 
     def _change_theme(self, theme_name: str):
         ThemeManager.apply_theme(QApplication.instance(), theme_name)
+        settings = QSettings("ChiselEditor", "ChiselEditor")
+        settings.setValue("theme", theme_name)
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
             if tab:
-                tab.text_editor.setTheme(theme_name)
-                tab.map_panel.set_theme_tiles(theme_name)
+                if hasattr(tab, "text_editor"):
+                    tab.text_editor.setTheme(theme_name)
+                if hasattr(tab, "map_panel"):
+                    tab.map_panel.set_theme_tiles(theme_name)
+                if hasattr(tab, "markdown_panel") and tab.current_file and tab.current_file.lower().endswith(('.md', '.markdown')):
+                    tab.markdown_panel.render_content(tab.text_editor.toPlainText())
 
     def _show_shortcuts(self):
         QMessageBox.information(
