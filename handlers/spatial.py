@@ -32,34 +32,39 @@ class SpatialHandler(BaseHandler):
             merge_all = kwargs.get('merge_all', False)
             layer_name = kwargs.get('layer_name', None)
 
-            layers = fiona.listlayers(file_path)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=RuntimeWarning)
+                warnings.filterwarnings("ignore", message=".*Several features with id.*")
+                warnings.filterwarnings("ignore", module="pyogrio.*")
 
-            if len(layers) > 1 and not (merge_all or layer_name):
-                raise MultipleLayersError(layers)
+                layers = fiona.listlayers(file_path)
 
-            if merge_all:
-                gdfs = []
-                for l in layers:
+                if len(layers) > 1 and not (merge_all or layer_name):
+                    raise MultipleLayersError(layers)
+
+                if merge_all:
+                    gdfs = []
+                    for l in layers:
+                        try:
+                            gdfs.append(gpd.read_file(file_path, layer=l, engine="pyogrio"))
+                        except Exception:
+                            gdfs.append(gpd.read_file(file_path, layer=l))
+                    gdf = pd.concat(gdfs, ignore_index=True)
+                elif layer_name:
                     try:
-                        gdfs.append(gpd.read_file(file_path, layer=l, engine="pyogrio"))
+                        gdf = gpd.read_file(file_path, layer=layer_name, engine="pyogrio")
                     except Exception:
-                        gdfs.append(gpd.read_file(file_path, layer=l))
-                gdf = pd.concat(gdfs, ignore_index=True)
-            elif layer_name:
-                try:
-                    gdf = gpd.read_file(file_path, layer=layer_name, engine="pyogrio")
-                except Exception:
-                    gdf = gpd.read_file(file_path, layer=layer_name)
-            else:
-                try:
-                    gdf = gpd.read_file(file_path, engine="pyogrio")
-                except Exception:
-                    gdf = gpd.read_file(file_path)
+                        gdf = gpd.read_file(file_path, layer=layer_name)
+                else:
+                    try:
+                        gdf = gpd.read_file(file_path, engine="pyogrio")
+                    except Exception:
+                        gdf = gpd.read_file(file_path)
 
-            if gdf.crs is None:
-                gdf.set_crs("EPSG:4326", inplace=True)
+                if gdf.crs is None:
+                    gdf.set_crs("EPSG:4326", inplace=True)
 
-            return gdf
+                return gdf
         except MultipleLayersError:
             raise
         except Exception as e:
