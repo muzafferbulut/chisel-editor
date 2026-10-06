@@ -105,6 +105,8 @@ class EditorTab(QWidget):
         layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
         feat_count = len(gdf) if gdf is not None and not gdf.empty else 0
         self.map_panel.set_active_vector_info(layer_name, feat_count)
+        geom_type = SpatialOps.get_layer_geometry_type(gdf)
+        self.map_panel.set_layer_geometry_type(geom_type)
 
         # 3. Monaco Editor: Avoid freezing WebEngine by buffering large text
         if raw_geojson:
@@ -137,6 +139,8 @@ class EditorTab(QWidget):
         layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
         feat_count = len(gdf) if gdf is not None and not gdf.empty else 0
         self.map_panel.set_active_vector_info(layer_name, feat_count)
+        geom_type = SpatialOps.get_layer_geometry_type(gdf)
+        self.map_panel.set_layer_geometry_type(geom_type)
         self._is_loading = False
         self.is_dirty = True
         self.state_changed.emit()
@@ -172,6 +176,24 @@ class EditorTab(QWidget):
                 from shapely.validation import make_valid
                 shapely_geom = make_valid(shapely_geom)
 
+            # Check geometry compatibility with existing layer
+            if self._current_gdf is not None and not self._current_gdf.empty:
+                layer_type = SpatialOps.get_layer_geometry_type(self._current_gdf)
+                new_type = shapely_geom.geom_type.lower()
+                is_compat = True
+                if layer_type == "point" and "point" not in new_type:
+                    is_compat = False
+                elif layer_type == "line" and "line" not in new_type:
+                    is_compat = False
+                elif layer_type == "polygon" and "poly" not in new_type:
+                    is_compat = False
+
+                if not is_compat:
+                    type_tr = {"point": "Nokta", "line": "Çizgi", "polygon": "Çokgen"}.get(layer_type, layer_type)
+                    new_tr = "Nokta" if "point" in new_type else ("Çizgi" if "line" in new_type else ("Çokgen" if "poly" in new_type else shapely_geom.geom_type))
+                    ToastNotification.show_toast(self.window(), f"⚠️ Uyumsuz geometri! Katman [{type_tr}] tipindedir, [{new_tr}] eklenemez.", "warning")
+                    return
+
             if self._current_gdf is None or self._current_gdf.empty:
                 new_gdf = gpd.GeoDataFrame([{"geometry": shapely_geom}], crs="EPSG:4326")
             else:
@@ -192,7 +214,7 @@ class EditorTab(QWidget):
                 new_gdf = pd.concat([self._current_gdf, row_gdf], ignore_index=True)
 
             self.update_spatial_gdf(new_gdf)
-            geom_name = "Nokta" if shapely_geom.geom_type == "Point" else ("Çokgen" if "Polygon" in shapely_geom.geom_type else shapely_geom.geom_type)
+            geom_name = "Nokta" if "point" in shapely_geom.geom_type.lower() else ("Çizgi" if "line" in shapely_geom.geom_type.lower() else ("Çokgen" if "poly" in shapely_geom.geom_type.lower() else shapely_geom.geom_type))
             ToastNotification.show_toast(self.window(), f"➕ Yeni {geom_name} eklendi! (Toplam: {len(new_gdf)})", "success")
         except Exception as e:
             print(f"Error adding feature: {e}")
@@ -343,6 +365,8 @@ class EditorTab(QWidget):
                     gdf = SpatialOps.parse_geojson_str(content)
                     self._current_gdf = gdf
                     self.table_panel.load_data(gdf)
+                    geom_type = SpatialOps.get_layer_geometry_type(gdf)
+                    self.map_panel.set_layer_geometry_type(geom_type)
                 except Exception:
                     pass
         elif self.file_type == "Markdown" and self.right_stack.isVisible():

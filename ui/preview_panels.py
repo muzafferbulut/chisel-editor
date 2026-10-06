@@ -166,6 +166,21 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     color: #ffffff;
                     font-weight: bold;
                 }}
+                .hud-vbtn.disabled {{
+                    opacity: 0.28 !important;
+                    cursor: not-allowed !important;
+                    background: rgba(255, 255, 255, 0.03) !important;
+                    border-color: rgba(255, 255, 255, 0.08) !important;
+                }}
+                .hud-vbtn.disabled:hover {{
+                    background: rgba(255, 255, 255, 0.05) !important;
+                    border-color: rgba(231, 76, 60, 0.4) !important;
+                    color: #888888 !important;
+                }}
+                .hud-banner.hud-banner-warn {{
+                    background: rgba(192, 57, 43, 0.95) !important;
+                    box-shadow: 0 4px 16px rgba(192, 57, 43, 0.4) !important;
+                }}
                 .hud-vbtn-del:hover {{
                     background: #d32f2f !important;
                     border-color: #f44336 !important;
@@ -464,6 +479,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 <div class="hud-vdivider"></div>
                 
                 <button class="hud-vbtn" id="btnAddPoint" onclick="toggleDrawMode('point')" data-tip="Nokta Ekle (Haritaya Tıkla)" title="Nokta Ekle">📍+</button>
+                <button class="hud-vbtn" id="btnAddLine" onclick="toggleDrawMode('line')" data-tip="Çizgi Ekle (Çiz & Çift Tıkla)" title="Çizgi Ekle">〰️+</button>
                 <button class="hud-vbtn" id="btnAddPolygon" onclick="toggleDrawMode('polygon')" data-tip="Çokgen Ekle (Çiz & Çift Tıkla)" title="Çokgen Ekle">📐+</button>
                 <button class="hud-vbtn hud-vbtn-del" id="btnDelete" onclick="deleteSelectedFeature()" data-tip="Seçili Geometriyi Sil" title="Seçili Geometriyi Sil">🗑️</button>
                 
@@ -817,35 +833,132 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
 
                 // --- Geometry Addition & Drawing Modes ---
-                var drawMode = null; // null | 'point' | 'polygon'
+                var activeLayerGeomType = 'any'; // 'point' | 'line' | 'polygon' | 'mixed' | 'any'
+                var drawMode = null; // null | 'point' | 'line' | 'polygon'
                 var polyDrawPoints = [];
                 var polyDrawMarkers = [];
                 var polyDrawLine = null;
                 var polyDrawPoly = null;
                 var selectedFeatureIndex = -1;
+                var warnBannerTimer = null;
+
+                function setLayerGeometryType(geomType) {{
+                    activeLayerGeomType = (geomType || 'any').toLowerCase();
+                    updateDrawButtonsUI();
+                    if (drawMode && !isDrawModeAllowed(drawMode)) {{
+                        cancelDrawMode();
+                    }}
+                }}
+
+                function isDrawModeAllowed(mode) {{
+                    if (activeLayerGeomType === 'any' || activeLayerGeomType === 'mixed') return true;
+                    if (mode === 'point') return activeLayerGeomType === 'point';
+                    if (mode === 'line') return activeLayerGeomType === 'line';
+                    if (mode === 'polygon') return activeLayerGeomType === 'polygon';
+                    return true;
+                }}
+
+                function getLayerTypeNameTr(type) {{
+                    if (type === 'point') return 'Nokta';
+                    if (type === 'line') return 'Çizgi';
+                    if (type === 'polygon') return 'Çokgen';
+                    return 'Karma';
+                }}
+
+                function getDrawModeNameTr(mode) {{
+                    if (mode === 'point') return 'Nokta';
+                    if (mode === 'line') return 'Çizgi';
+                    if (mode === 'polygon') return 'Çokgen';
+                    return mode;
+                }}
+
+                function updateDrawButtonsUI() {{
+                    var bPoint = document.getElementById('btnAddPoint');
+                    var bLine = document.getElementById('btnAddLine');
+                    var bPoly = document.getElementById('btnAddPolygon');
+                    var layerTr = getLayerTypeNameTr(activeLayerGeomType);
+
+                    if (bPoint) {{
+                        if (isDrawModeAllowed('point')) {{
+                            bPoint.classList.remove('disabled');
+                            bPoint.setAttribute('data-tip', 'Nokta Ekle (Haritaya Tıkla)');
+                        }} else {{
+                            bPoint.classList.add('disabled');
+                            bPoint.setAttribute('data-tip', '⚠️ Bu katman [' + layerTr + '] tipindedir. Nokta eklenemez!');
+                        }}
+                    }}
+
+                    if (bLine) {{
+                        if (isDrawModeAllowed('line')) {{
+                            bLine.classList.remove('disabled');
+                            bLine.setAttribute('data-tip', 'Çizgi Ekle (Çiz & Çift Tıkla)');
+                        }} else {{
+                            bLine.classList.add('disabled');
+                            bLine.setAttribute('data-tip', '⚠️ Bu katman [' + layerTr + '] tipindedir. Çizgi eklenemez!');
+                        }}
+                    }}
+
+                    if (bPoly) {{
+                        if (isDrawModeAllowed('polygon')) {{
+                            bPoly.classList.remove('disabled');
+                            bPoly.setAttribute('data-tip', 'Çokgen Ekle (Çiz & Çift Tıkla)');
+                        }} else {{
+                            bPoly.classList.add('disabled');
+                            bPoly.setAttribute('data-tip', '⚠️ Bu katman [' + layerTr + '] tipindedir. Çokgen eklenemez!');
+                        }}
+                    }}
+                }}
+
+                function showWarningBanner(msg, duration) {{
+                    var banner = document.getElementById('drawBanner');
+                    var bannerText = document.getElementById('drawBannerText');
+                    if (!banner || !bannerText) return;
+                    if (warnBannerTimer) clearTimeout(warnBannerTimer);
+
+                    bannerText.textContent = msg;
+                    banner.classList.add('active', 'hud-banner-warn');
+                    warnBannerTimer = setTimeout(function() {{
+                        banner.classList.remove('active', 'hud-banner-warn');
+                    }}, duration || 3500);
+                }}
 
                 function toggleDrawMode(mode) {{
                     if (drawMode === mode) {{
                         cancelDrawMode();
                         return;
                     }}
+
+                    if (!isDrawModeAllowed(mode)) {{
+                        var layerName = getLayerTypeNameTr(activeLayerGeomType);
+                        var targetName = getDrawModeNameTr(mode);
+                        showWarningBanner('⚠️ Bu katman [' + layerName + '] tipindedir. ' + targetName + ' eklenemez!');
+                        return;
+                    }}
+
                     cancelDrawMode();
                     if (measureActive) toggleMeasure();
                     closeAllFlyouts();
                     drawMode = mode;
 
                     var bPoint = document.getElementById('btnAddPoint');
+                    var bLine = document.getElementById('btnAddLine');
                     var bPoly = document.getElementById('btnAddPolygon');
                     if (mode === 'point' && bPoint) bPoint.classList.add('active');
+                    if (mode === 'line' && bLine) bLine.classList.add('active');
                     if (mode === 'polygon' && bPoly) bPoly.classList.add('active');
 
                     var banner = document.getElementById('drawBanner');
                     var bannerText = document.getElementById('drawBannerText');
+                    if (banner) banner.classList.remove('hud-banner-warn');
                     if (mode === 'point') {{
                         bannerText.textContent = '📍 Haritaya tıklayarak yeni nokta ekleyin';
                         map.getContainer().style.cursor = 'crosshair';
+                    }} else if (mode === 'line') {{
+                        bannerText.textContent = '〰️ Noktaları tıklayın. Çizgiyi bitirmek için çift tıklayın';
+                        map.getContainer().style.cursor = 'crosshair';
+                        map.doubleClickZoom.disable();
                     }} else if (mode === 'polygon') {{
-                        bannerText.textContent = '📐 Köşeleri tıklayın. Bitirmek için çift tıklayın';
+                        bannerText.textContent = '📐 Köşeleri tıklayın. Alanı bitirmek için çift tıklayın';
                         map.getContainer().style.cursor = 'crosshair';
                         map.doubleClickZoom.disable();
                     }}
@@ -858,12 +971,14 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     map.doubleClickZoom.enable();
 
                     var bPoint = document.getElementById('btnAddPoint');
+                    var bLine = document.getElementById('btnAddLine');
                     var bPoly = document.getElementById('btnAddPolygon');
                     if (bPoint) bPoint.classList.remove('active');
+                    if (bLine) bLine.classList.remove('active');
                     if (bPoly) bPoly.classList.remove('active');
 
                     var banner = document.getElementById('drawBanner');
-                    if (banner) banner.classList.remove('active');
+                    if (banner) banner.classList.remove('active', 'hud-banner-warn');
 
                     clearPolyDraw();
                 }}
@@ -988,6 +1103,27 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         return;
                     }}
 
+                    if (drawMode === 'line') {{
+                        polyDrawPoints.push(e.latlng);
+                        var lm = L.circleMarker(e.latlng, {{
+                            radius: 4.5,
+                            color: '#ff8800',
+                            fillColor: '#ffffff',
+                            fillOpacity: 1,
+                            weight: 2
+                        }}).addTo(map);
+                        polyDrawMarkers.push(lm);
+
+                        if (polyDrawPoints.length > 1) {{
+                            if (polyDrawLine) map.removeLayer(polyDrawLine);
+                            polyDrawLine = L.polyline(polyDrawPoints, {{
+                                color: '#ff8800',
+                                weight: 3
+                            }}).addTo(map);
+                        }}
+                        return;
+                    }}
+
                     if (drawMode === 'polygon') {{
                         polyDrawPoints.push(e.latlng);
                         var pm = L.circleMarker(e.latlng, {{
@@ -1019,8 +1155,28 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }}
                 }});
 
-                // --- Double Click Handler for Polygon Finish ---
+                // --- Double Click Handler for Finish Drawing ---
                 map.on('dblclick', function(e) {{
+                    if (drawMode === 'line') {{
+                        if (polyDrawPoints.length >= 2) {{
+                            var lineCoords = polyDrawPoints.map(function(p) {{ return [p.lng, p.lat]; }});
+                            var lineFeat = {{
+                                type: "Feature",
+                                geometry: {{
+                                    type: "LineString",
+                                    coordinates: lineCoords
+                                }},
+                                properties: {{}}
+                            }};
+                            cancelDrawMode();
+                            if (pyBridge && pyBridge.onFeatureAdded) {{
+                                pyBridge.onFeatureAdded(JSON.stringify(lineFeat));
+                            }}
+                        }} else {{
+                            cancelDrawMode();
+                        }}
+                        return;
+                    }}
                     if (drawMode === 'polygon') {{
                         if (polyDrawPoints.length >= 3) {{
                             var coords = polyDrawPoints.map(function(p) {{ return [p.lng, p.lat]; }});
@@ -1040,6 +1196,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         }} else {{
                             cancelDrawMode();
                         }}
+                        return;
                     }}
                 }});
 
@@ -1077,6 +1234,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         activeVectorInfo.name = '';
                         activeVectorInfo.count = 0;
                         hasFittedInitially = false;
+                        setLayerGeometryType('any');
                         renderLayersPanel();
                         return;
                     }}
@@ -1086,6 +1244,25 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         featureCount = geojsonData.features.length;
                     }} else if (geojsonData.type === 'Feature') {{
                         featureCount = 1;
+                    }}
+
+                    if (geojsonData && geojsonData.features && geojsonData.features.length > 0) {{
+                        var detectedTypes = {{}};
+                        for (var di = 0; di < Math.min(geojsonData.features.length, 100); di++) {{
+                            var fg = geojsonData.features[di].geometry;
+                            if (fg && fg.type) {{
+                                var lt = fg.type.toLowerCase();
+                                if (lt.indexOf('point') !== -1) detectedTypes['point'] = true;
+                                else if (lt.indexOf('line') !== -1) detectedTypes['line'] = true;
+                                else if (lt.indexOf('poly') !== -1) detectedTypes['polygon'] = true;
+                            }}
+                        }}
+                        var dKeys = Object.keys(detectedTypes);
+                        if (dKeys.length === 1) {{
+                            setLayerGeometryType(dKeys[0]);
+                        }} else if (dKeys.length > 1) {{
+                            setLayerGeometryType('mixed');
+                        }}
                     }}
 
                     document.getElementById('statsPill').textContent = '📍 ' + featureCount.toLocaleString() + ' Özellik';
@@ -1233,6 +1410,17 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 n, c = self._pending_vector_info
                 self.set_active_vector_info(n, c)
                 self._pending_vector_info = None
+            if getattr(self, '_pending_geom_type', None):
+                self.set_layer_geometry_type(self._pending_geom_type)
+                self._pending_geom_type = None
+
+    def set_layer_geometry_type(self, geom_type: str):
+        self._current_geom_type = geom_type
+        if self._is_loaded:
+            esc_type = json.dumps(geom_type)
+            self.web_view.page().runJavaScript(f"setLayerGeometryType({esc_type});")
+        else:
+            self._pending_geom_type = geom_type
 
     def set_active_vector_info(self, name: str, count: int):
         if self._is_loaded:

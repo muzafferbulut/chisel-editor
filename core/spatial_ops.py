@@ -21,6 +21,35 @@ class SpatialOps:
     """
 
     @staticmethod
+    def get_layer_geometry_type(gdf: gpd.GeoDataFrame) -> str:
+        """
+        Determines the dominant geometry type of the GeoDataFrame.
+        Returns 'point', 'line', 'polygon', 'mixed', or 'any'.
+        """
+        if gdf is None or gdf.empty or "geometry" not in gdf.columns:
+            return "any"
+
+        valid_geoms = gdf.geometry.dropna()
+        if valid_geoms.empty:
+            return "any"
+
+        types = valid_geoms.geom_type.str.lower().unique()
+        has_point = any("point" in t for t in types)
+        has_line = any("line" in t for t in types)
+        has_poly = any("polygon" in t for t in types)
+
+        count = sum([has_point, has_line, has_poly])
+        if count > 1:
+            return "mixed"
+        if has_point:
+            return "point"
+        if has_line:
+            return "line"
+        if has_poly:
+            return "polygon"
+        return "any"
+
+    @staticmethod
     def sanitize_gdf_for_json(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         """
         Sanitizes non-serializable columns (datetime, Timestamps, NaT, NaN, categorical)

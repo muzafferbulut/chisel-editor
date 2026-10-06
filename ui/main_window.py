@@ -425,10 +425,13 @@ class MainWindow(QMainWindow):
                 feat_count = len(tab._current_gdf) if tab._current_gdf is not None and not tab._current_gdf.empty else 0
                 layer_name = os.path.basename(tab.current_file) if tab.current_file else "Sample GIS Layer"
                 tab.map_panel.set_active_vector_info(layer_name, feat_count)
+                geom_type = SpatialOps.get_layer_geometry_type(tab._current_gdf)
+                tab.map_panel.set_layer_geometry_type(geom_type)
             else:
                 self.btn_status_crs.hide()
                 if tab.map_panel:
                     tab.map_panel.set_active_vector_info("", 0)
+                    tab.map_panel.set_layer_geometry_type("any")
         self._save_session_state()
 
     def _update_cursor_info(self, line: int, col: int):
