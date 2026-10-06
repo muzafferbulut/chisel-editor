@@ -14,6 +14,7 @@ class MapBridge(QObject):
     tableToggleRequested = pyqtSignal()
     wmsDeleted = pyqtSignal(str)
     serviceAddRequested = pyqtSignal()
+    activeLayerRequested = pyqtSignal(str)
 
     @pyqtSlot(int)
     def onFeatureClicked(self, index):
@@ -39,6 +40,10 @@ class MapBridge(QObject):
     def requestAddService(self):
         self.serviceAddRequested.emit()
 
+    @pyqtSlot(str)
+    def onActiveLayerRequested(self, layerId):
+        self.activeLayerRequested.emit(layerId)
+
 
 class AbstractPreviewPanel(QWidget):
 
@@ -60,6 +65,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
     table_toggle_requested = pyqtSignal()
     wms_deleted = pyqtSignal(str)
     service_add_requested = pyqtSignal()
+    active_layer_requested = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -74,6 +80,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
         self.bridge.tableToggleRequested.connect(self.table_toggle_requested.emit)
         self.bridge.wmsDeleted.connect(self.wms_deleted.emit)
         self.bridge.serviceAddRequested.connect(self.service_add_requested.emit)
+        self.bridge.activeLayerRequested.connect(self.active_layer_requested.emit)
 
         self.channel = QWebChannel()
         self.channel.registerObject("mapBridge", self.bridge)
@@ -295,6 +302,60 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
                 .hud-layer-item:hover {{
                     background: rgba(255, 255, 255, 0.1);
+                }}
+                .hud-layer-item.active-layer {{
+                    background: rgba(0, 120, 212, 0.2) !important;
+                    border-color: rgba(76, 194, 255, 0.45) !important;
+                }}
+                .hud-layer-color-dot {{
+                    width: 9px;
+                    height: 9px;
+                    border-radius: 50%;
+                    flex-shrink: 0;
+                    display: inline-block;
+                    box-shadow: 0 0 4px rgba(0,0,0,0.4);
+                }}
+                .hud-layer-active-badge {{
+                    font-size: 10px;
+                    background: rgba(0, 120, 212, 0.35);
+                    color: #4cc2ff;
+                    border: 1px solid #0078d4;
+                    border-radius: 3px;
+                    padding: 1px 5px;
+                    font-weight: 600;
+                    white-space: nowrap;
+                    flex-shrink: 0;
+                }}
+                .hud-layer-switch-btn {{
+                    background: rgba(255, 255, 255, 0.08);
+                    border: 1px solid rgba(255, 255, 255, 0.15);
+                    color: #bbb;
+                    font-size: 10px;
+                    padding: 1px 6px;
+                    border-radius: 3px;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+                    white-space: nowrap;
+                    flex-shrink: 0;
+                }}
+                .hud-layer-switch-btn:hover {{
+                    background: #0078d4;
+                    border-color: #4cc2ff;
+                    color: #ffffff;
+                }}
+                .hud-popup-switch-btn {{
+                    background: #0078d4;
+                    color: #fff;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 4px 10px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: background 0.15s ease;
+                }}
+                .hud-popup-switch-btn:hover {{
+                    background: #0086ea;
                 }}
                 .hud-layer-label {{
                     display: flex;
@@ -620,8 +681,23 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
 
                 // --- Layer Panel & Flyout Controls ---
-                var activeVectorInfo = {{ name: '', count: 0, visible: true }};
+                var vectorLayers = {{}}; // layerId -> {{ id, name, count, geomType, color, visible, isActive, leafletLayer, indexMap, geojsonData }}
+                var activeLayerId = null;
+                var selectedFeatureLayerId = null;
                 var wmsRegistry = {{}}; // layerId -> {{ id, title, url, layerName, visible }}
+
+                var LAYER_PALETTE = [
+                    '#0078d4', // Blue
+                    '#e67e22', // Amber
+                    '#2ecc71', // Emerald
+                    '#9b59b6', // Purple
+                    '#e74c3c', // Red
+                    '#1abc9c', // Teal
+                    '#f39c12', // Orange
+                    '#e84393', // Pink
+                    '#00cec9', // Cyan
+                    '#6c5ce7'  // Violet
+                ];
 
                 function toggleLayersFlyout() {{
                     var lFlyout = document.getElementById('layersFlyout');
@@ -672,19 +748,16 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
 
                 function setActiveVectorInfo(name, count) {{
-                    activeVectorInfo.name = name || '';
-                    activeVectorInfo.count = count || 0;
+                    if (activeLayerId && vectorLayers[activeLayerId]) {{
+                        vectorLayers[activeLayerId].name = name;
+                        vectorLayers[activeLayerId].count = count;
+                    }}
                     renderLayersPanel();
                 }}
 
                 function toggleVectorVisibility(visible) {{
-                    activeVectorInfo.visible = visible;
-                    if (visible) {{
-                        if (clusterGroup) map.addLayer(clusterGroup);
-                        else if (geojsonLayer) map.addLayer(geojsonLayer);
-                    }} else {{
-                        if (clusterGroup) map.removeLayer(clusterGroup);
-                        if (geojsonLayer) map.removeLayer(geojsonLayer);
+                    if (activeLayerId) {{
+                        setVectorLayerVisibility(activeLayerId, visible);
                     }}
                 }}
 
@@ -708,32 +781,45 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 function renderLayersPanel() {{
                     var vContainer = document.getElementById('vectorLayerContainer');
                     if (vContainer) {{
-                        if (activeVectorInfo.name) {{
-                            var checkedAttr = activeVectorInfo.visible ? 'checked' : '';
-                            vContainer.innerHTML = 
-                                '<div class="hud-layer-item">' +
-                                '<label class="hud-layer-label">' +
-                                '<input type="checkbox" ' + checkedAttr + ' onchange="toggleVectorVisibility(this.checked)"/>' +
-                                '<span title="' + activeVectorInfo.name + '">📍 ' + activeVectorInfo.name + ' (' + activeVectorInfo.count.toLocaleString() + ')</span>' +
-                                '</label>' +
-                                '</div>';
+                        var keys = Object.keys(vectorLayers);
+                        if (keys.length === 0) {{
+                            vContainer.innerHTML = '<div style="color: #858585; font-style: italic; font-size: 11px; padding: 2px 0;">(Açık katman yok)</div>';
                         }} else {{
-                            vContainer.innerHTML = '<div style="color: #858585; font-style: italic; font-size: 11px; padding: 2px 0;">(Aktif vektör yok)</div>';
+                            var html = '';
+                            keys.forEach(function(k) {{
+                                var l = vectorLayers[k];
+                                var chk = l.visible ? 'checked' : '';
+                                var geomIcon = l.geomType === 'point' ? '📍' : (l.geomType === 'line' ? '〰️' : (l.geomType === 'polygon' ? '📐' : '🔶'));
+                                var activeBadge = l.isActive 
+                                    ? '<span class="hud-layer-active-badge" title="Aktif Düzenleme Katmanı">✏️ Aktif</span>'
+                                    : '<button class="hud-layer-switch-btn" onclick="requestSetActiveLayer(\\x27' + l.id + '\\x27)" title="Aktif Düzenleme Katmanı Yap">Seç</button>';
+
+                                html += 
+                                    '<div class="hud-layer-item' + (l.isActive ? ' active-layer' : '') + '">' +
+                                    '<label class="hud-layer-label" style="display:flex; align-items:center; gap:6px; flex:1; min-width:0;">' +
+                                    '<input type="checkbox" ' + chk + ' onchange="setVectorLayerVisibility(\\x27' + l.id + '\\x27, this.checked)" title="Görünürlüğü Aç/Kapat"/>' +
+                                    '<span class="hud-layer-color-dot" style="background:' + l.color + ';"></span>' +
+                                    '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; ' + (l.isActive ? 'font-weight:600; color:#4cc2ff;' : '') + '" title="' + l.name + '">' + geomIcon + ' ' + l.name + ' (' + l.count.toLocaleString() + ')</span>' +
+                                    '</label>' +
+                                    activeBadge +
+                                    '</div>';
+                            }});
+                            vContainer.innerHTML = html;
                         }}
                     }}
 
                     var wContainer = document.getElementById('wmsLayersContainer');
                     if (wContainer) {{
-                        var keys = Object.keys(wmsRegistry);
-                        if (keys.length === 0) {{
+                        var wkeys = Object.keys(wmsRegistry);
+                        if (wkeys.length === 0) {{
                             wContainer.innerHTML = '<div style="color: #858585; font-style: italic; font-size: 11px; padding: 2px 0;">Eklenmiş servis yok</div>';
                         }} else {{
-                            var html = '';
-                            keys.forEach(function(k) {{
+                            var whtml = '';
+                            wkeys.forEach(function(k) {{
                                 var layer = wmsRegistry[k];
                                 var chk = layer.visible ? 'checked' : '';
                                 var title = layer.title || layer.layerName;
-                                html += 
+                                whtml += 
                                     '<div class="hud-layer-item">' +
                                     '<label class="hud-layer-label">' +
                                     '<input type="checkbox" ' + chk + ' onchange="toggleWmsVisibility(\\x27' + layer.id + '\\x27, this.checked)"/>' +
@@ -742,7 +828,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                                     '<button class="hud-layer-btn-del" onclick="removeWms(\\x27' + layer.id + '\\x27)" title="Servisi Kaldır">🗑️</button>' +
                                     '</div>';
                             }});
-                            wContainer.innerHTML = html;
+                            wContainer.innerHTML = whtml;
                         }}
                     }}
                 }}
@@ -799,7 +885,12 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 function bringVectorsToFront() {{
                     if (clusterGroup) clusterGroup.bringToFront();
-                    else if (geojsonLayer) geojsonLayer.bringToFront();
+                    Object.keys(vectorLayers).forEach(function(k) {{
+                        var vl = vectorLayers[k];
+                        if (vl.leafletLayer && vl.visible) {{
+                            vl.leafletLayer.bringToFront();
+                        }}
+                    }});
                 }}
 
                 // --- Map Mouse Move & Coordinate Tracking ---
@@ -813,14 +904,19 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 document.getElementById('opacitySlider').oninput = function(e) {{
                     currentOpacity = e.target.value / 100.0;
                     document.getElementById('opacityVal').textContent = e.target.value + '%';
-                    if (geojsonLayer) {{
-                        geojsonLayer.setStyle(function(feature) {{
-                            return {{
-                                fillOpacity: currentOpacity * 0.4,
-                                opacity: currentOpacity
-                            }};
-                        }});
-                    }}
+                    Object.keys(vectorLayers).forEach(function(k) {{
+                        var vl = vectorLayers[k];
+                        if (vl.leafletLayer) {{
+                            vl.leafletLayer.setStyle(function(feature) {{
+                                var gtype = (feature.geometry && feature.geometry.type) || 'Polygon';
+                                var isLine = gtype.indexOf('Line') !== -1;
+                                return {{
+                                    fillOpacity: isLine ? 0 : currentOpacity * 0.35,
+                                    opacity: currentOpacity
+                                }};
+                            }});
+                        }}
+                    }});
                 }};
 
                 function toggleCluster() {{
@@ -1217,117 +1313,51 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 var hasFittedInitially = false;
 
-                function updateMap(geojsonData, shouldFit) {{
-                    lastGeojsonData = geojsonData;
-                    if (geojsonLayer) {{
-                        map.removeLayer(geojsonLayer);
-                        geojsonLayer = null;
-                    }}
-                    if (clusterGroup) {{
-                        map.removeLayer(clusterGroup);
-                        clusterGroup = null;
-                    }}
-                    layerIndexMap = {{}};
-
-                    if (!geojsonData) {{
-                        document.getElementById('statsPill').textContent = 'Mekansal Katman';
-                        activeVectorInfo.name = '';
-                        activeVectorInfo.count = 0;
-                        hasFittedInitially = false;
-                        setLayerGeometryType('any');
-                        renderLayersPanel();
-                        return;
-                    }}
-
-                    var featureCount = 0;
-                    if (geojsonData.type === 'FeatureCollection' && geojsonData.features) {{
-                        featureCount = geojsonData.features.length;
-                    }} else if (geojsonData.type === 'Feature') {{
-                        featureCount = 1;
-                    }}
-
-                    if (geojsonData && geojsonData.features && geojsonData.features.length > 0) {{
-                        var detectedTypes = {{}};
-                        for (var di = 0; di < Math.min(geojsonData.features.length, 100); di++) {{
-                            var fg = geojsonData.features[di].geometry;
-                            if (fg && fg.type) {{
-                                var lt = fg.type.toLowerCase();
-                                if (lt.indexOf('point') !== -1) detectedTypes['point'] = true;
-                                else if (lt.indexOf('line') !== -1) detectedTypes['line'] = true;
-                                else if (lt.indexOf('poly') !== -1) detectedTypes['polygon'] = true;
-                            }}
-                        }}
-                        var dKeys = Object.keys(detectedTypes);
-                        if (dKeys.length === 1) {{
-                            setLayerGeometryType(dKeys[0]);
-                        }} else if (dKeys.length > 1) {{
-                            setLayerGeometryType('mixed');
-                        }}
-                    }}
-
-                    document.getElementById('statsPill').textContent = '📍 ' + featureCount.toLocaleString() + ' Özellik';
-
-                    var geomColors = {{
-                        Point: '#00a2ff',
-                        MultiPoint: '#00a2ff',
-                        LineString: '#ff8800',
-                        MultiLineString: '#ff8800',
-                        Polygon: '#2ecc71',
-                        MultiPolygon: '#2ecc71'
-                    }};
-
-                    if (useClustering && typeof L.markerClusterGroup === 'function') {{
-                        clusterGroup = L.markerClusterGroup({{
-                            maxClusterRadius: 45,
-                            spiderfyOnMaxZoom: true,
-                            showCoverageOnHover: false
-                        }});
-                    }}
-
+                function createLeafletLayer(layerId, name, geojsonData, color) {{
                     var featureIdx = 0;
-                    geojsonLayer = L.geoJSON(geojsonData, {{
+                    var indexMap = {{}};
+                    var featureCount = (geojsonData && geojsonData.features) ? geojsonData.features.length : 1;
+
+                    var lLayer = L.geoJSON(geojsonData, {{
                         pointToLayer: function(feature, latlng) {{
-                            var marker = L.circleMarker(latlng, {{
+                            return L.circleMarker(latlng, {{
                                 radius: 6,
-                                fillColor: '#00a2ff',
+                                fillColor: color,
                                 color: '#ffffff',
                                 weight: 1.5,
                                 opacity: currentOpacity,
                                 fillOpacity: currentOpacity * 0.9
                             }});
-                            if (clusterGroup) clusterGroup.addLayer(marker);
-                            return marker;
                         }},
                         style: function(feature) {{
-                            var gtype = feature.geometry ? feature.geometry.type : 'Polygon';
-                            var color = geomColors[gtype] || '#3388ff';
+                            var gtype = (feature.geometry && feature.geometry.type) || 'Polygon';
+                            var isLine = gtype.indexOf('Line') !== -1;
                             return {{
                                 color: color,
-                                weight: 2,
+                                weight: isLine ? 2.5 : 2,
                                 opacity: currentOpacity,
                                 fillColor: color,
-                                fillOpacity: currentOpacity * 0.35
+                                fillOpacity: isLine ? 0 : currentOpacity * 0.35
                             }};
                         }},
                         onEachFeature: function(feature, layer) {{
                             var currentIdx = featureIdx++;
-                            layerIndexMap[currentIdx] = layer;
+                            indexMap[currentIdx] = layer;
 
                             var title = (feature.properties && (feature.properties.city || feature.properties.name || feature.properties.NAME || feature.properties.title || feature.properties.id)) || ('Özellik #' + currentIdx);
                             if (featureCount <= 1000) {{
-                                layer.bindTooltip(String(title), {{ sticky: true }});
+                                layer.bindTooltip('[' + name + '] ' + String(title), {{ sticky: true }});
                             }}
 
                             layer.on('click', function(e) {{
-                                if (drawMode || measureActive) {{
-                                    return; // Allow map click handler to draw or measure
-                                }}
+                                if (drawMode || measureActive) return;
                                 selectedFeatureIndex = currentIdx;
+                                selectedFeatureLayerId = layerId;
                                 updateDeleteButtonState();
 
                                 var props = feature.properties || {{}};
-                                var gType = feature.geometry ? feature.geometry.type : 'Unknown';
-                                var html = '<div class="prop-title"><span>Özellik #' + currentIdx + '</span><span>[' + gType + ']</span></div>';
+                                var gType = (feature.geometry && feature.geometry.type) || 'Unknown';
+                                var html = '<div class="prop-title"><span>[' + name + '] #' + currentIdx + '</span><span>[' + gType + ']</span></div>';
                                 html += '<table class="prop-table">';
                                 var keys = Object.keys(props);
                                 if (keys.length === 0) {{
@@ -1340,54 +1370,259 @@ class MapPreviewPanel(AbstractPreviewPanel):
                                     }});
                                 }}
                                 html += '</table>';
-                                html += '<div style="margin-top: 8px; text-align: right; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 6px;">';
-                                html += '<button class="hud-popup-del-btn" onclick="deleteFeature(' + currentIdx + ')">🗑️ Bu Geometriyi Sil</button>';
+                                html += '<div style="margin-top: 8px; display: flex; justify-content: flex-end; gap: 6px; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 6px;">';
+                                if (layerId === activeLayerId) {{
+                                    html += '<button class="hud-popup-del-btn" onclick="deleteFeature(' + currentIdx + ', \\x27' + layerId + '\\x27)">🗑️ Bu Geometriyi Sil</button>';
+                                }} else {{
+                                    html += '<button class="hud-popup-switch-btn" onclick="requestSetActiveLayer(\\x27' + layerId + '\\x27)">✏️ Bu Katmana Geç</button>';
+                                }}
                                 html += '</div>';
                                 layer.bindPopup(html, {{ maxWidth: 350, maxHeight: 300 }}).openPopup();
 
-                                if (pyBridge) {{
+                                if (pyBridge && layerId === activeLayerId) {{
                                     pyBridge.onFeatureClicked(currentIdx);
                                 }}
                             }});
                         }}
                     }});
 
-                    if (clusterGroup) {{
-                        map.addLayer(clusterGroup);
-                    }} else {{
-                        map.addLayer(geojsonLayer);
-                    }}
-
-                    if (!activeVectorInfo.name) {{
-                        activeVectorInfo.name = 'Vektör Katman';
-                    }}
-                    activeVectorInfo.count = featureCount;
-                    activeVectorInfo.visible = true;
-                    renderLayersPanel();
-
-                    if (shouldFit === true || (shouldFit === undefined && !hasFittedInitially)) {{
-                        fitLayerBounds();
-                        hasFittedInitially = true;
-                    }}
+                    return {{ leafletLayer: lLayer, indexMap: indexMap }};
                 }}
 
-                function highlightFeature(idx) {{
-                    selectedFeatureIndex = idx;
-                    updateDeleteButtonState();
-                    var layer = layerIndexMap[idx];
-                    if (layer) {{
-                        if (layer.getBounds && layer.getBounds().isValid()) {{
-                            map.fitBounds(layer.getBounds(), {{ maxZoom: 16, padding: [40, 40] }});
-                        }} else if (layer.getLatLng) {{
-                            map.setView(layer.getLatLng(), Math.max(map.getZoom(), 13));
+                function setVectorLayer(layerId, name, geojsonData, isActive, geomType, color, fitBounds) {{
+                    if (!layerId) layerId = 'default';
+                    name = name || 'Mekansal Katman';
+
+                    var prevVisible = true;
+                    var assignedColor = color;
+                    if (vectorLayers[layerId]) {{
+                        prevVisible = vectorLayers[layerId].visible;
+                        if (!assignedColor) assignedColor = vectorLayers[layerId].color;
+                        if (vectorLayers[layerId].leafletLayer) {{
+                            map.removeLayer(vectorLayers[layerId].leafletLayer);
                         }}
-                        if (layer.openPopup) layer.openPopup();
+                    }} else {{
+                        if (!assignedColor) {{
+                            var cnt = Object.keys(vectorLayers).length;
+                            assignedColor = LAYER_PALETTE[cnt % LAYER_PALETTE.length];
+                        }}
+                    }}
+
+                    var featureCount = 0;
+                    if (geojsonData && geojsonData.type === 'FeatureCollection' && geojsonData.features) {{
+                        featureCount = geojsonData.features.length;
+                    }} else if (geojsonData && geojsonData.type === 'Feature') {{
+                        featureCount = 1;
+                    }}
+
+                    var detectedGeom = geomType;
+                    if (!detectedGeom || detectedGeom === 'any') {{
+                        if (geojsonData && geojsonData.features && geojsonData.features.length > 0) {{
+                            var dt = {{}};
+                            for (var di = 0; di < Math.min(geojsonData.features.length, 100); di++) {{
+                                var fg = geojsonData.features[di].geometry;
+                                if (fg && fg.type) {{
+                                    var lt = fg.type.toLowerCase();
+                                    if (lt.indexOf('point') !== -1) dt['point'] = true;
+                                    else if (lt.indexOf('line') !== -1) dt['line'] = true;
+                                    else if (lt.indexOf('poly') !== -1) dt['polygon'] = true;
+                                }}
+                            }}
+                            var dkeys = Object.keys(dt);
+                            detectedGeom = dkeys.length === 1 ? dkeys[0] : (dkeys.length > 1 ? 'mixed' : 'any');
+                        }} else {{
+                            detectedGeom = 'any';
+                        }}
+                    }}
+
+                    var res = createLeafletLayer(layerId, name, geojsonData, assignedColor);
+                    var lGeojson = res.leafletLayer;
+                    var lIndexMap = res.indexMap;
+
+                    if (prevVisible) {{
+                        map.addLayer(lGeojson);
+                    }}
+
+                    vectorLayers[layerId] = {{
+                        id: layerId,
+                        name: name,
+                        count: featureCount,
+                        geomType: detectedGeom,
+                        color: assignedColor,
+                        visible: prevVisible,
+                        isActive: !!isActive,
+                        leafletLayer: lGeojson,
+                        geojsonData: geojsonData,
+                        indexMap: lIndexMap
+                    }};
+
+                    if (isActive) {{
+                        setActiveVectorLayer(layerId, detectedGeom);
+                    }} else {{
+                        renderLayersPanel();
+                    }}
+
+                    if (fitBounds === true) {{
+                        if (lGeojson.getBounds && lGeojson.getBounds().isValid()) {{
+                            map.fitBounds(lGeojson.getBounds(), {{ padding: [30, 30] }});
+                        }}
                     }}
                 }}
 
-                function fitLayerBounds() {{
-                    if (geojsonLayer && geojsonLayer.getBounds().isValid()) {{
-                        map.fitBounds(geojsonLayer.getBounds(), {{ padding: [30, 30] }});
+                function setActiveVectorLayer(layerId, geomType) {{
+                    activeLayerId = layerId;
+                    Object.keys(vectorLayers).forEach(function(k) {{
+                        vectorLayers[k].isActive = (k === layerId);
+                    }});
+
+                    var activeObj = vectorLayers[layerId];
+                    if (activeObj) {{
+                        document.getElementById('statsPill').innerHTML = 
+                            '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + activeObj.color + ';margin-right:5px;"></span>' +
+                            activeObj.name + ' (' + activeObj.count.toLocaleString() + ')';
+                        setLayerGeometryType(geomType || activeObj.geomType);
+                        if (activeObj.leafletLayer && activeObj.visible) {{
+                            activeObj.leafletLayer.bringToFront();
+                        }}
+                    }} else {{
+                        document.getElementById('statsPill').textContent = 'Mekansal Katman';
+                        setLayerGeometryType('any');
+                    }}
+
+                    selectedFeatureIndex = -1;
+                    updateDeleteButtonState();
+                    renderLayersPanel();
+                }}
+
+                function setVectorLayerVisibility(layerId, visible) {{
+                    if (vectorLayers[layerId]) {{
+                        vectorLayers[layerId].visible = visible;
+                        if (vectorLayers[layerId].leafletLayer) {{
+                            if (visible) {{
+                                map.addLayer(vectorLayers[layerId].leafletLayer);
+                                vectorLayers[layerId].leafletLayer.bringToFront();
+                            }} else {{
+                                map.removeLayer(vectorLayers[layerId].leafletLayer);
+                            }}
+                        }}
+                    }}
+                    renderLayersPanel();
+                }}
+
+                function removeVectorLayer(layerId) {{
+                    if (vectorLayers[layerId]) {{
+                        if (vectorLayers[layerId].leafletLayer) {{
+                            map.removeLayer(vectorLayers[layerId].leafletLayer);
+                        }}
+                        delete vectorLayers[layerId];
+                    }}
+                    if (activeLayerId === layerId) {{
+                        var remaining = Object.keys(vectorLayers);
+                        if (remaining.length > 0) {{
+                            setActiveVectorLayer(remaining[0]);
+                        }} else {{
+                            activeLayerId = null;
+                            document.getElementById('statsPill').textContent = 'Mekansal Katman';
+                            setLayerGeometryType('any');
+                        }}
+                    }}
+                    renderLayersPanel();
+                }}
+
+                function clearAllVectorLayers() {{
+                    Object.keys(vectorLayers).forEach(function(k) {{
+                        if (vectorLayers[k].leafletLayer) {{
+                            map.removeLayer(vectorLayers[k].leafletLayer);
+                        }}
+                    }});
+                    vectorLayers = {{}};
+                    activeLayerId = null;
+                    document.getElementById('statsPill').textContent = 'Mekansal Katman';
+                    setLayerGeometryType('any');
+                    renderLayersPanel();
+                }}
+
+                function updateLayerName(layerId, name) {{
+                    if (vectorLayers[layerId]) {{
+                        vectorLayers[layerId].name = name;
+                        if (layerId === activeLayerId) {{
+                            var l = vectorLayers[layerId];
+                            document.getElementById('statsPill').innerHTML = 
+                                '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + l.color + ';margin-right:5px;"></span>' +
+                                name + ' (' + l.count.toLocaleString() + ')';
+                        }}
+                        renderLayersPanel();
+                    }}
+                }}
+
+                function requestSetActiveLayer(layerId) {{
+                    setActiveVectorLayer(layerId);
+                    if (pyBridge && pyBridge.onActiveLayerRequested) {{
+                        pyBridge.onActiveLayerRequested(layerId);
+                    }}
+                }}
+
+                function updateMap(geojsonData, shouldFit) {{
+                    if (!geojsonData) {{
+                        if (activeLayerId) {{
+                            removeVectorLayer(activeLayerId);
+                        }} else {{
+                            clearAllVectorLayers();
+                        }}
+                        return;
+                    }}
+                    var currentId = activeLayerId || 'default';
+                    var currentName = (vectorLayers[currentId] && vectorLayers[currentId].name) || 'Mekansal Katman';
+                    setVectorLayer(currentId, currentName, geojsonData, true, activeLayerGeomType, null, shouldFit);
+                }}
+
+                function fitLayerBounds(layerId) {{
+                    if (layerId && vectorLayers[layerId] && vectorLayers[layerId].leafletLayer) {{
+                        var b = vectorLayers[layerId].leafletLayer.getBounds();
+                        if (b && b.isValid()) {{
+                            map.fitBounds(b, {{ padding: [30, 30] }});
+                            return;
+                        }}
+                    }}
+                    if (activeLayerId && vectorLayers[activeLayerId] && vectorLayers[activeLayerId].leafletLayer) {{
+                        var ab = vectorLayers[activeLayerId].leafletLayer.getBounds();
+                        if (ab && ab.isValid()) {{
+                            map.fitBounds(ab, {{ padding: [30, 30] }});
+                            return;
+                        }}
+                    }}
+                    var allBounds = L.latLngBounds();
+                    var hasValid = false;
+                    Object.keys(vectorLayers).forEach(function(k) {{
+                        var l = vectorLayers[k];
+                        if (l.visible && l.leafletLayer && l.leafletLayer.getBounds) {{
+                            var lb = l.leafletLayer.getBounds();
+                            if (lb && lb.isValid()) {{
+                                allBounds.extend(lb);
+                                hasValid = true;
+                            }}
+                        }}
+                    }});
+                    if (hasValid && allBounds.isValid()) {{
+                        map.fitBounds(allBounds, {{ padding: [30, 30] }});
+                    }}
+                }}
+
+                function highlightFeature(idx, layerId) {{
+                    var lId = layerId || activeLayerId;
+                    if (!lId || !vectorLayers[lId]) return;
+                    var layerObj = vectorLayers[lId];
+                    selectedFeatureIndex = idx;
+                    selectedFeatureLayerId = lId;
+                    updateDeleteButtonState();
+                    var l = layerObj.indexMap[idx];
+                    if (l) {{
+                        if (l.getBounds && l.getBounds().isValid()) {{
+                            map.fitBounds(l.getBounds(), {{ maxZoom: 16, padding: [40, 40] }});
+                        }} else if (l.getLatLng) {{
+                            map.setView(l.getLatLng(), Math.max(map.getZoom(), 13));
+                        }}
+                        if (l.openPopup) l.openPopup();
                     }}
                 }}
             </script>
@@ -1406,6 +1641,14 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 else:
                     self.render_content(self._pending_content, fit_bounds=True)
                 self._pending_content = None
+            if getattr(self, '_pending_vector_layers', None):
+                for lid, (lname, lgjson, lia, lgt, lcol, lfb) in list(self._pending_vector_layers.items()):
+                    self.set_vector_layer(lid, lname, lgjson, lia, lgt, lcol, lfb)
+                self._pending_vector_layers.clear()
+            if getattr(self, '_pending_active_layer', None):
+                lid, lgt = self._pending_active_layer
+                self.set_active_vector_layer(lid, lgt)
+                self._pending_active_layer = None
             if self._pending_vector_info:
                 n, c = self._pending_vector_info
                 self.set_active_vector_info(n, c)
@@ -1413,6 +1656,58 @@ class MapPreviewPanel(AbstractPreviewPanel):
             if getattr(self, '_pending_geom_type', None):
                 self.set_layer_geometry_type(self._pending_geom_type)
                 self._pending_geom_type = None
+
+    def set_vector_layer(self, layer_id: str, name: str, geojson_str: str, is_active: bool = True, geom_type: str = "any", color: str = None, fit_bounds: bool = False):
+        if not geojson_str or not geojson_str.strip():
+            return
+        if self._is_loaded:
+            esc_id = json.dumps(layer_id)
+            esc_name = json.dumps(name)
+            esc_type = json.dumps(geom_type)
+            esc_color = json.dumps(color) if color else "null"
+            act_str = "true" if is_active else "false"
+            fit_str = "true" if fit_bounds else "false"
+            js_code = f"setVectorLayer({esc_id}, {esc_name}, {geojson_str}, {act_str}, {esc_type}, {esc_color}, {fit_str});"
+            self.web_view.page().runJavaScript(js_code)
+        else:
+            if not hasattr(self, '_pending_vector_layers'):
+                self._pending_vector_layers = {}
+            self._pending_vector_layers[layer_id] = (name, geojson_str, is_active, geom_type, color, fit_bounds)
+
+    def set_active_vector_layer(self, layer_id: str, geom_type: str = "any"):
+        if self._is_loaded:
+            esc_id = json.dumps(layer_id)
+            esc_type = json.dumps(geom_type)
+            self.web_view.page().runJavaScript(f"setActiveVectorLayer({esc_id}, {esc_type});")
+        else:
+            self._pending_active_layer = (layer_id, geom_type)
+
+    def set_vector_layer_visibility(self, layer_id: str, visible: bool):
+        if self._is_loaded:
+            esc_id = json.dumps(layer_id)
+            vis_str = "true" if visible else "false"
+            self.web_view.page().runJavaScript(f"setVectorLayerVisibility({esc_id}, {vis_str});")
+
+    def remove_vector_layer(self, layer_id: str):
+        if self._is_loaded:
+            esc_id = json.dumps(layer_id)
+            self.web_view.page().runJavaScript(f"removeVectorLayer({esc_id});")
+        else:
+            if hasattr(self, '_pending_vector_layers') and layer_id in self._pending_vector_layers:
+                del self._pending_vector_layers[layer_id]
+
+    def clear_all_vector_layers(self):
+        if self._is_loaded:
+            self.web_view.page().runJavaScript("clearAllVectorLayers();")
+        else:
+            if hasattr(self, '_pending_vector_layers'):
+                self._pending_vector_layers.clear()
+
+    def update_layer_name(self, layer_id: str, name: str):
+        if self._is_loaded:
+            esc_id = json.dumps(layer_id)
+            esc_name = json.dumps(name)
+            self.web_view.page().runJavaScript(f"updateLayerName({esc_id}, {esc_name});")
 
     def set_layer_geometry_type(self, geom_type: str):
         self._current_geom_type = geom_type
@@ -1449,9 +1744,13 @@ class MapPreviewPanel(AbstractPreviewPanel):
         if self._is_loaded:
             self.web_view.page().runJavaScript(f"highlightFeature({index});")
 
-    def fit_bounds(self):
+    def fit_bounds(self, layer_id: str = None):
         if self._is_loaded:
-            self.web_view.page().runJavaScript("fitLayerBounds();")
+            esc_id = json.dumps(layer_id) if layer_id else "null"
+            self.web_view.page().runJavaScript(f"fitLayerBounds({esc_id});")
+
+    def fit_layer_bounds(self, layer_id: str = None):
+        self.fit_bounds(layer_id)
 
     def add_wms_layer(self, layer_id: str, url: str, layer_name: str, fmt: str = "image/png", transparent: bool = True, title: str = ""):
         if self._is_loaded:

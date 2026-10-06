@@ -21,6 +21,7 @@ from core.workers import FileLoadWorker, SpatialOpWorker, WFSWorker
 from core.theme import ThemeManager
 from core.spatial_ops import SpatialOps
 from ui.tabs import EditorTab
+from ui.preview_panels import MapPreviewPanel
 
 
 class MainWindow(QMainWindow):
@@ -32,6 +33,16 @@ class MainWindow(QMainWindow):
         self.spatial_worker = None
         self.wfs_worker = None
         self._wms_counter = 1
+
+        # Central Unified Map Preview Panel shared across all spatial tabs
+        self.shared_map_panel = MapPreviewPanel()
+        self.shared_map_panel.feature_added.connect(self._on_map_feature_added)
+        self.shared_map_panel.feature_deleted.connect(self._on_map_feature_deleted)
+        self.shared_map_panel.feature_clicked.connect(self._on_map_feature_clicked)
+        self.shared_map_panel.table_toggle_requested.connect(self._on_map_table_toggle_requested)
+        self.shared_map_panel.service_add_requested.connect(self._show_wms_dialog)
+        self.shared_map_panel.wms_deleted.connect(self._on_wms_remove_requested)
+        self.shared_map_panel.active_layer_requested.connect(self._switch_to_tab_by_layer_id)
 
         # Restore last opened folder
         settings = QSettings("ChiselEditor", "ChiselEditor")
@@ -384,7 +395,7 @@ class MainWindow(QMainWindow):
         return tab
 
     def _add_new_tab(self) -> EditorTab:
-        tab = EditorTab()
+        tab = EditorTab(map_panel=self.shared_map_panel)
         tab.text_editor.cursorPositionChanged.connect(self._update_cursor_info)
         tab.text_editor.file_dropped.connect(self._handle_file_drop)
         tab.state_changed.connect(lambda: self._on_tab_state_changed(tab))
@@ -396,6 +407,9 @@ class MainWindow(QMainWindow):
         return tab
 
     def _close_tab(self, index: int):
+        tab = self.tab_widget.widget(index)
+        if tab and tab.is_spatial:
+            self.shared_map_panel.remove_vector_layer(tab.layer_id)
         self.tab_widget.removeTab(index)
         if self.tab_widget.count() == 0:
             self._add_new_tab()
@@ -405,6 +419,9 @@ class MainWindow(QMainWindow):
         idx = self.tab_widget.indexOf(tab)
         if idx != -1:
             self.tab_widget.setTabText(idx, tab.get_title())
+            if tab.is_spatial:
+                layer_name = os.path.basename(tab.current_file) if tab.current_file else "Mekansal Katman"
+                self.shared_map_panel.update_layer_name(tab.layer_id, layer_name)
 
     def _on_tab_state_changed(self, tab: EditorTab):
         self._update_tab_title(tab)
@@ -419,20 +436,45 @@ class MainWindow(QMainWindow):
         if tab:
             self.type_label.setText(tab.file_type)
             if tab.is_spatial:
+                tab.attach_map_panel(self.shared_map_panel)
+                tab._adjust_spatial_splitter_sizes()
+
                 crs_label = str(tab._current_gdf.crs) if tab._current_gdf is not None and tab._current_gdf.crs else "EPSG:4326"
                 self.btn_status_crs.setText(f"🌐 {crs_label}")
                 self.btn_status_crs.show()
-                feat_count = len(tab._current_gdf) if tab._current_gdf is not None and not tab._current_gdf.empty else 0
-                layer_name = os.path.basename(tab.current_file) if tab.current_file else "Sample GIS Layer"
-                tab.map_panel.set_active_vector_info(layer_name, feat_count)
+
                 geom_type = SpatialOps.get_layer_geometry_type(tab._current_gdf)
-                tab.map_panel.set_layer_geometry_type(geom_type)
+                self.shared_map_panel.set_active_vector_layer(tab.layer_id, geom_type)
             else:
                 self.btn_status_crs.hide()
-                if tab.map_panel:
-                    tab.map_panel.set_active_vector_info("", 0)
-                    tab.map_panel.set_layer_geometry_type("any")
         self._save_session_state()
+
+    def _on_map_feature_added(self, feature_json_str: str):
+        tab = self._get_current_tab()
+        if tab and tab.is_spatial:
+            tab._on_feature_added(feature_json_str)
+
+    def _on_map_feature_deleted(self, index: int):
+        tab = self._get_current_tab()
+        if tab and tab.is_spatial:
+            tab._on_feature_deleted(index)
+
+    def _on_map_feature_clicked(self, index: int):
+        tab = self._get_current_tab()
+        if tab and tab.is_spatial:
+            tab.table_panel.select_feature(index)
+
+    def _on_map_table_toggle_requested(self):
+        tab = self._get_current_tab()
+        if tab and tab.is_spatial:
+            tab.toggle_table()
+
+    def _switch_to_tab_by_layer_id(self, layer_id: str):
+        for i in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(i)
+            if getattr(tab, "layer_id", None) == layer_id:
+                self.tab_widget.setCurrentIndex(i)
+                break
 
     def _update_cursor_info(self, line: int, col: int):
         self.cursor_label.setText(f"Ln {line}, Col {col}")
@@ -453,7 +495,7 @@ class MainWindow(QMainWindow):
     def _fit_bounds(self):
         tab = self._get_current_tab()
         if tab and tab.is_spatial:
-            tab.map_panel.fit_bounds()
+            self.shared_map_panel.fit_layer_bounds(tab.layer_id)
 
     def _open_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Klasör Seç", self._current_folder)
@@ -577,9 +619,10 @@ class MainWindow(QMainWindow):
         if dlg.exec():
             layer_id = f"wms_{self._wms_counter}"
             self._wms_counter += 1
-            tab.map_panel.add_wms_layer(layer_id, dlg.wms_url, dlg.layer_name, dlg.format, dlg.transparent, title=dlg.title)
+            self.shared_map_panel.add_wms_layer(layer_id, dlg.wms_url, dlg.layer_name, dlg.format, dlg.transparent, title=dlg.title)
             # Ensure map is visible
             if not tab.is_spatial and not tab.right_stack.isVisible():
+                tab.attach_map_panel(self.shared_map_panel)
                 tab.set_view_mode("code_map")
             ToastNotification.show_toast(self, f"WMS Katmanı Eklendi: {dlg.title}", "info")
 
@@ -606,14 +649,10 @@ class MainWindow(QMainWindow):
             ToastNotification.show_toast(self, f"WFS Katmanı İndirildi: {len(gdf):,} özellik", "info")
 
     def _on_wms_visibility_changed(self, layer_id: str, visible: bool):
-        tab = self._get_current_tab()
-        if tab and tab.map_panel:
-            tab.map_panel.set_wms_visibility(layer_id, visible)
+        self.shared_map_panel.set_wms_visibility(layer_id, visible)
 
     def _on_wms_remove_requested(self, layer_id: str):
-        tab = self._get_current_tab()
-        if tab and tab.map_panel:
-            tab.map_panel.remove_wms_layer(layer_id)
+        self.shared_map_panel.remove_wms_layer(layer_id)
         ToastNotification.show_toast(self, "WMS Katmanı Kaldırıldı", "info")
 
     # --- Geoprocessing Operations via Background Worker ---
@@ -766,11 +805,11 @@ class MainWindow(QMainWindow):
 
     def _change_theme(self, theme_name: str):
         ThemeManager.apply_theme(QApplication.instance(), theme_name)
+        self.shared_map_panel.set_theme_tiles(theme_name)
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
             if tab:
                 tab.text_editor.setTheme(theme_name)
-                tab.map_panel.set_theme_tiles(theme_name)
 
     def _show_shortcuts(self):
         QMessageBox.information(

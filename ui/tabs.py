@@ -15,14 +15,16 @@ class EditorTab(QWidget):
     service_add_requested = pyqtSignal()
     wms_deleted = pyqtSignal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, map_panel: MapPreviewPanel = None):
         super().__init__(parent)
+        self.layer_id = f"layer_{id(self)}"
         self.current_file = None
         self.is_dirty = False
         self.file_type = "Plain Text"
         self._is_loading = False
         self.is_spatial = False
         self._current_gdf = None
+        self._custom_map_panel = map_panel
 
         self._init_ui()
 
@@ -46,7 +48,7 @@ class EditorTab(QWidget):
         self.spatial_splitter = QSplitter(Qt.Orientation.Vertical)
         self.spatial_splitter.setHandleWidth(3)
 
-        self.map_panel = MapPreviewPanel()
+        self.map_panel = self._custom_map_panel if self._custom_map_panel is not None else MapPreviewPanel()
         self.table_panel = AttributeTableWidget()
 
         self.spatial_splitter.addWidget(self.map_panel)
@@ -67,15 +69,17 @@ class EditorTab(QWidget):
         self.set_view_mode("code")
 
         # Bi-directional sync & interactions
-        self.table_panel.feature_selected.connect(self.map_panel.highlight_feature)
-        self.map_panel.feature_clicked.connect(self.table_panel.select_feature)
-        self.map_panel.table_toggle_requested.connect(self.toggle_table)
+        self.table_panel.feature_selected.connect(lambda idx: self.map_panel.highlight_feature(idx, self.layer_id) if self.map_panel else None)
         self.table_panel.close_requested.connect(self.toggle_table)
         self.table_panel.data_modified.connect(self._on_table_data_modified)
-        self.map_panel.feature_deleted.connect(self._on_feature_deleted)
-        self.map_panel.feature_added.connect(self._on_feature_added)
-        self.map_panel.service_add_requested.connect(self.service_add_requested.emit)
-        self.map_panel.wms_deleted.connect(self.wms_deleted.emit)
+
+        if self._custom_map_panel is None:
+            self.map_panel.feature_clicked.connect(self.table_panel.select_feature)
+            self.map_panel.table_toggle_requested.connect(self.toggle_table)
+            self.map_panel.feature_deleted.connect(self._on_feature_deleted)
+            self.map_panel.feature_added.connect(self._on_feature_added)
+            self.map_panel.service_add_requested.connect(self.service_add_requested.emit)
+            self.map_panel.wms_deleted.connect(self.wms_deleted.emit)
 
         # Auto-refresh timer for code edits
         self.preview_timer = QTimer()
@@ -83,6 +87,15 @@ class EditorTab(QWidget):
         self.preview_timer.setInterval(600)
         self.preview_timer.timeout.connect(self._refresh_preview)
         self.text_editor.textChanged.connect(self._on_text_changed)
+
+    def attach_map_panel(self, panel: MapPreviewPanel):
+        self.map_panel = panel
+        if self.spatial_splitter.count() > 0:
+            if self.spatial_splitter.widget(0) != panel:
+                self.spatial_splitter.insertWidget(0, panel)
+        else:
+            self.spatial_splitter.addWidget(panel)
+        panel.show()
 
     def set_spatial_data(self, gdf: gpd.GeoDataFrame, raw_geojson: str = None):
         self.is_spatial = True
@@ -99,14 +112,17 @@ class EditorTab(QWidget):
             self.table_panel.load_data(gdf)
 
         # 2. Render Map via Leaflet
-        if raw_geojson:
-            self.map_panel.render_content(raw_geojson, fit_bounds=True)
-
         layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
-        feat_count = len(gdf) if gdf is not None and not gdf.empty else 0
-        self.map_panel.set_active_vector_info(layer_name, feat_count)
         geom_type = SpatialOps.get_layer_geometry_type(gdf)
-        self.map_panel.set_layer_geometry_type(geom_type)
+        if raw_geojson and self.map_panel:
+            self.map_panel.set_vector_layer(
+                layer_id=self.layer_id,
+                name=layer_name,
+                geojson_str=raw_geojson,
+                is_active=True,
+                geom_type=geom_type,
+                fit_bounds=True
+            )
 
         # 3. Monaco Editor: Avoid freezing WebEngine by buffering large text
         if raw_geojson:
@@ -135,12 +151,17 @@ class EditorTab(QWidget):
         self._is_loading = True
         self.text_editor.setPlainText(geojson_str)
         self.table_panel.load_data(gdf)
-        self.map_panel.render_content(geojson_str, fit_bounds=fit_bounds)
         layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
-        feat_count = len(gdf) if gdf is not None and not gdf.empty else 0
-        self.map_panel.set_active_vector_info(layer_name, feat_count)
         geom_type = SpatialOps.get_layer_geometry_type(gdf)
-        self.map_panel.set_layer_geometry_type(geom_type)
+        if self.map_panel:
+            self.map_panel.set_vector_layer(
+                layer_id=self.layer_id,
+                name=layer_name,
+                geojson_str=geojson_str,
+                is_active=True,
+                geom_type=geom_type,
+                fit_bounds=fit_bounds
+            )
         self._is_loading = False
         self.is_dirty = True
         self.state_changed.emit()
@@ -360,13 +381,21 @@ class EditorTab(QWidget):
         content = self.text_editor.toPlainText()
         if self.is_spatial:
             if SpatialOps.is_valid_geojson_content(content):
-                self.map_panel.render_content(content, fit_bounds=False)
                 try:
                     gdf = SpatialOps.parse_geojson_str(content)
                     self._current_gdf = gdf
                     self.table_panel.load_data(gdf)
+                    layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
                     geom_type = SpatialOps.get_layer_geometry_type(gdf)
-                    self.map_panel.set_layer_geometry_type(geom_type)
+                    if self.map_panel:
+                        self.map_panel.set_vector_layer(
+                            layer_id=self.layer_id,
+                            name=layer_name,
+                            geojson_str=content,
+                            is_active=True,
+                            geom_type=geom_type,
+                            fit_bounds=False
+                        )
                 except Exception:
                     pass
         elif self.file_type == "Markdown" and self.right_stack.isVisible():
