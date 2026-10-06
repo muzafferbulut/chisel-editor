@@ -124,6 +124,39 @@ class MonacoEditor(QWidget):
                         }}
                     }}
                 }};
+
+                window.safeTriggerFind = function() {{
+                    if (window._editorReady && window.editor) {{
+                        window.editor.focus();
+                        var act = window.editor.getAction('actions.find');
+                        if (act) {{
+                            act.run();
+                        }} else {{
+                            window.editor.trigger('keyboard', 'actions.find', null);
+                        }}
+                    }} else {{
+                        window._cmdQueue.push(function() {{
+                            window.safeTriggerFind();
+                        }});
+                    }}
+                }};
+
+                window.safeTriggerReplace = function() {{
+                    if (window._editorReady && window.editor) {{
+                        window.editor.focus();
+                        var act = window.editor.getAction('editor.action.startFindReplaceAction');
+                        if (act) {{
+                            act.run();
+                        }} else {{
+                            var findAct = window.editor.getAction('actions.find');
+                            if (findAct) findAct.run();
+                        }}
+                    }} else {{
+                        window._cmdQueue.push(function() {{
+                            window.safeTriggerReplace();
+                        }});
+                    }}
+                }};
             </script>
             <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
             <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
@@ -157,7 +190,12 @@ class MonacoEditor(QWidget):
                         minimap: {{ enabled: true }},
                         wordWrap: 'on',
                         scrollBeyondLastLine: false,
-                        fontSize: 13
+                        fontSize: 13,
+                        find: {{
+                            addExtraSpaceOnTop: true,
+                            autoFindInSelection: 'multiline',
+                            seedSearchStringFromSelection: 'always'
+                        }}
                     }});
 
                     window._editorReady = true;
@@ -240,3 +278,9 @@ class MonacoEditor(QWidget):
         escaped_find = json.dumps(find_text)
         escaped_replace = json.dumps(replace_text)
         self.web_view.page().runJavaScript(f"safeFindAndReplace({escaped_find}, {escaped_replace});")
+
+    def trigger_find(self):
+        self.web_view.page().runJavaScript("safeTriggerFind();")
+
+    def trigger_replace(self):
+        self.web_view.page().runJavaScript("safeTriggerReplace();")

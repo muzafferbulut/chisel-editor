@@ -230,10 +230,15 @@ class MainWindow(QMainWindow):
 
         # --- Edit Menu ---
         edit_menu: QMenu = menu_bar.addMenu("Edit")
-        act_find = QAction("Find & Replace", self)
+        act_find = QAction("Find", self)
         act_find.setShortcut(QKeySequence("Ctrl+F"))
-        act_find.triggered.connect(self._show_find_replace)
+        act_find.triggered.connect(self._show_find)
         edit_menu.addAction(act_find)
+
+        act_replace = QAction("Replace", self)
+        act_replace.setShortcut(QKeySequence("Ctrl+H"))
+        act_replace.triggered.connect(self._show_replace)
+        edit_menu.addAction(act_replace)
 
         # --- View Menu ---
         view_menu: QMenu = menu_bar.addMenu("View")
@@ -726,16 +731,24 @@ class MainWindow(QMainWindow):
         self._on_tab_changed(self.tab_widget.currentIndex())
         ToastNotification.show_toast(self, "🧪 Örnek Mekansal Veri Yüklendi!", "info")
 
-    def _show_find_replace(self):
-        from PyQt6.QtWidgets import QInputDialog
+    def _show_find(self):
         tab = self._get_current_tab()
-        if not tab:
+        if not tab or not hasattr(tab, "text_editor"):
             return
-        find_text, ok1 = QInputDialog.getText(self, "Find", "Enter text to find:")
-        if ok1 and find_text:
-            replace_text, ok2 = QInputDialog.getText(self, "Replace", f"Replace '{find_text}' with:")
-            if ok2:
-                tab.text_editor.find_and_replace(find_text, replace_text)
+        if tab.text_editor.isHidden():
+            tab.set_view_mode("code_map" if tab.is_spatial else "code")
+        tab.text_editor.trigger_find()
+
+    def _show_replace(self):
+        tab = self._get_current_tab()
+        if not tab or not hasattr(tab, "text_editor"):
+            return
+        if tab.text_editor.isHidden():
+            tab.set_view_mode("code_map" if tab.is_spatial else "code")
+        tab.text_editor.trigger_replace()
+
+    def _show_find_replace(self):
+        self._show_replace()
 
     def _change_theme(self, theme_name: str):
         ThemeManager.apply_theme(QApplication.instance(), theme_name)
@@ -755,7 +768,8 @@ class MainWindow(QMainWindow):
             "• <b>Ctrl+S</b>: Kaydet<br>"
             "• <b>Ctrl+B</b>: Yan Paneli Aç / Kapat<br>"
             "• <b>F6</b>: Öznitelik Tablosunu Aç / Kapat<br>"
-            "• <b>Ctrl+F</b>: Bul & Değiştir<br>"
+            "• <b>Ctrl+F</b>: Bul (Monaco Find)<br>"
+            "• <b>Ctrl+H</b>: Değiştir (Monaco Replace)<br>"
             "• <b>Alt+1...5</b>: Görünüm Modları (Kod, Kod+Harita, Tablo+Harita, Harita, Tablo)"
         )
 
