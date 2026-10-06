@@ -1058,7 +1058,9 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 var lastGeojsonData = null;
 
-                function updateMap(geojsonData) {{
+                var hasFittedInitially = false;
+
+                function updateMap(geojsonData, shouldFit) {{
                     lastGeojsonData = geojsonData;
                     if (geojsonLayer) {{
                         map.removeLayer(geojsonLayer);
@@ -1074,6 +1076,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         document.getElementById('statsPill').textContent = 'Mekansal Katman';
                         activeVectorInfo.name = '';
                         activeVectorInfo.count = 0;
+                        hasFittedInitially = false;
                         renderLayersPanel();
                         return;
                     }}
@@ -1185,7 +1188,10 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     activeVectorInfo.visible = true;
                     renderLayersPanel();
 
-                    fitLayerBounds();
+                    if (shouldFit === true || (shouldFit === undefined && !hasFittedInitially)) {{
+                        fitLayerBounds();
+                        hasFittedInitially = true;
+                    }}
                 }}
 
                 function highlightFeature(idx) {{
@@ -1217,7 +1223,11 @@ class MapPreviewPanel(AbstractPreviewPanel):
         if ok:
             self._is_loaded = True
             if self._pending_content:
-                self.render_content(self._pending_content)
+                if isinstance(self._pending_content, tuple):
+                    c, fb = self._pending_content
+                    self.render_content(c, fit_bounds=fb)
+                else:
+                    self.render_content(self._pending_content, fit_bounds=True)
                 self._pending_content = None
             if self._pending_vector_info:
                 n, c = self._pending_vector_info
@@ -1231,9 +1241,9 @@ class MapPreviewPanel(AbstractPreviewPanel):
         else:
             self._pending_vector_info = (name, count)
 
-    def render_content(self, content: str):
+    def render_content(self, content: str, fit_bounds: bool = False):
         if not self._is_loaded:
-            self._pending_content = content
+            self._pending_content = (content, fit_bounds)
             return
 
         if not content or not content.strip():
@@ -1241,7 +1251,8 @@ class MapPreviewPanel(AbstractPreviewPanel):
             return
 
         try:
-            js_code = f"updateMap({content});"
+            fit_arg = "true" if fit_bounds else "false"
+            js_code = f"updateMap({content}, {fit_arg});"
             self.web_view.page().runJavaScript(js_code)
         except Exception:
             pass

@@ -149,13 +149,17 @@ class MainWindow(QMainWindow):
         if isinstance(saved_files, str):
             saved_files = [saved_files] if saved_files else []
 
-        valid_files = [f for f in saved_files if f and os.path.isfile(str(f))]
+        spatial_exts = {".geojson", ".shp", ".kml", ".gpkg", ".fgb"}
+        valid_files = [
+            f for f in saved_files
+            if f and os.path.isfile(str(f)) and os.path.splitext(str(f))[1].lower() not in spatial_exts
+        ]
         active_file = settings.value("active_file", "")
 
         if valid_files:
             for f in valid_files:
                 self._load_file(str(f))
-            if active_file:
+            if active_file and os.path.splitext(str(active_file))[1].lower() not in spatial_exts:
                 for idx in range(self.tab_widget.count()):
                     tab = self.tab_widget.widget(idx)
                     if tab and tab.current_file == active_file:
@@ -170,12 +174,19 @@ class MainWindow(QMainWindow):
         open_files = []
         active_file = ""
         curr_idx = self.tab_widget.currentIndex()
+        spatial_exts = {".geojson", ".shp", ".kml", ".gpkg", ".fgb"}
+
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
             if tab and tab.current_file and os.path.exists(tab.current_file):
+                ext = os.path.splitext(tab.current_file)[1].lower()
+                # Do NOT save spatial files to restore upon restart
+                if tab.is_spatial or ext in spatial_exts:
+                    continue
                 open_files.append(tab.current_file)
                 if i == curr_idx:
                     active_file = tab.current_file
+
         settings.setValue("open_files", open_files)
         settings.setValue("active_file", active_file)
 

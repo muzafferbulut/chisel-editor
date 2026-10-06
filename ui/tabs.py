@@ -100,7 +100,7 @@ class EditorTab(QWidget):
 
         # 2. Render Map via Leaflet
         if raw_geojson:
-            self.map_panel.render_content(raw_geojson)
+            self.map_panel.render_content(raw_geojson, fit_bounds=True)
 
         layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
         feat_count = len(gdf) if gdf is not None and not gdf.empty else 0
@@ -127,13 +127,13 @@ class EditorTab(QWidget):
         self.set_view_mode("map")
         self.spatial_data_ready.emit(gdf)
 
-    def update_spatial_gdf(self, gdf: gpd.GeoDataFrame):
+    def update_spatial_gdf(self, gdf: gpd.GeoDataFrame, fit_bounds: bool = False):
         self._current_gdf = gdf
         geojson_str = SpatialOps.to_geojson_str(gdf, indent=2)
         self._is_loading = True
         self.text_editor.setPlainText(geojson_str)
         self.table_panel.load_data(gdf)
-        self.map_panel.render_content(geojson_str)
+        self.map_panel.render_content(geojson_str, fit_bounds=fit_bounds)
         layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
         feat_count = len(gdf) if gdf is not None and not gdf.empty else 0
         self.map_panel.set_active_vector_info(layer_name, feat_count)
@@ -338,7 +338,7 @@ class EditorTab(QWidget):
         content = self.text_editor.toPlainText()
         if self.is_spatial:
             if SpatialOps.is_valid_geojson_content(content):
-                self.map_panel.render_content(content)
+                self.map_panel.render_content(content, fit_bounds=False)
                 try:
                     gdf = SpatialOps.parse_geojson_str(content)
                     self._current_gdf = gdf
