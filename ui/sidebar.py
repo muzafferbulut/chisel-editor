@@ -18,6 +18,7 @@ class ExplorerPanel(QWidget):
 
     def __init__(self, root_path: str = None, parent=None):
         super().__init__(parent)
+        self.setObjectName("sideBar")
         self._root_path = root_path or os.getcwd()
         self._init_ui()
 
@@ -38,17 +39,28 @@ class ExplorerPanel(QWidget):
         header.addWidget(self.lbl_title)
         header.addStretch()
 
-        self.btn_refresh = QPushButton("🔄")
-        self.btn_refresh.setObjectName("sidebarHeaderBtn")
-        self.btn_refresh.setFixedSize(20, 20)
-        self.btn_refresh.setToolTip("Gezgini Yenile")
-        self.btn_refresh.clicked.connect(self._refresh_tree)
-        header.addWidget(self.btn_refresh)
-
         self.btn_open_folder = QPushButton("📂")
         self.btn_open_folder.setObjectName("sidebarHeaderBtn")
-        self.btn_open_folder.setFixedSize(20, 20)
+        self.btn_open_folder.setFixedSize(22, 22)
+        self.btn_open_folder.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_open_folder.setToolTip("Klasör Aç / Değiştir (Ctrl+K, Ctrl+O)")
+        self.btn_open_folder.setStyleSheet(
+            "QPushButton#sidebarHeaderBtn {"
+            " border: none;"
+            " background: transparent;"
+            " border-radius: 3px;"
+            " font-size: 13px;"
+            " padding: 0px;"
+            " margin: 0px;"
+            " text-align: center;"
+            "}"
+            "QPushButton#sidebarHeaderBtn:hover {"
+            " background-color: rgba(128, 128, 128, 0.25);"
+            "}"
+            "QPushButton#sidebarHeaderBtn:pressed {"
+            " background-color: rgba(128, 128, 128, 0.4);"
+            "}"
+        )
         self.btn_open_folder.clicked.connect(self.folder_change_requested.emit)
         header.addWidget(self.btn_open_folder)
 
