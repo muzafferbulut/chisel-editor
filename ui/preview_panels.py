@@ -12,6 +12,8 @@ class MapBridge(QObject):
     featureDeleted = pyqtSignal(int)
     featureAdded = pyqtSignal(str)
     tableToggleRequested = pyqtSignal()
+    wmsDeleted = pyqtSignal(str)
+    serviceAddRequested = pyqtSignal()
 
     @pyqtSlot(int)
     def onFeatureClicked(self, index):
@@ -28,6 +30,14 @@ class MapBridge(QObject):
     @pyqtSlot()
     def toggleTable(self):
         self.tableToggleRequested.emit()
+
+    @pyqtSlot(str)
+    def onWmsDeleted(self, layerId):
+        self.wmsDeleted.emit(layerId)
+
+    @pyqtSlot()
+    def requestAddService(self):
+        self.serviceAddRequested.emit()
 
 
 class AbstractPreviewPanel(QWidget):
@@ -48,17 +58,22 @@ class MapPreviewPanel(AbstractPreviewPanel):
     feature_deleted = pyqtSignal(int)
     feature_added = pyqtSignal(str)
     table_toggle_requested = pyqtSignal()
+    wms_deleted = pyqtSignal(str)
+    service_add_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._is_loaded = False
         self._pending_content = None
+        self._pending_vector_info = None
 
         self.bridge = MapBridge()
         self.bridge.featureSelected.connect(self.feature_clicked.emit)
         self.bridge.featureDeleted.connect(self.feature_deleted.emit)
         self.bridge.featureAdded.connect(self.feature_added.emit)
         self.bridge.tableToggleRequested.connect(self.table_toggle_requested.emit)
+        self.bridge.wmsDeleted.connect(self.wms_deleted.emit)
+        self.bridge.serviceAddRequested.connect(self.service_add_requested.emit)
 
         self.channel = QWebChannel()
         self.channel.registerObject("mapBridge", self.bridge)
@@ -210,6 +225,97 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
                 .hud-flyout.open {{
                     display: flex;
+                }}
+                .hud-layers-flyout {{
+                    position: absolute;
+                    right: 38px;
+                    top: 0;
+                    display: none;
+                    flex-direction: column;
+                    background: rgba(24, 28, 34, 0.96);
+                    backdrop-filter: blur(12px);
+                    border: 1px solid rgba(255, 255, 255, 0.18);
+                    border-radius: 8px;
+                    padding: 8px 10px;
+                    gap: 6px;
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+                    z-index: 1002;
+                    min-width: 230px;
+                    max-width: 280px;
+                    color: #e0e0e0;
+                    user-select: none;
+                }}
+                .hud-layers-flyout.open {{
+                    display: flex;
+                }}
+                .hud-layers-header {{
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: #9cdcfe;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+                    padding-bottom: 5px;
+                    letter-spacing: 0.5px;
+                }}
+                .hud-layers-section-title {{
+                    font-size: 10px;
+                    font-weight: 600;
+                    color: #858585;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    margin-top: 3px;
+                }}
+                .hud-layer-item {{
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    background: rgba(255, 255, 255, 0.05);
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    border-radius: 4px;
+                    padding: 4px 6px;
+                    font-size: 11px;
+                    gap: 6px;
+                }}
+                .hud-layer-item:hover {{
+                    background: rgba(255, 255, 255, 0.1);
+                }}
+                .hud-layer-label {{
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    flex: 1;
+                    cursor: pointer;
+                }}
+                .hud-layer-btn-del {{
+                    background: transparent;
+                    border: none;
+                    color: #ff6b6b;
+                    cursor: pointer;
+                    padding: 0 2px;
+                    font-size: 12px;
+                    border-radius: 3px;
+                }}
+                .hud-layer-btn-del:hover {{
+                    background: rgba(231, 76, 60, 0.25);
+                }}
+                .hud-layers-add-btn {{
+                    background: #0078d4;
+                    border: 1px solid #4cc2ff;
+                    color: #ffffff;
+                    font-size: 10px;
+                    font-weight: 600;
+                    padding: 2px 7px;
+                    border-radius: 3px;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+                }}
+                .hud-layers-add-btn:hover {{
+                    background: #0086ea;
                 }}
                 .hud-flyout-btn {{
                     background: rgba(255, 255, 255, 0.1);
@@ -387,6 +493,24 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         <span id="opacityVal" style="font-size:10px; color:#fff; min-width: 28px; margin-left:4px;">85%</span>
                     </div>
                 </div>
+                
+                <div style="position: relative;">
+                    <button class="hud-vbtn" id="btnLayers" onclick="toggleLayersFlyout()" data-tip="Katmanlar & Servisler" title="Katmanlar">🥞</button>
+                    <div class="hud-layers-flyout" id="layersFlyout">
+                        <div class="hud-layers-header">
+                            <span>📑 KATMANLAR & SERVİSLER</span>
+                            <button class="hud-layers-add-btn" onclick="requestAddService()" title="WMS Web Servisi Ekle">+ Servis</button>
+                        </div>
+                        <div class="hud-layers-section-title">Vektör Katman</div>
+                        <div id="vectorLayerContainer">
+                            <div style="color: #858585; font-style: italic; font-size: 11px; padding: 2px 0;">(Aktif vektör yok)</div>
+                        </div>
+                        <div class="hud-layers-section-title">Web Servisleri (WMS)</div>
+                        <div id="wmsLayersContainer" style="display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto;">
+                            <div style="color: #858585; font-style: italic; font-size: 11px; padding: 2px 0;">Eklenmiş servis yok</div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="hud-panel hud-coords" id="coordsPill">
@@ -479,8 +603,136 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }}
                 }}
 
+                // --- Layer Panel & Flyout Controls ---
+                var activeVectorInfo = {{ name: '', count: 0, visible: true }};
+                var wmsRegistry = {{}}; // layerId -> {{ id, title, url, layerName, visible }}
+
+                function toggleLayersFlyout() {{
+                    var lFlyout = document.getElementById('layersFlyout');
+                    var bFlyout = document.getElementById('basemapFlyout');
+                    var oFlyout = document.getElementById('opacityFlyout');
+                    if (bFlyout) bFlyout.classList.remove('open');
+                    if (oFlyout) oFlyout.classList.remove('open');
+                    var isOpen = false;
+                    if (lFlyout) {{
+                        isOpen = lFlyout.classList.toggle('open');
+                        var btn = document.getElementById('btnLayers');
+                        if (btn) btn.classList.toggle('active', isOpen);
+                    }}
+                    if (isOpen) renderLayersPanel();
+                }}
+
+                function toggleBasemapFlyout() {{
+                    var bFlyout = document.getElementById('basemapFlyout');
+                    var oFlyout = document.getElementById('opacityFlyout');
+                    var lFlyout = document.getElementById('layersFlyout');
+                    if (oFlyout) oFlyout.classList.remove('open');
+                    if (lFlyout) lFlyout.classList.remove('open');
+                    var btnL = document.getElementById('btnLayers');
+                    if (btnL) btnL.classList.remove('active');
+                    if (bFlyout) bFlyout.classList.toggle('open');
+                }}
+
+                function toggleOpacityFlyout() {{
+                    var bFlyout = document.getElementById('basemapFlyout');
+                    var oFlyout = document.getElementById('opacityFlyout');
+                    var lFlyout = document.getElementById('layersFlyout');
+                    if (bFlyout) bFlyout.classList.remove('open');
+                    if (lFlyout) lFlyout.classList.remove('open');
+                    var btnL = document.getElementById('btnLayers');
+                    if (btnL) btnL.classList.remove('active');
+                    if (oFlyout) oFlyout.classList.toggle('open');
+                }}
+
+                function closeAllFlyouts() {{
+                    var bFlyout = document.getElementById('basemapFlyout');
+                    var oFlyout = document.getElementById('opacityFlyout');
+                    var lFlyout = document.getElementById('layersFlyout');
+                    if (bFlyout) bFlyout.classList.remove('open');
+                    if (oFlyout) oFlyout.classList.remove('open');
+                    if (lFlyout) lFlyout.classList.remove('open');
+                    var btnL = document.getElementById('btnLayers');
+                    if (btnL) btnL.classList.remove('active');
+                }}
+
+                function setActiveVectorInfo(name, count) {{
+                    activeVectorInfo.name = name || '';
+                    activeVectorInfo.count = count || 0;
+                    renderLayersPanel();
+                }}
+
+                function toggleVectorVisibility(visible) {{
+                    activeVectorInfo.visible = visible;
+                    if (visible) {{
+                        if (clusterGroup) map.addLayer(clusterGroup);
+                        else if (geojsonLayer) map.addLayer(geojsonLayer);
+                    }} else {{
+                        if (clusterGroup) map.removeLayer(clusterGroup);
+                        if (geojsonLayer) map.removeLayer(geojsonLayer);
+                    }}
+                }}
+
+                function requestAddService() {{
+                    if (pyBridge && pyBridge.requestAddService) {{
+                        pyBridge.requestAddService();
+                    }}
+                }}
+
+                function removeWms(layerId) {{
+                    removeWmsLayer(layerId);
+                    if (pyBridge && pyBridge.onWmsDeleted) {{
+                        pyBridge.onWmsDeleted(layerId);
+                    }}
+                }}
+
+                function toggleWmsVisibility(layerId, visible) {{
+                    setWmsVisibility(layerId, visible);
+                }}
+
+                function renderLayersPanel() {{
+                    var vContainer = document.getElementById('vectorLayerContainer');
+                    if (vContainer) {{
+                        if (activeVectorInfo.name) {{
+                            var checkedAttr = activeVectorInfo.visible ? 'checked' : '';
+                            vContainer.innerHTML = 
+                                '<div class="hud-layer-item">' +
+                                '<label class="hud-layer-label">' +
+                                '<input type="checkbox" ' + checkedAttr + ' onchange="toggleVectorVisibility(this.checked)"/>' +
+                                '<span title="' + activeVectorInfo.name + '">📍 ' + activeVectorInfo.name + ' (' + activeVectorInfo.count.toLocaleString() + ')</span>' +
+                                '</label>' +
+                                '</div>';
+                        }} else {{
+                            vContainer.innerHTML = '<div style="color: #858585; font-style: italic; font-size: 11px; padding: 2px 0;">(Aktif vektör yok)</div>';
+                        }}
+                    }}
+
+                    var wContainer = document.getElementById('wmsLayersContainer');
+                    if (wContainer) {{
+                        var keys = Object.keys(wmsRegistry);
+                        if (keys.length === 0) {{
+                            wContainer.innerHTML = '<div style="color: #858585; font-style: italic; font-size: 11px; padding: 2px 0;">Eklenmiş servis yok</div>';
+                        }} else {{
+                            var html = '';
+                            keys.forEach(function(k) {{
+                                var layer = wmsRegistry[k];
+                                var chk = layer.visible ? 'checked' : '';
+                                var title = layer.title || layer.layerName;
+                                html += 
+                                    '<div class="hud-layer-item">' +
+                                    '<label class="hud-layer-label">' +
+                                    '<input type="checkbox" ' + chk + ' onchange="toggleWmsVisibility(\\x27' + layer.id + '\\x27, this.checked)"/>' +
+                                    '<span title="' + title + '">🌐 ' + title + '</span>' +
+                                    '</label>' +
+                                    '<button class="hud-layer-btn-del" onclick="removeWms(\\x27' + layer.id + '\\x27)" title="Servisi Kaldır">🗑️</button>' +
+                                    '</div>';
+                            }});
+                            wContainer.innerHTML = html;
+                        }}
+                    }}
+                }}
+
                 // --- WMS Layer Management ---
-                function addWmsLayer(layerId, url, layers, format, transparent) {{
+                function addWmsLayer(layerId, url, layers, format, transparent, title) {{
                     if (wmsLayers[layerId]) map.removeLayer(wmsLayers[layerId]);
                     wmsLayers[layerId] = L.tileLayer.wms(url, {{
                         layers: layers,
@@ -488,7 +740,22 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         transparent: transparent !== false,
                         maxZoom: 20
                     }}).addTo(map);
+                    wmsRegistry[layerId] = {{
+                        id: layerId,
+                        title: title || layers,
+                        url: url,
+                        layerName: layers,
+                        visible: true
+                    }};
                     bringVectorsToFront();
+                    renderLayersPanel();
+
+                    var lFlyout = document.getElementById('layersFlyout');
+                    var btnL = document.getElementById('btnLayers');
+                    if (lFlyout && !lFlyout.classList.contains('open')) {{
+                        lFlyout.classList.add('open');
+                        if (btnL) btnL.classList.add('active');
+                    }}
                 }}
 
                 function removeWmsLayer(layerId) {{
@@ -496,14 +763,22 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         map.removeLayer(wmsLayers[layerId]);
                         delete wmsLayers[layerId];
                     }}
+                    if (wmsRegistry[layerId]) {{
+                        delete wmsRegistry[layerId];
+                    }}
+                    renderLayersPanel();
                 }}
 
                 function setWmsVisibility(layerId, visible) {{
+                    if (wmsRegistry[layerId]) {{
+                        wmsRegistry[layerId].visible = visible;
+                    }}
                     if (wmsLayers[layerId]) {{
                         if (visible) map.addLayer(wmsLayers[layerId]);
                         else map.removeLayer(wmsLayers[layerId]);
                         bringVectorsToFront();
                     }}
+                    renderLayersPanel();
                 }}
 
                 function bringVectorsToFront() {{
@@ -518,28 +793,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         '<span>Lng: ' + e.latlng.lng.toFixed(4) + '°</span>' +
                         '<span>Zoom: ' + map.getZoom() + '</span>';
                 }});
-
-                // --- Flyout Controls ---
-                function toggleBasemapFlyout() {{
-                    var bFlyout = document.getElementById('basemapFlyout');
-                    var oFlyout = document.getElementById('opacityFlyout');
-                    if (oFlyout) oFlyout.classList.remove('open');
-                    if (bFlyout) bFlyout.classList.toggle('open');
-                }}
-
-                function toggleOpacityFlyout() {{
-                    var bFlyout = document.getElementById('basemapFlyout');
-                    var oFlyout = document.getElementById('opacityFlyout');
-                    if (bFlyout) bFlyout.classList.remove('open');
-                    if (oFlyout) oFlyout.classList.toggle('open');
-                }}
-
-                function closeAllFlyouts() {{
-                    var bFlyout = document.getElementById('basemapFlyout');
-                    var oFlyout = document.getElementById('opacityFlyout');
-                    if (bFlyout) bFlyout.classList.remove('open');
-                    if (oFlyout) oFlyout.classList.remove('open');
-                }}
 
                 document.getElementById('opacitySlider').oninput = function(e) {{
                     currentOpacity = e.target.value / 100.0;
@@ -819,6 +1072,9 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                     if (!geojsonData) {{
                         document.getElementById('statsPill').textContent = 'Mekansal Katman';
+                        activeVectorInfo.name = '';
+                        activeVectorInfo.count = 0;
+                        renderLayersPanel();
                         return;
                     }}
 
@@ -922,6 +1178,13 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         map.addLayer(geojsonLayer);
                     }}
 
+                    if (!activeVectorInfo.name) {{
+                        activeVectorInfo.name = 'Vektör Katman';
+                    }}
+                    activeVectorInfo.count = featureCount;
+                    activeVectorInfo.visible = true;
+                    renderLayersPanel();
+
                     fitLayerBounds();
                 }}
 
@@ -956,6 +1219,17 @@ class MapPreviewPanel(AbstractPreviewPanel):
             if self._pending_content:
                 self.render_content(self._pending_content)
                 self._pending_content = None
+            if self._pending_vector_info:
+                n, c = self._pending_vector_info
+                self.set_active_vector_info(n, c)
+                self._pending_vector_info = None
+
+    def set_active_vector_info(self, name: str, count: int):
+        if self._is_loaded:
+            esc_name = json.dumps(name)
+            self.web_view.page().runJavaScript(f"setActiveVectorInfo({esc_name}, {count});")
+        else:
+            self._pending_vector_info = (name, count)
 
     def render_content(self, content: str):
         if not self._is_loaded:
@@ -980,14 +1254,15 @@ class MapPreviewPanel(AbstractPreviewPanel):
         if self._is_loaded:
             self.web_view.page().runJavaScript("fitLayerBounds();")
 
-    def add_wms_layer(self, layer_id: str, url: str, layer_name: str, fmt: str = "image/png", transparent: bool = True):
+    def add_wms_layer(self, layer_id: str, url: str, layer_name: str, fmt: str = "image/png", transparent: bool = True, title: str = ""):
         if self._is_loaded:
             esc_id = json.dumps(layer_id)
             esc_url = json.dumps(url)
             esc_layer = json.dumps(layer_name)
             esc_fmt = json.dumps(fmt)
+            esc_title = json.dumps(title or layer_name)
             trans_str = "true" if transparent else "false"
-            self.web_view.page().runJavaScript(f"addWmsLayer({esc_id}, {esc_url}, {esc_layer}, {esc_fmt}, {trans_str});")
+            self.web_view.page().runJavaScript(f"addWmsLayer({esc_id}, {esc_url}, {esc_layer}, {esc_fmt}, {trans_str}, {esc_title});")
 
     def remove_wms_layer(self, layer_id: str):
         if self._is_loaded:

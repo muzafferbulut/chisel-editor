@@ -15,7 +15,7 @@ from ui.dialogs import (
     ExportSpatialDialog, SpatialInfoDialog, BufferDialog, DissolveDialog
 )
 from ui.ogc_dialogs import WMSDialog, WFSDialog
-from ui.sidebar import ActivityBar, SideBar
+from ui.sidebar import SideBar, ExplorerPanel
 from ui.toast import ToastNotification
 from core.workers import FileLoadWorker, SpatialOpWorker, WFSWorker
 from core.theme import ThemeManager
@@ -55,25 +55,14 @@ class MainWindow(QMainWindow):
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)
 
-        # 1. Activity Bar (Left vertical 46px icon bar)
-        self.activity_bar = ActivityBar(self)
-        self.activity_bar.view_toggled.connect(self._on_activity_bar_toggled)
-        central_layout.addWidget(self.activity_bar)
-
-        # 2. Main Horizontal Splitter (SideBar + Work Area)
+        # Main Horizontal Splitter (SideBar + Work Area)
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.setHandleWidth(2)
 
-        # Left: SideBar (Explorer / GIS Layers)
-        self.side_bar = SideBar(self._current_folder, self)
+        # Left: Explorer SideBar
+        self.side_bar = ExplorerPanel(self._current_folder, self)
         self.side_bar.file_open_requested.connect(self._load_file)
         self.side_bar.folder_change_requested.connect(self._open_folder)
-        self.side_bar.add_wms_requested.connect(self._show_wms_dialog)
-        self.side_bar.add_wfs_requested.connect(self._show_wfs_dialog)
-        self.side_bar.fit_bounds_requested.connect(self._fit_bounds)
-        self.side_bar.table_requested.connect(self._toggle_attribute_table)
-        self.side_bar.wms_visibility_changed.connect(self._on_wms_visibility_changed)
-        self.side_bar.wms_remove_requested.connect(self._on_wms_remove_requested)
 
         self.main_splitter.addWidget(self.side_bar)
 
@@ -298,11 +287,14 @@ class MainWindow(QMainWindow):
         # --- GIS / Spatial Menu ---
         gis_menu: QMenu = menu_bar.addMenu("GIS")
 
-        act_wms = QAction("🌐 Add WMS Layer...", self)
+        # Servis Ekle Submenu
+        service_menu = gis_menu.addMenu("🌐 Servis Ekle")
+        act_wms = QAction("🗺️ WMS Katmanı Ekle...", self)
         act_wms.triggered.connect(self._show_wms_dialog)
-
-        act_wfs = QAction("📡 Download WFS Features...", self)
+        act_wfs = QAction("📡 WFS Katmanı Ekle...", self)
         act_wfs.triggered.connect(self._show_wfs_dialog)
+        service_menu.addAction(act_wms)
+        service_menu.addAction(act_wfs)
 
         act_fit = QAction("🎯 Fit Layer Bounds", self)
         act_fit.triggered.connect(self._fit_bounds)
@@ -310,8 +302,6 @@ class MainWindow(QMainWindow):
         act_info = QAction("ℹ️ Layer Info & Statistics...", self)
         act_info.triggered.connect(self._show_layer_info)
 
-        gis_menu.addAction(act_wms)
-        gis_menu.addAction(act_wfs)
         gis_menu.addAction(act_attr_table)
         gis_menu.addAction(act_fit)
         gis_menu.addAction(act_info)
@@ -367,14 +357,6 @@ class MainWindow(QMainWindow):
         help_menu.addAction(act_shortcuts)
         help_menu.addAction(act_about)
 
-    def _on_activity_bar_toggled(self, view_name: str):
-        if view_name == "toggle":
-            self._toggle_side_bar()
-        else:
-            if not self.side_bar.isVisible():
-                self.side_bar.show()
-            self.side_bar.show_view(view_name)
-
     def _toggle_side_bar(self):
         is_vis = self.side_bar.isVisible()
         self.side_bar.setVisible(not is_vis)
@@ -390,6 +372,8 @@ class MainWindow(QMainWindow):
         tab.text_editor.cursorPositionChanged.connect(self._update_cursor_info)
         tab.text_editor.file_dropped.connect(self._handle_file_drop)
         tab.state_changed.connect(lambda: self._on_tab_state_changed(tab))
+        tab.service_add_requested.connect(self._show_wms_dialog)
+        tab.wms_deleted.connect(self._on_wms_remove_requested)
 
         idx = self.tab_widget.addTab(tab, tab.get_title())
         self.tab_widget.setCurrentIndex(idx)
@@ -424,10 +408,11 @@ class MainWindow(QMainWindow):
                 self.btn_status_crs.show()
                 feat_count = len(tab._current_gdf) if tab._current_gdf is not None and not tab._current_gdf.empty else 0
                 layer_name = os.path.basename(tab.current_file) if tab.current_file else "Sample GIS Layer"
-                self.side_bar.layers_panel.set_active_vector_layer(layer_name, feat_count)
+                tab.map_panel.set_active_vector_info(layer_name, feat_count)
             else:
                 self.btn_status_crs.hide()
-                self.side_bar.layers_panel.set_active_vector_layer("", 0)
+                if tab.map_panel:
+                    tab.map_panel.set_active_vector_info("", 0)
         self._save_session_state()
 
     def _update_cursor_info(self, line: int, col: int):
@@ -455,9 +440,7 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "Klasör Seç", self._current_folder)
         if folder:
             self._current_folder = folder
-            self.side_bar.explorer_panel.set_root_path(folder)
-            self.activity_bar.set_active_view("explorer")
-            self.side_bar.show_view("explorer")
+            self.side_bar.set_root_path(folder)
             self._save_session_state()
             ToastNotification.show_toast(self, f"Açıldı: {os.path.basename(folder)}", "info")
 
@@ -575,13 +558,10 @@ class MainWindow(QMainWindow):
         if dlg.exec():
             layer_id = f"wms_{self._wms_counter}"
             self._wms_counter += 1
-            tab.map_panel.add_wms_layer(layer_id, dlg.wms_url, dlg.layer_name, dlg.format, dlg.transparent)
-            self.side_bar.layers_panel.add_wms_layer_item(layer_id, dlg.title)
+            tab.map_panel.add_wms_layer(layer_id, dlg.wms_url, dlg.layer_name, dlg.format, dlg.transparent, title=dlg.title)
             # Ensure map is visible
             if not tab.is_spatial and not tab.right_stack.isVisible():
                 tab.set_view_mode("code_map")
-            self.activity_bar.set_active_view("layers")
-            self.side_bar.show_view("layers")
             ToastNotification.show_toast(self, f"WMS Katmanı Eklendi: {dlg.title}", "info")
 
     def _show_wfs_dialog(self):
@@ -615,7 +595,6 @@ class MainWindow(QMainWindow):
         tab = self._get_current_tab()
         if tab and tab.map_panel:
             tab.map_panel.remove_wms_layer(layer_id)
-        self.side_bar.layers_panel.remove_wms_layer_item(layer_id)
         ToastNotification.show_toast(self, "WMS Katmanı Kaldırıldı", "info")
 
     # --- Geoprocessing Operations via Background Worker ---

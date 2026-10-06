@@ -12,6 +12,8 @@ class EditorTab(QWidget):
     state_changed = pyqtSignal()
     spatial_data_ready = pyqtSignal(object)
     load_sample_requested = pyqtSignal()
+    service_add_requested = pyqtSignal()
+    wms_deleted = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -72,6 +74,8 @@ class EditorTab(QWidget):
         self.table_panel.data_modified.connect(self._on_table_data_modified)
         self.map_panel.feature_deleted.connect(self._on_feature_deleted)
         self.map_panel.feature_added.connect(self._on_feature_added)
+        self.map_panel.service_add_requested.connect(self.service_add_requested.emit)
+        self.map_panel.wms_deleted.connect(self.wms_deleted.emit)
 
         # Auto-refresh timer for code edits
         self.preview_timer = QTimer()
@@ -97,6 +101,10 @@ class EditorTab(QWidget):
         # 2. Render Map via Leaflet
         if raw_geojson:
             self.map_panel.render_content(raw_geojson)
+
+        layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
+        feat_count = len(gdf) if gdf is not None and not gdf.empty else 0
+        self.map_panel.set_active_vector_info(layer_name, feat_count)
 
         # 3. Monaco Editor: Avoid freezing WebEngine by buffering large text
         if raw_geojson:
@@ -126,6 +134,9 @@ class EditorTab(QWidget):
         self.text_editor.setPlainText(geojson_str)
         self.table_panel.load_data(gdf)
         self.map_panel.render_content(geojson_str)
+        layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
+        feat_count = len(gdf) if gdf is not None and not gdf.empty else 0
+        self.map_panel.set_active_vector_info(layer_name, feat_count)
         self._is_loading = False
         self.is_dirty = True
         self.state_changed.emit()
