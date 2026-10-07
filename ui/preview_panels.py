@@ -1740,9 +1740,10 @@ class MapPreviewPanel(AbstractPreviewPanel):
         except Exception:
             pass
 
-    def highlight_feature(self, index: int):
+    def highlight_feature(self, index: int, layer_id: str = None):
         if self._is_loaded:
-            self.web_view.page().runJavaScript(f"highlightFeature({index});")
+            esc_id = json.dumps(layer_id) if layer_id else "null"
+            self.web_view.page().runJavaScript(f"highlightFeature({index}, {esc_id});")
 
     def fit_bounds(self, layer_id: str = None):
         if self._is_loaded:
