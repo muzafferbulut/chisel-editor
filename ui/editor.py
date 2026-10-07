@@ -30,31 +30,43 @@ class MonacoEditor(QWidget):
     cursorPositionChanged = pyqtSignal(int, int)
     file_dropped = pyqtSignal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, lazy: bool = True):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
-        self.web_view = QWebEngineView()
-        self.web_view.setAcceptDrops(False)
         self.setAcceptDrops(True)
-        self.layout.addWidget(self.web_view)
 
         self.bridge = EditorBridge()
         self.bridge.textChanged.connect(self._internal_text_changed)
         self.bridge.cursorPositionChanged.connect(self.cursorPositionChanged.emit)
         self.bridge.editorReady.connect(self._on_editor_ready)
 
-        self.channel = QWebChannel()
-        self.channel.registerObject("bridge", self.bridge)
-        self.web_view.page().setWebChannel(self.channel)
-
         self._current_text = ""
+        self._is_initialized = False
         self._is_ready = False
         self._pending_text = None
         self._pending_language = None
         self._pending_theme = None
+        self.web_view = None
 
-        self._init_editor()
+        if not lazy:
+            self.ensure_initialized()
+
+    def showEvent(self, event):
+        self.ensure_initialized()
+        super().showEvent(event)
+
+    def ensure_initialized(self):
+        if not self._is_initialized:
+            self._is_initialized = True
+            self.web_view = QWebEngineView()
+            self.web_view.setAcceptDrops(False)
+            self.layout.addWidget(self.web_view)
+
+            self.channel = QWebChannel()
+            self.channel.registerObject("bridge", self.bridge)
+            self.web_view.page().setWebChannel(self.channel)
+            self._init_editor()
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -227,6 +239,8 @@ class MonacoEditor(QWidget):
         if self._pending_text is not None:
             self.setPlainText(self._pending_text)
             self._pending_text = None
+        elif self._current_text:
+            self.setPlainText(self._current_text)
 
     def _internal_text_changed(self, text):
         self._current_text = text
@@ -237,14 +251,14 @@ class MonacoEditor(QWidget):
 
     def setPlainText(self, text):
         self._current_text = text
-        if not self._is_ready:
+        if not self._is_initialized or not self._is_ready:
             self._pending_text = text
             return
         escaped = json.dumps(text)
         self.web_view.page().runJavaScript(f"safeSetValue({escaped});")
 
     def setLanguage(self, language: str):
-        if not self._is_ready:
+        if not self._is_initialized or not self._is_ready:
             self._pending_language = language
             return
         lang_map = {
@@ -265,7 +279,7 @@ class MonacoEditor(QWidget):
         self.web_view.page().runJavaScript(f"safeSetLanguage({escaped});")
 
     def setTheme(self, theme: str):
-        if not self._is_ready:
+        if not self._is_initialized or not self._is_ready:
             self._pending_theme = theme
             return
         monaco_theme = "vs-dark" if theme == "dark" else "vs"
@@ -273,6 +287,7 @@ class MonacoEditor(QWidget):
         self.web_view.page().runJavaScript(f"safeSetTheme({escaped});")
 
     def find_and_replace(self, find_text: str, replace_text: str):
+        self.ensure_initialized()
         if not self._is_ready:
             return
         escaped_find = json.dumps(find_text)
@@ -280,7 +295,11 @@ class MonacoEditor(QWidget):
         self.web_view.page().runJavaScript(f"safeFindAndReplace({escaped_find}, {escaped_replace});")
 
     def trigger_find(self):
-        self.web_view.page().runJavaScript("safeTriggerFind();")
+        self.ensure_initialized()
+        if self._is_ready:
+            self.web_view.page().runJavaScript("safeTriggerFind();")
 
     def trigger_replace(self):
-        self.web_view.page().runJavaScript("safeTriggerReplace();")
+        self.ensure_initialized()
+        if self._is_ready:
+            self.web_view.page().runJavaScript("safeTriggerReplace();")

@@ -162,13 +162,28 @@ class EditorTab(QWidget):
     def _update_viewport_data(self, minx: float, miny: float, maxx: float, maxy: float, zoom: int):
         if not self._is_large_dataset or self._current_gdf is None or self._current_gdf.empty:
             return
-        sub_gdf = SpatialOps.query_viewport_and_lod(self._current_gdf, minx, miny, maxx, maxy, zoom)
-        raw_geojson = SpatialOps.to_geojson_str(sub_gdf)
+
+        if hasattr(self, "_viewport_worker") and self._viewport_worker is not None and self._viewport_worker.isRunning():
+            try:
+                self._viewport_worker.finished.disconnect()
+            except Exception:
+                pass
+
         layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
         geom_type = SpatialOps.get_layer_geometry_type(self._current_gdf)
-        if self.map_panel:
+
+        from core.workers import ViewportQueryWorker
+        self._viewport_worker = ViewportQueryWorker(
+            self.layer_id, layer_name, self._current_gdf, geom_type,
+            minx, miny, maxx, maxy, zoom
+        )
+        self._viewport_worker.finished.connect(self._on_viewport_query_finished)
+        self._viewport_worker.start()
+
+    def _on_viewport_query_finished(self, layer_id: str, layer_name: str, raw_geojson: str, geom_type: str):
+        if self.map_panel and layer_id == self.layer_id:
             self.map_panel.update_vector_layer_data(
-                layer_id=self.layer_id,
+                layer_id=layer_id,
                 name=layer_name,
                 geojson_str=raw_geojson,
                 geom_type=geom_type

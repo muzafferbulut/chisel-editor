@@ -6,8 +6,8 @@ import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="Several features with id.*")
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="pyogrio.*")
 
-# Chromium'un dahili konsol uyarılarını susturur
-os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-logging --log-level=3"
+# Chromium GPU donanım hızlandırma ve konsol log susturma bayrakları
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-logging --log-level=3 --enable-gpu-rasterization --enable-zero-copy --ignore-gpu-blocklist"
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
@@ -33,6 +33,19 @@ def main():
 
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv)
+
+    # Kalıcı harita karosu (tile) önbelleği - 500 MB disk önbelleği
+    try:
+        from PyQt6.QtWebEngineCore import QWebEngineProfile
+        profile = QWebEngineProfile.defaultProfile()
+        profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
+        cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "chisel_editor", "tiles")
+        os.makedirs(cache_dir, exist_ok=True)
+        profile.setCachePath(cache_dir)
+        profile.setPersistentStoragePath(cache_dir)
+        profile.setHttpCacheMaximumSize(500 * 1024 * 1024)
+    except Exception:
+        pass
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
     icon_path = os.path.join(base_dir, "resources", "img/chisel.ico")

@@ -23,7 +23,11 @@ class FileLoadWorker(QThread):
             if handler.is_spatial and hasattr(handler, 'read_gdf'):
                 gdf = handler.read_gdf(self.file_path, **self.kwargs)
                 clean_gdf = SpatialOps.sanitize_gdf_for_json(gdf)
-                content = clean_gdf.to_json()
+                # Performance Optimization: Avoid serializing 100k+ rows to JSON
+                if len(clean_gdf) <= 3000:
+                    content = clean_gdf.to_json()
+                else:
+                    content = SpatialOps.to_geojson_str(clean_gdf.iloc[:50])
                 self.finished.emit(self.file_path, content, True, clean_gdf, "")
             else:
                 content = handler.read(self.file_path, **self.kwargs)
@@ -32,6 +36,30 @@ class FileLoadWorker(QThread):
             self.multiple_layers_detected.emit(self.file_path, mle.layers)
         except Exception as e:
             self.finished.emit(self.file_path, "", False, None, str(e))
+
+
+class ViewportQueryWorker(QThread):
+    finished = pyqtSignal(str, str, str, str)  # (layer_id, layer_name, geojson_str, geom_type)
+
+    def __init__(self, layer_id: str, layer_name: str, gdf: gpd.GeoDataFrame, geom_type: str, minx: float, miny: float, maxx: float, maxy: float, zoom: int):
+        super().__init__()
+        self.layer_id = layer_id
+        self.layer_name = layer_name
+        self.gdf = gdf
+        self.geom_type = geom_type
+        self.minx = minx
+        self.miny = miny
+        self.maxx = maxx
+        self.maxy = maxy
+        self.zoom = zoom
+
+    def run(self):
+        try:
+            sub_gdf = SpatialOps.query_viewport_and_lod(self.gdf, self.minx, self.miny, self.maxx, self.maxy, self.zoom)
+            raw_geojson = SpatialOps.to_geojson_str(sub_gdf)
+            self.finished.emit(self.layer_id, self.layer_name, raw_geojson, self.geom_type)
+        except Exception:
+            pass
 
 
 class WFSWorker(QThread):
