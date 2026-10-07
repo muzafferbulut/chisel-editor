@@ -6,6 +6,9 @@ import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="Several features with id.*")
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="pyogrio.*")
 
+# Chromium'un dahili konsol uyarılarını (Compositor vb.) susturur
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--log-level=3"
+
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt
