@@ -472,3 +472,80 @@ class SpatialOps:
             }
         ]
         return gpd.GeoDataFrame(features, crs="EPSG:4326")
+
+    @staticmethod
+    def get_viewport_lod_tolerance(zoom: int) -> float:
+        """
+        Calculates Douglas-Peucker tolerance in degrees based on map zoom level.
+        Approximates ~1.5 to 2 screen pixels.
+        """
+        deg_per_pixel = 360.0 / (256.0 * (2 ** max(1, zoom)))
+        return deg_per_pixel * 1.5
+
+    @staticmethod
+    def get_overview_lod(gdf: gpd.GeoDataFrame, max_features: int = 3000) -> gpd.GeoDataFrame:
+        """
+        Builds a fast, representative overview of a large dataset for initial render.
+        Samples features and simplifies vertices for lightweight initial loading.
+        """
+        if gdf is None or gdf.empty or len(gdf) <= max_features:
+            return gdf
+
+        step = max(1, len(gdf) // max_features)
+        sampled = gdf.iloc[::step].copy()
+
+        geom_type = SpatialOps.get_layer_geometry_type(sampled)
+        if geom_type in ("line", "polygon", "mixed"):
+            try:
+                sampled.geometry = sampled.geometry.simplify(0.005, preserve_topology=False)
+            except Exception:
+                pass
+
+        return sampled
+
+    @staticmethod
+    def query_viewport_and_lod(
+        gdf: gpd.GeoDataFrame,
+        minx: float,
+        miny: float,
+        maxx: float,
+        maxy: float,
+        zoom: int,
+        max_features: int = 3500
+    ) -> gpd.GeoDataFrame:
+        """
+        QGIS-style on-the-fly viewport culling and level-of-detail simplification.
+        Uses GEOS STRtree spatial index for sub-millisecond BBOX filtering.
+        """
+        if gdf is None or gdf.empty:
+            return gdf
+
+        if len(gdf) <= max_features:
+            return gdf
+
+        dx = (maxx - minx) * 0.2
+        dy = (maxy - miny) * 0.2
+        from shapely.geometry import box
+        search_box = box(minx - dx, miny - dy, maxx + dx, maxy + dy)
+
+        try:
+            indices = gdf.sindex.query(search_box, predicate="intersects")
+            if len(indices) == 0:
+                return gdf.iloc[0:0]
+            sub_gdf = gdf.iloc[indices].copy()
+        except Exception:
+            sub_gdf = gdf.copy()
+
+        geom_type = SpatialOps.get_layer_geometry_type(sub_gdf)
+        if geom_type in ("line", "polygon", "mixed") and zoom < 16:
+            tol = SpatialOps.get_viewport_lod_tolerance(zoom)
+            try:
+                sub_gdf.geometry = sub_gdf.geometry.simplify(tol, preserve_topology=False)
+            except Exception:
+                pass
+
+        if len(sub_gdf) > max_features:
+            step = max(1, len(sub_gdf) // max_features)
+            sub_gdf = sub_gdf.iloc[::step]
+
+        return sub_gdf

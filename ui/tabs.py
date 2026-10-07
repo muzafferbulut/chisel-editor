@@ -23,6 +23,7 @@ class EditorTab(QWidget):
         self.file_type = "Plain Text"
         self._is_loading = False
         self.is_spatial = False
+        self._is_large_dataset = False
         self._current_gdf = None
         self._custom_map_panel = map_panel
 
@@ -101,9 +102,8 @@ class EditorTab(QWidget):
         self.is_spatial = True
         self.file_type = "GeoJSON"
         self._current_gdf = gdf
-
-        if raw_geojson is None and gdf is not None and not gdf.empty:
-            raw_geojson = SpatialOps.to_geojson_str(gdf)
+        feat_count = len(gdf) if gdf is not None else 0
+        self._is_large_dataset = (feat_count > 3000)
 
         self._is_loading = True
 
@@ -114,27 +114,39 @@ class EditorTab(QWidget):
         # 2. Render Map via Leaflet
         layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
         geom_type = SpatialOps.get_layer_geometry_type(gdf)
-        if raw_geojson and self.map_panel:
+
+        if self._is_large_dataset:
+            # QGIS-style initial LOD overview: sample or simplified view for ultra-fast initial render
+            init_gdf = SpatialOps.get_overview_lod(gdf, max_features=3000)
+            render_geojson = SpatialOps.to_geojson_str(init_gdf)
+        else:
+            if raw_geojson is None and gdf is not None and not gdf.empty:
+                raw_geojson = SpatialOps.to_geojson_str(gdf)
+            render_geojson = raw_geojson
+
+        if render_geojson and self.map_panel:
             self.map_panel.set_vector_layer(
                 layer_id=self.layer_id,
                 name=layer_name,
-                geojson_str=raw_geojson,
+                geojson_str=render_geojson,
                 is_active=True,
                 geom_type=geom_type,
                 fit_bounds=True
             )
 
         # 3. Monaco Editor: Avoid freezing WebEngine by buffering large text
+        if raw_geojson is None and render_geojson:
+            raw_geojson = render_geojson
         if raw_geojson:
-            if len(raw_geojson) < 500_000:
+            if len(raw_geojson) < 500_000 and not self._is_large_dataset:
                 self.text_editor.setPlainText(raw_geojson)
             else:
                 count = len(gdf) if gdf is not None else 0
-                size_mb = len(raw_geojson) / (1024 * 1024)
+                size_mb = (len(raw_geojson) if raw_geojson else 0) / (1024 * 1024)
                 preview = (
                     f"// Mekansal Veri: {count:,} adet geometrik özellik yüklendi ({size_mb:.1f} MB).\n"
-                    f"// Tablo ve Harita görünümünde maksimum hız ve performans devrededir.\n\n"
-                    f"{raw_geojson[:1200]}\n\n... [Büyük veri performansı için metin editöründe sınırlandırıldı] ..."
+                    f"// QGIS Modu: R-Tree indeksleme ve dinamik LOD devrededir.\n\n"
+                    f"{raw_geojson[:1200] if raw_geojson else ''}\n\n... [Büyük veri performansı için sınırlandırıldı] ..."
                 )
                 self.text_editor.setPlainText(preview)
             self.text_editor.setLanguage("GeoJSON")
@@ -147,19 +159,41 @@ class EditorTab(QWidget):
             QTimer.singleShot(120, lambda: self.map_panel.fit_bounds(self.layer_id) if self.map_panel else None)
         self.spatial_data_ready.emit(gdf)
 
+    def _update_viewport_data(self, minx: float, miny: float, maxx: float, maxy: float, zoom: int):
+        if not self._is_large_dataset or self._current_gdf is None or self._current_gdf.empty:
+            return
+        sub_gdf = SpatialOps.query_viewport_and_lod(self._current_gdf, minx, miny, maxx, maxy, zoom)
+        raw_geojson = SpatialOps.to_geojson_str(sub_gdf)
+        layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
+        geom_type = SpatialOps.get_layer_geometry_type(self._current_gdf)
+        if self.map_panel:
+            self.map_panel.update_vector_layer_data(
+                layer_id=self.layer_id,
+                name=layer_name,
+                geojson_str=raw_geojson,
+                geom_type=geom_type
+            )
+
     def update_spatial_gdf(self, gdf: gpd.GeoDataFrame, fit_bounds: bool = False):
         self._current_gdf = gdf
+        self._is_large_dataset = (len(gdf) > 3000) if gdf is not None else False
         geojson_str = SpatialOps.to_geojson_str(gdf, indent=2)
         self._is_loading = True
-        self.text_editor.setPlainText(geojson_str)
+        if not self._is_large_dataset and len(geojson_str) < 500_000:
+            self.text_editor.setPlainText(geojson_str)
         self.table_panel.load_data(gdf)
         layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
         geom_type = SpatialOps.get_layer_geometry_type(gdf)
         if self.map_panel:
+            if self._is_large_dataset:
+                init_gdf = SpatialOps.get_overview_lod(gdf, max_features=3000)
+                render_str = SpatialOps.to_geojson_str(init_gdf)
+            else:
+                render_str = geojson_str
             self.map_panel.set_vector_layer(
                 layer_id=self.layer_id,
                 name=layer_name,
-                geojson_str=geojson_str,
+                geojson_str=render_str,
                 is_active=True,
                 geom_type=geom_type,
                 fit_bounds=fit_bounds

@@ -43,6 +43,7 @@ class MainWindow(QMainWindow):
         self.shared_map_panel.service_add_requested.connect(self._show_wms_dialog)
         self.shared_map_panel.wms_deleted.connect(self._on_wms_remove_requested)
         self.shared_map_panel.active_layer_requested.connect(self._switch_to_tab_by_layer_id)
+        self.shared_map_panel.viewport_changed.connect(self._on_map_viewport_changed)
 
         # Restore last opened folder
         settings = QSettings("ChiselEditor", "ChiselEditor")
@@ -475,6 +476,11 @@ class MainWindow(QMainWindow):
             if getattr(tab, "layer_id", None) == layer_id:
                 self.tab_widget.setCurrentIndex(i)
                 break
+
+    def _on_map_viewport_changed(self, minx: float, miny: float, maxx: float, maxy: float, zoom: int):
+        tab = self._get_current_tab()
+        if tab and tab.is_spatial and getattr(tab, "_is_large_dataset", False):
+            tab._update_viewport_data(minx, miny, maxx, maxy, zoom)
 
     def _update_cursor_info(self, line: int, col: int):
         self.cursor_label.setText(f"Ln {line}, Col {col}")

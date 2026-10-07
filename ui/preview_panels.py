@@ -15,6 +15,7 @@ class MapBridge(QObject):
     wmsDeleted = pyqtSignal(str)
     serviceAddRequested = pyqtSignal()
     activeLayerRequested = pyqtSignal(str)
+    viewportChanged = pyqtSignal(float, float, float, float, int)
 
     @pyqtSlot(int)
     def onFeatureClicked(self, index):
@@ -44,6 +45,10 @@ class MapBridge(QObject):
     def onActiveLayerRequested(self, layerId):
         self.activeLayerRequested.emit(layerId)
 
+    @pyqtSlot(float, float, float, float, int)
+    def onViewportChanged(self, minx, miny, maxx, maxy, zoom):
+        self.viewportChanged.emit(minx, miny, maxx, maxy, zoom)
+
 
 class AbstractPreviewPanel(QWidget):
 
@@ -66,6 +71,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
     wms_deleted = pyqtSignal(str)
     service_add_requested = pyqtSignal()
     active_layer_requested = pyqtSignal(str)
+    viewport_changed = pyqtSignal(float, float, float, float, int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -81,6 +87,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
         self.bridge.wmsDeleted.connect(self.wms_deleted.emit)
         self.bridge.serviceAddRequested.connect(self.service_add_requested.emit)
         self.bridge.activeLayerRequested.connect(self.active_layer_requested.emit)
+        self.bridge.viewportChanged.connect(self.viewport_changed.emit)
 
         self.channel = QWebChannel()
         self.channel.registerObject("mapBridge", self.bridge)
@@ -602,6 +609,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}).setView([39.0, 35.0], 5);
 
                 L.control.scale({{ imperial: false, position: 'bottomleft' }}).addTo(map);
+                var sharedCanvas = L.canvas({{ padding: 0.5 }});
 
                 // STRICTLY FREE BASE TILES (No API key, no watermark)
                 var freeTiles = {{
@@ -899,6 +907,18 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         '<span>Lat: ' + e.latlng.lat.toFixed(4) + '°</span>' +
                         '<span>Lng: ' + e.latlng.lng.toFixed(4) + '°</span>' +
                         '<span>Zoom: ' + map.getZoom() + '</span>';
+                }});
+
+                var viewportDebounceTimer = null;
+                map.on('moveend', function() {{
+                    if (viewportDebounceTimer) clearTimeout(viewportDebounceTimer);
+                    viewportDebounceTimer = setTimeout(function() {{
+                        if (pyBridge && pyBridge.onViewportChanged) {{
+                            var b = map.getBounds();
+                            var z = map.getZoom();
+                            pyBridge.onViewportChanged(b.getWest(), b.getSouth(), b.getEast(), b.getNorth(), z);
+                        }}
+                    }}, 120);
                 }});
 
                 document.getElementById('opacitySlider').oninput = function(e) {{
@@ -1319,12 +1339,14 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     var featureCount = (geojsonData && geojsonData.features) ? geojsonData.features.length : 1;
 
                     var lLayer = L.geoJSON(geojsonData, {{
+                        renderer: sharedCanvas,
                         pointToLayer: function(feature, latlng) {{
                             return L.circleMarker(latlng, {{
-                                radius: 6,
+                                renderer: sharedCanvas,
+                                radius: 5,
                                 fillColor: color,
                                 color: '#ffffff',
-                                weight: 1.5,
+                                weight: 1.2,
                                 opacity: currentOpacity,
                                 fillOpacity: currentOpacity * 0.9
                             }});
@@ -1333,6 +1355,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                             var gtype = (feature.geometry && feature.geometry.type) || 'Polygon';
                             var isLine = gtype.indexOf('Line') !== -1;
                             return {{
+                                renderer: sharedCanvas,
                                 color: color,
                                 weight: isLine ? 2.5 : 2,
                                 opacity: currentOpacity,
@@ -1464,6 +1487,27 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                     if (fitBounds === true) {{
                         fitLayerBounds(layerId);
+                    }}
+                }}
+
+                function updateVectorLayerData(layerId, name, geojsonData, geomType) {{
+                    if (!layerId || !vectorLayers[layerId]) return;
+                    var layerObj = vectorLayers[layerId];
+                    if (layerObj.leafletLayer) {{
+                        map.removeLayer(layerObj.leafletLayer);
+                    }}
+                    var res = createLeafletLayer(layerId, name || layerObj.name, geojsonData, layerObj.color);
+                    layerObj.leafletLayer = res.leafletLayer;
+                    layerObj.indexMap = res.indexMap;
+                    layerObj.geojsonData = geojsonData;
+                    if (geomType && geomType !== 'any') {{
+                        layerObj.geomType = geomType;
+                    }}
+                    if (layerObj.visible) {{
+                        map.addLayer(layerObj.leafletLayer);
+                        if (layerObj.isActive) {{
+                            layerObj.leafletLayer.bringToFront();
+                        }}
                     }}
                 }}
 
@@ -1676,6 +1720,16 @@ class MapPreviewPanel(AbstractPreviewPanel):
             if not hasattr(self, '_pending_vector_layers'):
                 self._pending_vector_layers = {}
             self._pending_vector_layers[layer_id] = (name, geojson_str, is_active, geom_type, color, fit_bounds)
+
+    def update_vector_layer_data(self, layer_id: str, geojson_str: str, name: str = None, geom_type: str = "any"):
+        if not geojson_str or not geojson_str.strip():
+            return
+        if self._is_loaded:
+            esc_id = json.dumps(layer_id)
+            esc_name = json.dumps(name) if name else "null"
+            esc_type = json.dumps(geom_type)
+            js_code = f"updateVectorLayerData({esc_id}, {esc_name}, {geojson_str}, {esc_type});"
+            self.web_view.page().runJavaScript(js_code)
 
     def set_active_vector_layer(self, layer_id: str, geom_type: str = "any"):
         if self._is_loaded:
