@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QSplitter
 )
 from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QKeySequence
-from PyQt6.QtCore import Qt, QSettings
+from PyQt6.QtCore import Qt, QSettings, QTimer
 
 from handlers.factory import HandlerFactory
 from ui.dialogs import (
@@ -565,6 +565,9 @@ class MainWindow(QMainWindow):
         self._on_tab_changed(self.tab_widget.currentIndex())
         self._save_session_state()
 
+        if is_spatial:
+            QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(tab.layer_id))
+
         ToastNotification.show_toast(self, f"Açıldı: {os.path.basename(file_path)}", "info")
 
     def _on_multiple_layers(self, file_path: str, layers: list):
@@ -643,9 +646,10 @@ class MainWindow(QMainWindow):
         if gdf is not None and not gdf.empty:
             tab = self._add_new_tab()
             tab.current_file = f"{layer_name}.geojson"
-            tab.set_spatial_data(gdf)
+            tab.configure_for_file_type("GeoJSON", True, "", gdf=gdf)
             self._update_tab_title(tab)
             self._on_tab_changed(self.tab_widget.currentIndex())
+            QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(tab.layer_id))
             ToastNotification.show_toast(self, f"WFS Katmanı İndirildi: {len(gdf):,} özellik", "info")
 
     def _on_wms_visibility_changed(self, layer_id: str, visible: bool):
@@ -779,9 +783,10 @@ class MainWindow(QMainWindow):
         sample_gdf = SpatialOps.create_sample_spatial_data()
         tab = self._add_new_tab()
         tab.current_file = "turkey_sample_zones.geojson"
-        tab.set_spatial_data(sample_gdf)
+        tab.configure_for_file_type("GeoJSON", True, "", gdf=sample_gdf)
         self._update_tab_title(tab)
         self._on_tab_changed(self.tab_widget.currentIndex())
+        QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(tab.layer_id))
         ToastNotification.show_toast(self, "🧪 Örnek Mekansal Veri Yüklendi!", "info")
 
     def _show_find(self):

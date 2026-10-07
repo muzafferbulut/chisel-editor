@@ -143,6 +143,8 @@ class EditorTab(QWidget):
 
         # Open directly in full map view (user can open attribute table on demand)
         self.set_view_mode("map")
+        if self.map_panel:
+            QTimer.singleShot(120, lambda: self.map_panel.fit_bounds(self.layer_id) if self.map_panel else None)
         self.spatial_data_ready.emit(gdf)
 
     def update_spatial_gdf(self, gdf: gpd.GeoDataFrame, fit_bounds: bool = False):

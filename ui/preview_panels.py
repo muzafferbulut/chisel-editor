@@ -1463,9 +1463,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }}
 
                     if (fitBounds === true) {{
-                        if (lGeojson.getBounds && lGeojson.getBounds().isValid()) {{
-                            map.fitBounds(lGeojson.getBounds(), {{ padding: [30, 30] }});
-                        }}
+                        fitLayerBounds(layerId);
                     }}
                 }}
 
@@ -1577,35 +1575,35 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
 
                 function fitLayerBounds(layerId) {{
-                    if (layerId && vectorLayers[layerId] && vectorLayers[layerId].leafletLayer) {{
-                        var b = vectorLayers[layerId].leafletLayer.getBounds();
-                        if (b && b.isValid()) {{
-                            map.fitBounds(b, {{ padding: [30, 30] }});
-                            return;
-                        }}
-                    }}
-                    if (activeLayerId && vectorLayers[activeLayerId] && vectorLayers[activeLayerId].leafletLayer) {{
-                        var ab = vectorLayers[activeLayerId].leafletLayer.getBounds();
-                        if (ab && ab.isValid()) {{
-                            map.fitBounds(ab, {{ padding: [30, 30] }});
-                            return;
-                        }}
-                    }}
-                    var allBounds = L.latLngBounds();
-                    var hasValid = false;
-                    Object.keys(vectorLayers).forEach(function(k) {{
-                        var l = vectorLayers[k];
-                        if (l.visible && l.leafletLayer && l.leafletLayer.getBounds) {{
-                            var lb = l.leafletLayer.getBounds();
-                            if (lb && lb.isValid()) {{
-                                allBounds.extend(lb);
-                                hasValid = true;
+                    var doFit = function() {{
+                        if (map.invalidateSize) map.invalidateSize();
+                        var targetLayer = (layerId && vectorLayers[layerId]) ? vectorLayers[layerId] : (activeLayerId && vectorLayers[activeLayerId] ? vectorLayers[activeLayerId] : null);
+                        if (targetLayer && targetLayer.leafletLayer && targetLayer.leafletLayer.getBounds) {{
+                            var b = targetLayer.leafletLayer.getBounds();
+                            if (b && b.isValid()) {{
+                                map.fitBounds(b, {{ padding: [40, 40], maxZoom: 16 }});
+                                return;
                             }}
                         }}
-                    }});
-                    if (hasValid && allBounds.isValid()) {{
-                        map.fitBounds(allBounds, {{ padding: [30, 30] }});
-                    }}
+                        var allBounds = L.latLngBounds();
+                        var hasValid = false;
+                        Object.keys(vectorLayers).forEach(function(k) {{
+                            var l = vectorLayers[k];
+                            if (l.visible && l.leafletLayer && l.leafletLayer.getBounds) {{
+                                var lb = l.leafletLayer.getBounds();
+                                if (lb && lb.isValid()) {{
+                                    allBounds.extend(lb);
+                                    hasValid = true;
+                                }}
+                            }}
+                        }});
+                        if (hasValid && allBounds.isValid()) {{
+                            map.fitBounds(allBounds, {{ padding: [40, 40], maxZoom: 16 }});
+                        }}
+                    }};
+                    doFit();
+                    setTimeout(doFit, 80);
+                    setTimeout(doFit, 250);
                 }}
 
                 function highlightFeature(idx, layerId) {{
@@ -1642,9 +1640,14 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     self.render_content(self._pending_content, fit_bounds=True)
                 self._pending_content = None
             if getattr(self, '_pending_vector_layers', None):
+                last_fit_layer = None
                 for lid, (lname, lgjson, lia, lgt, lcol, lfb) in list(self._pending_vector_layers.items()):
                     self.set_vector_layer(lid, lname, lgjson, lia, lgt, lcol, lfb)
+                    if lfb:
+                        last_fit_layer = lid
                 self._pending_vector_layers.clear()
+                if last_fit_layer:
+                    self.fit_bounds(last_fit_layer)
             if getattr(self, '_pending_active_layer', None):
                 lid, lgt = self._pending_active_layer
                 self.set_active_vector_layer(lid, lgt)
