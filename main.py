@@ -6,14 +6,22 @@ import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="Several features with id.*")
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="pyogrio.*")
 
-# Chromium'un dahili konsol uyarılarını (Compositor vb.) susturur
-os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--log-level=3"
+# Chromium'un dahili konsol uyarılarını susturur
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-logging --log-level=3"
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, qInstallMessageHandler
 from ui.main_window import MainWindow
 from core.theme import ThemeManager
+
+def _qt_message_filter(msg_type, context, message):
+    if "Compositor returned null texture" in message or "null texture" in message:
+        return
+    if message:
+        sys.stderr.write(f"{message}\n")
+
+qInstallMessageHandler(_qt_message_filter)
 
 def main():
     if os.name == 'nt':
