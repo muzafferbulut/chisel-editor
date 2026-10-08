@@ -125,10 +125,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
         <head>
             <meta charset="utf-8" />
             <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-            <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
-            <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
             <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-            <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
             <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
             <style>
                 html, body, #map {{
@@ -260,14 +257,14 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     flex-direction: column;
                     background: rgba(24, 28, 34, 0.96);
                     backdrop-filter: blur(12px);
-                    border: 1px solid rgba(255, 255, 255, 0.18);
+                    border: 1px solid rgba(255, 255, 255, 0.16);
                     border-radius: 8px;
                     padding: 8px 10px;
                     gap: 6px;
                     box-shadow: 0 8px 24px rgba(0,0,0,0.5);
                     z-index: 1002;
-                    min-width: 230px;
-                    max-width: 280px;
+                    min-width: 220px;
+                    max-width: 290px;
                     color: #e0e0e0;
                     user-select: none;
                 }}
@@ -281,121 +278,96 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     font-size: 11px;
                     font-weight: 700;
                     color: #9cdcfe;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
                     padding-bottom: 5px;
-                    letter-spacing: 0.5px;
+                    letter-spacing: 0.3px;
                 }}
-                .hud-layers-section-title {{
+                .hud-layer-count-badge {{
+                    background: rgba(255, 255, 255, 0.12);
+                    color: #9cdcfe;
+                    border-radius: 10px;
                     font-size: 10px;
+                    padding: 0 5px;
                     font-weight: 600;
-                    color: #858585;
-                    text-transform: uppercase;
-                    letter-spacing: 0.5px;
-                    margin-top: 3px;
-                }}
-                .hud-layer-item {{
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    background: rgba(255, 255, 255, 0.05);
-                    border: 1px solid rgba(255, 255, 255, 0.08);
-                    border-radius: 4px;
-                    padding: 4px 6px;
-                    font-size: 11px;
-                    gap: 6px;
-                }}
-                .hud-layer-item:hover {{
-                    background: rgba(255, 255, 255, 0.1);
-                }}
-                .hud-layer-item.active-layer {{
-                    background: rgba(0, 120, 212, 0.2) !important;
-                    border-color: rgba(76, 194, 255, 0.45) !important;
-                }}
-                .hud-layer-color-dot {{
-                    width: 9px;
-                    height: 9px;
-                    border-radius: 50%;
-                    flex-shrink: 0;
-                    display: inline-block;
-                    box-shadow: 0 0 4px rgba(0,0,0,0.4);
-                }}
-                .hud-layer-active-badge {{
-                    font-size: 10px;
-                    background: rgba(0, 120, 212, 0.35);
-                    color: #4cc2ff;
-                    border: 1px solid #0078d4;
-                    border-radius: 3px;
-                    padding: 1px 5px;
-                    font-weight: 600;
-                    white-space: nowrap;
-                    flex-shrink: 0;
-                }}
-                .hud-layer-switch-btn {{
-                    background: rgba(255, 255, 255, 0.08);
-                    border: 1px solid rgba(255, 255, 255, 0.15);
-                    color: #bbb;
-                    font-size: 10px;
-                    padding: 1px 6px;
-                    border-radius: 3px;
-                    cursor: pointer;
-                    transition: all 0.15s ease;
-                    white-space: nowrap;
-                    flex-shrink: 0;
-                }}
-                .hud-layer-switch-btn:hover {{
-                    background: #0078d4;
-                    border-color: #4cc2ff;
-                    color: #ffffff;
-                }}
-                .hud-popup-switch-btn {{
-                    background: #0078d4;
-                    color: #fff;
-                    border: none;
-                    border-radius: 4px;
-                    padding: 4px 10px;
-                    font-size: 11px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: background 0.15s ease;
-                }}
-                .hud-popup-switch-btn:hover {{
-                    background: #0086ea;
-                }}
-                .hud-layer-label {{
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    white-space: nowrap;
-                    flex: 1;
-                    cursor: pointer;
-                }}
-                .hud-layer-btn-del {{
-                    background: transparent;
-                    border: none;
-                    color: #ff6b6b;
-                    cursor: pointer;
-                    padding: 0 2px;
-                    font-size: 12px;
-                    border-radius: 3px;
-                }}
-                .hud-layer-btn-del:hover {{
-                    background: rgba(231, 76, 60, 0.25);
                 }}
                 .hud-layers-add-btn {{
-                    background: #0078d4;
-                    border: 1px solid #4cc2ff;
-                    color: #ffffff;
+                    background: rgba(0, 120, 212, 0.25);
+                    border: 1px solid rgba(76, 194, 255, 0.4);
+                    color: #4cc2ff;
                     font-size: 10px;
                     font-weight: 600;
                     padding: 2px 7px;
-                    border-radius: 3px;
+                    border-radius: 4px;
                     cursor: pointer;
                     transition: all 0.15s ease;
                 }}
                 .hud-layers-add-btn:hover {{
-                    background: #0086ea;
+                    background: #0078d4;
+                    color: #ffffff;
+                }}
+                .hud-layers-list {{
+                    display: flex;
+                    flex-direction: column;
+                    gap: 3px;
+                    max-height: 260px;
+                    overflow-y: auto;
+                    padding-right: 2px;
+                }}
+                .hud-layers-list::-webkit-scrollbar {{
+                    width: 4px;
+                }}
+                .hud-layers-list::-webkit-scrollbar-thumb {{
+                    background: rgba(255, 255, 255, 0.2);
+                    border-radius: 2px;
+                }}
+                .hud-layer-item {{
+                    display: flex;
+                    align-items: center;
+                    background: rgba(255, 255, 255, 0.04);
+                    border: 1px solid rgba(255, 255, 255, 0.07);
+                    border-left: 3px solid transparent;
+                    border-radius: 4px;
+                    padding: 4px 6px;
+                    font-size: 11px;
+                    gap: 6px;
+                    cursor: pointer;
+                    transition: background 0.12s ease, border-color 0.12s ease;
+                }}
+                .hud-layer-item:hover {{
+                    background: rgba(255, 255, 255, 0.09);
+                    border-color: rgba(255, 255, 255, 0.15);
+                }}
+                .hud-layer-item.active-layer {{
+                    background: rgba(0, 120, 212, 0.22) !important;
+                    border-color: rgba(76, 194, 255, 0.35) !important;
+                    border-left: 3px solid #0078d4 !important;
+                }}
+                .hud-layer-color-dot {{
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    flex-shrink: 0;
+                    display: inline-block;
+                    box-shadow: 0 0 3px rgba(0,0,0,0.5);
+                }}
+                .hud-layer-btn-del {{
+                    background: transparent;
+                    border: none;
+                    color: #888888;
+                    cursor: pointer;
+                    padding: 2px 4px;
+                    font-size: 11px;
+                    border-radius: 3px;
+                    opacity: 0.5;
+                    transition: all 0.15s ease;
+                    flex-shrink: 0;
+                }}
+                .hud-layer-item:hover .hud-layer-btn-del {{
+                    opacity: 1;
+                }}
+                .hud-layer-btn-del:hover {{
+                    color: #ff5252;
+                    background: rgba(231, 76, 60, 0.2);
                 }}
                 .hud-flyout-btn {{
                     background: rgba(255, 255, 255, 0.1);
@@ -417,10 +389,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     border-color: #0078d4;
                     color: #fff;
                     font-weight: bold;
-                .hud-slider {{
-                    width: 70px;
-                    cursor: pointer;
-                    vertical-align: middle;
                 }}
                 .measure-tooltip {{
                     background: rgba(0,0,0,0.85);
@@ -438,6 +406,25 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
             <!-- Vertical Action Toolbar on the Far Right -->
             <div class="hud-toolbar-v">
+                <!-- 1. Katmanlar & Servisler (QGIS Mantığıyla En Üstte) -->
+                <div style="position: relative;">
+                    <button class="hud-vbtn" id="btnLayers" onclick="toggleLayersFlyout()" data-tip="Katmanlar & Servisler" title="Katmanlar">🗂️</button>
+                    <div class="hud-layers-flyout" id="layersFlyout">
+                        <div class="hud-layers-header">
+                            <span style="display:flex; align-items:center; gap:5px;">
+                                <span>🗂️ Katmanlar</span>
+                                <span id="layerTotalCountBadge" class="hud-layer-count-badge">0</span>
+                            </span>
+                            <button class="hud-layers-add-btn" onclick="requestAddService()" title="WMS / WFS Servisi Ekle">+ WMS</button>
+                        </div>
+                        <div class="hud-layers-list" id="layersListContainer">
+                            <div style="color: #858585; font-size: 11px; padding: 6px 2px; text-align: center;">(Katman yok)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="hud-vdivider"></div>
+
                 <button class="hud-vbtn" id="btnTable" onclick="toggleTableHud()" data-tip="Öznitelik Tablosu (F6)" title="Öznitelik Tablosu (F6)">📊</button>
                 <button class="hud-vbtn" id="btnFit" onclick="fitLayerBounds()" data-tip="Katman Sınırlarına Odaklan" title="Katman Sınırlarına Odaklan">🎯</button>
                 
@@ -458,7 +445,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 <div class="hud-vdivider"></div>
                 
                 <button class="hud-vbtn" id="btnMeasure" onclick="toggleMeasure()" data-tip="Mesafe / Alan Ölçümü" title="Ölçüm">📏</button>
-                <button class="hud-vbtn" id="btnCluster" onclick="toggleCluster()" data-tip="Nokta Kümeleme (Cluster)" title="Cluster">📍</button>
                 
                 <div class="hud-vdivider"></div>
                 
@@ -470,33 +456,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         <button class="hud-flyout-btn" id="btnTopo" onclick="setBaseMap('topo')" title="OpenTopoMap">Topo</button>
                         <button class="hud-flyout-btn" id="btnDark" onclick="setBaseMap('dark')" title="Karanlık Mod">Koyu</button>
                         <button class="hud-flyout-btn" id="btnNone" onclick="setBaseMap('none')" title="Boş Zemin">Yok</button>
-                    </div>
-                </div>
-                
-                <div style="position: relative;">
-                    <button class="hud-vbtn" id="btnOpacity" onclick="toggleOpacityFlyout()" data-tip="Katman Opaklığı" title="Opaklık">👁️</button>
-                    <div class="hud-flyout" id="opacityFlyout" style="align-items: center;">
-                        <span style="font-size:10px; color:#aaa; margin-right:4px;">Opaklık:</span>
-                        <input type="range" class="hud-slider" id="opacitySlider" min="10" max="100" value="85"/>
-                        <span id="opacityVal" style="font-size:10px; color:#fff; min-width: 28px; margin-left:4px;">85%</span>
-                    </div>
-                </div>
-                
-                <div style="position: relative;">
-                    <button class="hud-vbtn" id="btnLayers" onclick="toggleLayersFlyout()" data-tip="Katmanlar & Servisler" title="Katmanlar">🥞</button>
-                    <div class="hud-layers-flyout" id="layersFlyout">
-                        <div class="hud-layers-header">
-                            <span>📑 KATMANLAR & SERVİSLER</span>
-                            <button class="hud-layers-add-btn" onclick="requestAddService()" title="WMS Web Servisi Ekle">+ Servis</button>
-                        </div>
-                        <div class="hud-layers-section-title">Vektör Katman</div>
-                        <div id="vectorLayerContainer">
-                            <div style="color: #858585; font-style: italic; font-size: 11px; padding: 2px 0;">(Aktif vektör yok)</div>
-                        </div>
-                        <div class="hud-layers-section-title">Web Servisleri (WMS)</div>
-                        <div id="wmsLayersContainer" style="display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto;">
-                            <div style="color: #858585; font-style: italic; font-size: 11px; padding: 2px 0;">Eklenmiş servis yok</div>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -556,8 +515,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
 
                 var geojsonLayer = null;
-                var clusterGroup = null;
-                var useClustering = false;
                 var layerIndexMap = {{}};
                 var currentOpacity = 0.85;
                 var pyBridge = null;
@@ -617,9 +574,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 function toggleLayersFlyout() {{
                     var lFlyout = document.getElementById('layersFlyout');
                     var bFlyout = document.getElementById('basemapFlyout');
-                    var oFlyout = document.getElementById('opacityFlyout');
                     if (bFlyout) bFlyout.classList.remove('open');
-                    if (oFlyout) oFlyout.classList.remove('open');
                     var isOpen = false;
                     if (lFlyout) {{
                         isOpen = lFlyout.classList.toggle('open');
@@ -631,32 +586,17 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 function toggleBasemapFlyout() {{
                     var bFlyout = document.getElementById('basemapFlyout');
-                    var oFlyout = document.getElementById('opacityFlyout');
                     var lFlyout = document.getElementById('layersFlyout');
-                    if (oFlyout) oFlyout.classList.remove('open');
                     if (lFlyout) lFlyout.classList.remove('open');
                     var btnL = document.getElementById('btnLayers');
                     if (btnL) btnL.classList.remove('active');
                     if (bFlyout) bFlyout.classList.toggle('open');
                 }}
 
-                function toggleOpacityFlyout() {{
-                    var bFlyout = document.getElementById('basemapFlyout');
-                    var oFlyout = document.getElementById('opacityFlyout');
-                    var lFlyout = document.getElementById('layersFlyout');
-                    if (bFlyout) bFlyout.classList.remove('open');
-                    if (lFlyout) lFlyout.classList.remove('open');
-                    var btnL = document.getElementById('btnLayers');
-                    if (btnL) btnL.classList.remove('active');
-                    if (oFlyout) oFlyout.classList.toggle('open');
-                }}
-
                 function closeAllFlyouts() {{
                     var bFlyout = document.getElementById('basemapFlyout');
-                    var oFlyout = document.getElementById('opacityFlyout');
                     var lFlyout = document.getElementById('layersFlyout');
                     if (bFlyout) bFlyout.classList.remove('open');
-                    if (oFlyout) oFlyout.classList.remove('open');
                     if (lFlyout) lFlyout.classList.remove('open');
                     var btnL = document.getElementById('btnLayers');
                     if (btnL) btnL.classList.remove('active');
@@ -694,59 +634,60 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
 
                 function renderLayersPanel() {{
-                    var vContainer = document.getElementById('vectorLayerContainer');
-                    if (vContainer) {{
-                        var keys = Object.keys(vectorLayers);
-                        if (keys.length === 0) {{
-                            vContainer.innerHTML = '<div style="color: #858585; font-style: italic; font-size: 11px; padding: 2px 0;">(Açık katman yok)</div>';
-                        }} else {{
-                            var html = '';
-                            keys.forEach(function(k) {{
-                                var l = vectorLayers[k];
-                                var chk = l.visible ? 'checked' : '';
-                                var geomIcon = l.geomType === 'point' ? '📍' : (l.geomType === 'line' ? '〰️' : (l.geomType === 'polygon' ? '📐' : '🔶'));
-                                var activeBadge = l.isActive 
-                                    ? '<span class="hud-layer-active-badge" title="Aktif Düzenleme Katmanı">✏️ Aktif</span>'
-                                    : '<button class="hud-layer-switch-btn" onclick="requestSetActiveLayer(\\x27' + l.id + '\\x27)" title="Aktif Düzenleme Katmanı Yap">Seç</button>';
+                    var container = document.getElementById('layersListContainer');
+                    if (!container) return;
 
-                                html += 
-                                    '<div class="hud-layer-item' + (l.isActive ? ' active-layer' : '') + '">' +
-                                    '<label class="hud-layer-label" style="display:flex; align-items:center; gap:6px; flex:1; min-width:0;">' +
-                                    '<input type="checkbox" ' + chk + ' onchange="setVectorLayerVisibility(\\x27' + l.id + '\\x27, this.checked)" title="Görünürlüğü Aç/Kapat"/>' +
-                                    '<span class="hud-layer-color-dot" style="background:' + l.color + ';"></span>' +
-                                    '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; ' + (l.isActive ? 'font-weight:600; color:#4cc2ff;' : '') + '" title="' + l.name + '">' + geomIcon + ' ' + l.name + ' (' + l.count.toLocaleString() + ')</span>' +
-                                    '</label>' +
-                                    activeBadge +
-                                    '<button class="hud-layer-btn-del" onclick="removeVectorLayerUi(\\x27' + l.id + '\\x27)" title="Katmanı Kaldır">🗑️</button>' +
-                                    '</div>';
-                            }});
-                            vContainer.innerHTML = html;
-                        }}
+                    var vKeys = Object.keys(vectorLayers);
+                    var wKeys = Object.keys(wmsRegistry);
+                    var totalCount = vKeys.length + wKeys.length;
+
+                    var badge = document.getElementById('layerTotalCountBadge');
+                    if (badge) badge.innerText = totalCount;
+
+                    if (totalCount === 0) {{
+                        container.innerHTML = '<div style="color: #858585; font-size: 11px; padding: 8px 4px; text-align: center;">(Katman yok)</div>';
+                        return;
                     }}
 
-                    var wContainer = document.getElementById('wmsLayersContainer');
-                    if (wContainer) {{
-                        var wkeys = Object.keys(wmsRegistry);
-                        if (wkeys.length === 0) {{
-                            wContainer.innerHTML = '<div style="color: #858585; font-style: italic; font-size: 11px; padding: 2px 0;">Eklenmiş servis yok</div>';
-                        }} else {{
-                            var whtml = '';
-                            wkeys.forEach(function(k) {{
-                                var layer = wmsRegistry[k];
-                                var chk = layer.visible ? 'checked' : '';
-                                var title = layer.title || layer.layerName;
-                                whtml += 
-                                    '<div class="hud-layer-item">' +
-                                    '<label class="hud-layer-label">' +
-                                    '<input type="checkbox" ' + chk + ' onchange="toggleWmsVisibility(\\x27' + layer.id + '\\x27, this.checked)"/>' +
-                                    '<span title="' + title + '">🌐 ' + title + '</span>' +
-                                    '</label>' +
-                                    '<button class="hud-layer-btn-del" onclick="removeWms(\\x27' + layer.id + '\\x27)" title="Servisi Kaldır">🗑️</button>' +
-                                    '</div>';
-                            }});
-                            wContainer.innerHTML = whtml;
+                    var html = '';
+
+                    // 1. Vector Layers (QGIS Layer Tree format)
+                    vKeys.forEach(function(k) {{
+                        var l = vectorLayers[k];
+                        var chk = l.visible ? 'checked' : '';
+                        var geomIcon = l.geomType === 'point' ? '📍' : (l.geomType === 'line' ? '〰️' : (l.geomType === 'polygon' ? '📐' : '🔶'));
+                        var countStr = l.count > 0 ? ' <span style="color:#858585; font-size:10px;">(' + l.count.toLocaleString() + ')</span>' : '';
+
+                        html += 
+                            '<div class="hud-layer-item' + (l.isActive ? ' active-layer' : '') + '" onclick="requestSetActiveLayer(\\x27' + l.id + '\\x27)" title="' + l.name + (l.isActive ? ' (Aktif)' : '') + '">' +
+                            '<input type="checkbox" ' + chk + ' onclick="event.stopPropagation();" onchange="setVectorLayerVisibility(\\x27' + l.id + '\\x27, this.checked)" title="Görünürlük"/>' +
+                            '<span class="hud-layer-color-dot" style="background:' + l.color + ';"></span>' +
+                            '<span style="font-size:11px; flex-shrink:0;">' + geomIcon + '</span>' +
+                            '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; font-size:11px;' + (l.isActive ? ' font-weight:600; color:#4cc2ff;' : '') + '">' + l.name + countStr + '</span>' +
+                            '<button class="hud-layer-btn-del" onclick="event.stopPropagation(); removeVectorLayerUi(\\x27' + l.id + '\\x27)" title="Katmanı Kaldır">✕</button>' +
+                            '</div>';
+                    }});
+
+                    // 2. Web Services (WMS) - only rendered if any added
+                    if (wKeys.length > 0) {{
+                        if (vKeys.length > 0) {{
+                            html += '<div style="height:1px; background:rgba(255,255,255,0.08); margin:4px 0;"></div>';
                         }}
+                        wKeys.forEach(function(k) {{
+                            var layer = wmsRegistry[k];
+                            var chk = layer.visible ? 'checked' : '';
+                            var title = layer.title || layer.layerName;
+                            html += 
+                                '<div class="hud-layer-item" title="' + title + '">' +
+                                '<input type="checkbox" ' + chk + ' onclick="event.stopPropagation();" onchange="toggleWmsVisibility(\\x27' + layer.id + '\\x27, this.checked)" title="Görünürlük"/>' +
+                                '<span style="font-size:11px; flex-shrink:0;">🌐</span>' +
+                                '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; font-size:11px;">' + title + '</span>' +
+                                '<button class="hud-layer-btn-del" onclick="event.stopPropagation(); removeWms(\\x27' + layer.id + '\\x27)" title="Servisi Kaldır">✕</button>' +
+                                '</div>';
+                        }});
                     }}
+
+                    container.innerHTML = html;
                 }}
 
                 // --- WMS Layer Management ---
@@ -800,7 +741,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
 
                 function bringVectorsToFront() {{
-                    if (clusterGroup) clusterGroup.bringToFront();
                     Object.keys(vectorLayers).forEach(function(k) {{
                         var vl = vectorLayers[k];
                         if (vl.leafletLayer && vl.visible) {{
@@ -830,33 +770,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         }}
                     }}, 120);
                 }});
-
-                document.getElementById('opacitySlider').oninput = function(e) {{
-                    currentOpacity = e.target.value / 100.0;
-                    document.getElementById('opacityVal').textContent = e.target.value + '%';
-                    Object.keys(vectorLayers).forEach(function(k) {{
-                        var vl = vectorLayers[k];
-                        if (vl.leafletLayer) {{
-                            vl.leafletLayer.setStyle(function(feature) {{
-                                var gtype = (feature.geometry && feature.geometry.type) || 'Polygon';
-                                var isLine = gtype.indexOf('Line') !== -1;
-                                return {{
-                                    fillOpacity: isLine ? 0 : currentOpacity * 0.35,
-                                    opacity: currentOpacity
-                                }};
-                            }});
-                        }}
-                    }});
-                }};
-
-                function toggleCluster() {{
-                    useClustering = !useClustering;
-                    var btn = document.getElementById('btnCluster');
-                    if (btn) btn.classList.toggle('active', useClustering);
-                    if (lastGeojsonData) {{
-                        updateMap(lastGeojsonData);
-                    }}
-                }}
 
                 // --- Geometry Addition & Drawing Modes ---
                 var activeLayerGeomType = 'any'; // 'point' | 'line' | 'polygon' | 'mixed' | 'any'
