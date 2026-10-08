@@ -351,14 +351,28 @@ class MainWindow(QMainWindow):
         service_menu.addAction(act_wms)
         service_menu.addAction(act_wfs)
 
-        act_fit = QAction("🎯 Fit Layer Bounds", self)
+        act_full_extent = QAction("🏠 Tüm Haritaya Odaklan (Full Extent)", self)
+        act_full_extent.setShortcut(QKeySequence("Ctrl+Shift+F"))
+        act_full_extent.triggered.connect(self._zoom_full_extent)
+
+        act_fit = QAction("🎯 Seçili Katmana Odaklan (Zoom to Layer)", self)
         act_fit.triggered.connect(self._fit_bounds)
+
+        act_refresh_map = QAction("🔄 Haritayı Yenile (Refresh)", self)
+        act_refresh_map.setShortcut(QKeySequence("F5"))
+        act_refresh_map.triggered.connect(self._refresh_map)
+
+        act_snapshot = QAction("📷 Harita Görüntüsünü PNG Olarak Kaydet...", self)
+        act_snapshot.triggered.connect(self._capture_map_snapshot)
 
         act_info = QAction("ℹ️ Layer Info & Statistics...", self)
         act_info.triggered.connect(self._show_layer_info)
 
         gis_menu.addAction(act_attr_table)
+        gis_menu.addAction(act_full_extent)
         gis_menu.addAction(act_fit)
+        gis_menu.addAction(act_refresh_map)
+        gis_menu.addAction(act_snapshot)
         gis_menu.addAction(act_info)
         gis_menu.addSeparator()
 
@@ -568,6 +582,21 @@ class MainWindow(QMainWindow):
         tab = self._get_current_tab()
         if tab and tab.is_spatial:
             self.shared_map_panel.fit_layer_bounds(tab.layer_id)
+
+    def _zoom_full_extent(self):
+        tab = self._get_current_tab()
+        if tab and tab.is_spatial:
+            self.shared_map_panel.zoom_full_extent()
+
+    def _refresh_map(self):
+        tab = self._get_current_tab()
+        if tab and tab.is_spatial:
+            self.shared_map_panel.refresh_map()
+
+    def _capture_map_snapshot(self):
+        tab = self._get_current_tab()
+        if tab and tab.is_spatial:
+            self.shared_map_panel.capture_snapshot()
 
     def _open_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Klasör Seç", self._current_folder)

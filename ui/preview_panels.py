@@ -1,6 +1,7 @@
+import os
 import json
 import markdown
-from PyQt6.QtWidgets import QWidget, QVBoxLayout
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QApplication, QFileDialog
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtCore import pyqtSignal, QObject, pyqtSlot, QUrl
@@ -20,6 +21,7 @@ class MapBridge(QObject):
     selectionDeleted = pyqtSignal(str)
     layerRemoved = pyqtSignal(str)
     featureUpdated = pyqtSignal(int, str)
+    captureSnapshotRequested = pyqtSignal()
 
     @pyqtSlot(int)
     def onFeatureClicked(self, index):
@@ -69,6 +71,10 @@ class MapBridge(QObject):
     def onSelectionDeleted(self, indicesJson):
         self.selectionDeleted.emit(indicesJson)
 
+    @pyqtSlot()
+    def requestCaptureSnapshot(self):
+        self.captureSnapshotRequested.emit()
+
 
 class AbstractPreviewPanel(QWidget):
 
@@ -116,6 +122,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
         self.bridge.viewportChanged.connect(self.viewport_changed.emit)
         self.bridge.selectionChanged.connect(self._on_bridge_selection_changed)
         self.bridge.selectionDeleted.connect(self._on_bridge_selection_deleted)
+        self.bridge.captureSnapshotRequested.connect(self.capture_snapshot)
 
         self.channel = QWebChannel()
         self.channel.registerObject("mapBridge", self.bridge)
@@ -436,6 +443,38 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     font-weight: bold;
                     border: 1px solid #00a2ff;
                 }}
+                .hud-coords-pill {{
+                    position: absolute;
+                    bottom: 12px;
+                    left: 105px;
+                    background: rgba(24, 28, 34, 0.90);
+                    backdrop-filter: blur(8px);
+                    border: 1px solid rgba(255, 255, 255, 0.16);
+                    border-radius: 14px;
+                    padding: 3px 10px;
+                    font-size: 11px;
+                    font-family: Consolas, "Segoe UI", monospace;
+                    color: #cbd5e1;
+                    z-index: 1000;
+                    cursor: pointer;
+                    user-select: none;
+                    transition: all 0.15s ease;
+                    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+                    display: flex;
+                    align-items: center;
+                    gap: 7px;
+                }}
+                .hud-coords-pill:hover {{
+                    background: rgba(0, 120, 212, 0.88);
+                    border-color: #4cc2ff;
+                    color: #ffffff;
+                    box-shadow: 0 4px 14px rgba(0, 120, 212, 0.4);
+                }}
+                .hud-coords-pill.copied {{
+                    background: rgba(46, 204, 113, 0.9) !important;
+                    border-color: #2ecc71 !important;
+                    color: #ffffff !important;
+                }}
                 .vertex-handle-icon {{
                     background: transparent;
                     border: none;
@@ -464,6 +503,11 @@ class MapPreviewPanel(AbstractPreviewPanel):
         <body>
             <div id="map"></div>
 
+            <!-- Bottom Status Pill: Live LatLng, Zoom and Scale -->
+            <div id="hudCoordinates" class="hud-coords-pill" onclick="copyMapCoordinates()" title="Koordinatları kopyalamak için tıklayın">
+                <span>📍 39.0000° K, 35.0000° D</span><span style="opacity:0.35;">|</span><span>Zoom: 5</span>
+            </div>
+
             <!-- Vertical Action Toolbar on the Far Right -->
             <div class="hud-toolbar-v">
                 <!-- 1. Katmanlar & Servisler (QGIS Mantığıyla En Üstte) -->
@@ -485,18 +529,19 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 <div class="hud-vdivider"></div>
 
-                <button class="hud-vbtn" id="btnTable" onclick="toggleTableHud()" data-tip="Öznitelik Tablosu (F6)" title="Öznitelik Tablosu (F6)">📊</button>
-                <button class="hud-vbtn" id="btnFit" onclick="fitLayerBounds()" data-tip="Katman Sınırlarına Odaklan" title="Katman Sınırlarına Odaklan">🎯</button>
+                <!-- 2. Navigasyon & Görünüm -->
+                <button class="hud-vbtn" id="btnTable" onclick="toggleTableHud()" data-tip="Öznitelik Tablosu (F6)" title="Öznitelik Tablosu">📊</button>
+                <button class="hud-vbtn" id="btnFullExtent" onclick="zoomFullExtent()" data-tip="Tüm Haritaya Odaklan (Full Extent)" title="Tüm Haritaya Odaklan">🏠</button>
+                <button class="hud-vbtn" id="btnFit" onclick="fitLayerBounds()" data-tip="Seçili Katmana Odaklan" title="Seçili Katmana Odaklan">🎯</button>
                 
                 <div class="hud-vdivider"></div>
                 
-                <button class="hud-vbtn active" id="btnSelectClick" onclick="setSelectTool('click')" data-tip="Nesne Seç (Tıkla / Ctrl+Çoklu)" title="Nesne Seç">👆</button>
-                <button class="hud-vbtn" id="btnSelectBox" onclick="setSelectTool('box')" data-tip="Kutu ile Seç (Kare Çizerek Seç)" title="Kutu ile Seç">⬚</button>
-                <button class="hud-vbtn disabled" id="btnZoomSel" onclick="zoomToSelected()" data-tip="Seçilenlere Yakınlaş" title="Seçilenlere Yakınlaş">🔍</button>
-                <button class="hud-vbtn disabled" id="btnClearSel" onclick="clearSelection()" data-tip="Seçimi Temizle (Esc)" title="Seçimi Temizle">✖</button>
+                <!-- 3. Akıllı Seçim Aracı -->
+                <button class="hud-vbtn active" id="btnSelectClick" onclick="setSelectTool('click')" data-tip="Nesne Seç (Tıkla / Shift+Kutu)" title="Nesne Seç">👆</button>
                 
                 <div class="hud-vdivider"></div>
                 
+                <!-- 4. Vektör Çizim & Düzenleme -->
                 <button class="hud-vbtn" id="btnAddPoint" onclick="toggleDrawMode('point')" data-tip="Nokta Ekle (Haritaya Tıkla)" title="Nokta Ekle">📍+</button>
                 <button class="hud-vbtn" id="btnAddLine" onclick="toggleDrawMode('line')" data-tip="Çizgi Ekle (Çiz & Çift Tıkla)" title="Çizgi Ekle">〰️+</button>
                 <button class="hud-vbtn" id="btnAddPolygon" onclick="toggleDrawMode('polygon')" data-tip="Çokgen Ekle (Çiz & Çift Tıkla)" title="Çokgen Ekle">📐+</button>
@@ -505,14 +550,18 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 
                 <div class="hud-vdivider"></div>
                 
+                <!-- 5. Ölçüm, Yenileme & Çıktı -->
                 <button class="hud-vbtn" id="btnMeasure" onclick="toggleMeasure()" data-tip="Mesafe / Alan Ölçümü" title="Ölçüm">📏</button>
+                <button class="hud-vbtn" id="btnRefresh" onclick="refreshMap()" data-tip="Haritayı Yenile / Boyutlandır" title="Yenile">🔄</button>
+                <button class="hud-vbtn" id="btnSnapshot" onclick="captureMapSnapshot()" data-tip="Harita Görüntüsünü Kaydet (PNG)" title="Ekranı Yakala">📷</button>
             </div>
 
             <script>
                 var map = L.map('map', {{
                     preferCanvas: true,
                     zoomControl: true,
-                    attributionControl: false
+                    attributionControl: false,
+                    boxZoom: false
                 }}).setView([39.0, 35.0], 5);
 
                 L.control.scale({{ imperial: false, position: 'bottomleft' }}).addTo(map);
@@ -827,7 +876,59 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     if (isBoxSelecting && boxRectLayer && boxStartLatLng) {{
                         boxRectLayer.setBounds(L.latLngBounds(boxStartLatLng, e.latlng));
                     }}
+                    var coordsEl = document.getElementById('hudCoordinates');
+                    if (coordsEl && !coordsEl.classList.contains('copied')) {{
+                        var lat = e.latlng.lat;
+                        var lng = e.latlng.lng;
+                        var latH = lat >= 0 ? 'K' : 'G';
+                        var lngH = lng >= 0 ? 'D' : 'B';
+                        var z = map.getZoom();
+                        coordsEl.setAttribute('data-lat', lat.toFixed(5));
+                        coordsEl.setAttribute('data-lng', lng.toFixed(5));
+                        coordsEl.innerHTML = '<span>📍 ' + Math.abs(lat).toFixed(4) + '° ' + latH + ', ' + Math.abs(lng).toFixed(4) + '° ' + lngH + '</span><span style="opacity:0.35;">|</span><span>Zoom: ' + z + '</span>';
+                    }}
                 }});
+
+                map.on('zoomend', function() {{
+                    var coordsEl = document.getElementById('hudCoordinates');
+                    if (coordsEl && !coordsEl.classList.contains('copied')) {{
+                        var c = map.getCenter();
+                        var lat = coordsEl.getAttribute('data-lat') || c.lat.toFixed(5);
+                        var lng = coordsEl.getAttribute('data-lng') || c.lng.toFixed(5);
+                        var latNum = parseFloat(lat);
+                        var lngNum = parseFloat(lng);
+                        var latH = latNum >= 0 ? 'K' : 'G';
+                        var lngH = lngNum >= 0 ? 'D' : 'B';
+                        var z = map.getZoom();
+                        coordsEl.innerHTML = '<span>📍 ' + Math.abs(latNum).toFixed(4) + '° ' + latH + ', ' + Math.abs(lngNum).toFixed(4) + '° ' + lngH + '</span><span style="opacity:0.35;">|</span><span>Zoom: ' + z + '</span>';
+                    }}
+                }});
+
+                function copyMapCoordinates() {{
+                    var coordsEl = document.getElementById('hudCoordinates');
+                    if (!coordsEl) return;
+                    var c = map.getCenter();
+                    var lat = coordsEl.getAttribute('data-lat') || c.lat.toFixed(5);
+                    var lng = coordsEl.getAttribute('data-lng') || c.lng.toFixed(5);
+                    var text = lat + ', ' + lng;
+                    if (navigator.clipboard && navigator.clipboard.writeText) {{
+                        navigator.clipboard.writeText(text);
+                    }} else {{
+                        var ta = document.createElement('textarea');
+                        ta.value = text;
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                    }}
+                    var origHtml = coordsEl.innerHTML;
+                    coordsEl.classList.add('copied');
+                    coordsEl.innerHTML = '<span>✅ ' + text + ' (Kopyalandı)</span>';
+                    setTimeout(function() {{
+                        coordsEl.classList.remove('copied');
+                        coordsEl.innerHTML = origHtml;
+                    }}, 1500);
+                }}
 
                 var viewportDebounceTimer = null;
                 map.on('moveend', function() {{
@@ -996,9 +1097,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                     selectMode = mode;
                     var bClick = document.getElementById('btnSelectClick');
-                    var bBox = document.getElementById('btnSelectBox');
                     if (bClick) bClick.classList.toggle('active', mode === 'click');
-                    if (bBox) bBox.classList.toggle('active', mode === 'box');
 
                     if (mode === 'box') {{
                         map.dragging.disable();
@@ -1016,21 +1115,15 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 function updateSelectionUI() {{
                     var count = selectedIndices.size;
-                    var btnZoom = document.getElementById('btnZoomSel');
-                    var btnClear = document.getElementById('btnClearSel');
                     var btnDel = document.getElementById('btnDelete');
                     var btnEdit = document.getElementById('btnEditGeom');
 
                     if (count > 0) {{
-                        if (btnZoom) btnZoom.classList.remove('disabled');
-                        if (btnClear) btnClear.classList.remove('disabled');
                         if (btnDel) {{
                             btnDel.classList.add('has-selection');
                             btnDel.setAttribute('data-tip', 'Seçili ' + count + ' Geometriyi Sil (Del)');
                         }}
                     }} else {{
-                        if (btnZoom) btnZoom.classList.add('disabled');
-                        if (btnClear) btnClear.classList.add('disabled');
                         if (btnDel) {{
                             btnDel.classList.remove('has-selection');
                             btnDel.setAttribute('data-tip', 'Seçili Geometrileri Sil (Önce Geometri Seçin)');
@@ -1454,26 +1547,32 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 var mapMouseDownPos = null;
                 map.on('mousedown', function(e) {{
                     if (e.containerPoint) mapMouseDownPos = e.containerPoint;
-                    if (selectMode !== 'box' || drawMode || measureActive) return;
+                    if (drawMode || measureActive) return;
                     if (e.originalEvent.button !== 0) return;
-                    isBoxSelecting = true;
-                    boxStartLatLng = e.latlng;
-                    if (boxRectLayer) {{
-                        map.removeLayer(boxRectLayer);
-                        boxRectLayer = null;
+
+                    var isShift = e.originalEvent && e.originalEvent.shiftKey;
+                    if (selectMode === 'box' || isShift) {{
+                        isBoxSelecting = true;
+                        map.dragging.disable();
+                        boxStartLatLng = e.latlng;
+                        if (boxRectLayer) {{
+                            map.removeLayer(boxRectLayer);
+                            boxRectLayer = null;
+                        }}
+                        boxRectLayer = L.rectangle([boxStartLatLng, boxStartLatLng], {{
+                            color: '#0078d4',
+                            weight: 1.5,
+                            dashArray: '4, 4',
+                            fillColor: '#0078d4',
+                            fillOpacity: 0.15
+                        }}).addTo(map);
                     }}
-                    boxRectLayer = L.rectangle([boxStartLatLng, boxStartLatLng], {{
-                        color: '#f59e0b',
-                        weight: 2,
-                        dashArray: '5, 5',
-                        fillColor: '#ffff00',
-                        fillOpacity: 0.18
-                    }}).addTo(map);
                 }});
 
                 map.on('mouseup', function(e) {{
                     if (!isBoxSelecting) return;
                     isBoxSelecting = false;
+                    map.dragging.enable();
                     if (!boxRectLayer || !boxStartLatLng) return;
 
                     var boxBounds = boxRectLayer.getBounds();
@@ -1488,7 +1587,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     var lObj = vectorLayers[activeLayerId];
                     if (!lObj || !lObj.leafletLayer) return;
 
-                    var isMulti = e.originalEvent && (e.originalEvent.ctrlKey || e.originalEvent.shiftKey);
+                    var isMulti = e.originalEvent && (e.originalEvent.ctrlKey || e.originalEvent.metaKey);
                     if (!isMulti) {{
                         selectedIndices.clear();
                     }}
@@ -2037,6 +2136,43 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     setTimeout(doFit, 250);
                 }}
 
+                function zoomFullExtent() {{
+                    if (map.invalidateSize) map.invalidateSize();
+                    var allBounds = L.latLngBounds();
+                    var hasValid = false;
+                    Object.keys(vectorLayers).forEach(function(k) {{
+                        var l = vectorLayers[k];
+                        if (l.visible && l.leafletLayer && l.leafletLayer.getBounds) {{
+                            var lb = l.leafletLayer.getBounds();
+                            if (lb && lb.isValid()) {{
+                                allBounds.extend(lb);
+                                hasValid = true;
+                            }}
+                        }}
+                    }});
+                    if (hasValid && allBounds.isValid()) {{
+                        map.fitBounds(allBounds, {{ padding: [40, 40], maxZoom: 16 }});
+                    }} else {{
+                        map.setView([39.0, 35.0], 6);
+                    }}
+                }}
+
+                function refreshMap() {{
+                    if (map) {{
+                        map.invalidateSize();
+                        Object.keys(vectorLayers).forEach(function(k) {{
+                            refreshLayerStyles(k);
+                        }});
+                        bringVectorsToFront();
+                    }}
+                }}
+
+                function captureMapSnapshot() {{
+                    if (pyBridge && pyBridge.requestCaptureSnapshot) {{
+                        pyBridge.requestCaptureSnapshot();
+                    }}
+                }}
+
                 function highlightFeature(idx, layerId) {{
                     var lId = layerId || activeLayerId;
                     if (!lId || !vectorLayers[lId]) return;
@@ -2241,6 +2377,30 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
     def fit_layer_bounds(self, layer_id: str = None):
         self.fit_bounds(layer_id)
+
+    def zoom_full_extent(self):
+        if self._is_loaded:
+            self.web_view.page().runJavaScript("zoomFullExtent();")
+
+    def refresh_map(self):
+        if self._is_loaded:
+            self.web_view.page().runJavaScript("refreshMap();")
+
+    def capture_snapshot(self):
+        try:
+            pixmap = self.web_view.grab()
+            QApplication.clipboard().setPixmap(pixmap)
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Harita Görünümünü Kaydet", "harita_gorunumu.png", "PNG Resim (*.png);;JPEG Resim (*.jpg)"
+            )
+            from ui.toast import ToastNotification
+            if file_path:
+                pixmap.save(file_path)
+                ToastNotification.show_toast(self.window(), f"Harita görüntüsü kaydedildi: {os.path.basename(file_path)}", "success")
+            else:
+                ToastNotification.show_toast(self.window(), "Harita görüntüsü panoya kopyalandı", "info")
+        except Exception as e:
+            print(f"Error capturing snapshot: {e}")
 
     def add_wms_layer(self, layer_id: str, url: str, layer_name: str, fmt: str = "image/png", transparent: bool = True, title: str = ""):
         if self._is_loaded:
