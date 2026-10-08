@@ -502,6 +502,35 @@ class EditorTab(QWidget):
             content = self.text_editor.toPlainText()
             self.markdown_panel.render_content(content)
 
+    def apply_theme(self, theme_name: str = None):
+        """Propagates theme change to all embedded document and code editors."""
+        if hasattr(self, "text_editor") and self.text_editor:
+            self.text_editor.setTheme(theme_name)
+        if hasattr(self, "spreadsheet_editor") and self.spreadsheet_editor:
+            self.spreadsheet_editor.apply_theme(theme_name)
+        if hasattr(self, "document_editor") and self.document_editor:
+            self.document_editor.apply_theme(theme_name)
+        if hasattr(self, "pdf_viewer") and self.pdf_viewer:
+            self.pdf_viewer.apply_theme(theme_name)
+        if hasattr(self, "table_panel") and self.table_panel:
+            self.table_panel.apply_theme(theme_name)
+        if hasattr(self, "map_panel") and self.map_panel:
+            self.map_panel.set_theme_tiles(theme_name)
+
+    def get_format_badge(self) -> str:
+        """Returns clean indicator for tab file type."""
+        if self.is_spatial:
+            return "🗺️ GIS"
+        elif self.file_type == "Spreadsheet":
+            return "📊 Tablo"
+        elif self.file_type == "Word":
+            return "📄 Word"
+        elif self.file_type == "PDF":
+            return "📑 PDF"
+        elif self.file_type == "Markdown":
+            return "📖 Markdown"
+        return "📝 Kod"
+
     def get_title(self):
         title = os.path.basename(self.current_file) if self.current_file else "Untitled"
         if self.is_dirty:

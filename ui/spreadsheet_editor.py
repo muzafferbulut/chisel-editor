@@ -3,18 +3,19 @@ import pandas as pd
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QTabBar, QPushButton, QLineEdit, QLabel, QHeaderView, QMenu,
-    QMessageBox, QInputDialog, QApplication
+    QMessageBox, QInputDialog, QApplication, QFrame, QFileDialog
 )
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QKeySequence, QShortcut
+from PyQt6.QtCore import Qt, pyqtSignal, QSize
+from PyQt6.QtGui import QKeySequence, QShortcut, QIcon
 from handlers.excel import ExcelHandler
+from core.theme import ThemeManager
 
 
 class SpreadsheetEditorWidget(QWidget):
     """
-    Interactive spreadsheet editor for Excel workbooks (.xlsx, .xls) and CSV tables.
-    Supports multi-sheet navigation, formula/cell bar, in-cell editing,
-    row/column addition/deletion, copy-paste, and saving.
+    Interactive spreadsheet editor for Excel workbooks (.xlsx, .xls) and CSV tables (.csv).
+    Features a modern theme-adaptive toolbar, multi-sheet navigation, formula/cell bar,
+    in-cell editing, statistics, sorting, copy-paste, and direct export.
     """
     content_changed = pyqtSignal()
 
@@ -26,64 +27,77 @@ class SpreadsheetEditorWidget(QWidget):
         self._is_loading = False
         self._is_dirty = False
         self._init_ui()
+        self.apply_theme()
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        # 1. Top Action Toolbar
-        toolbar = QHBoxLayout()
-        toolbar.setSpacing(6)
+        # 1. Top Action Toolbar (Theme-aware with icon buttons)
+        self.toolbar_container = QWidget()
+        self.toolbar_container.setObjectName("SpreadsheetToolbar")
+        toolbar = QHBoxLayout(self.toolbar_container)
+        toolbar.setContentsMargins(0, 0, 0, 0)
+        toolbar.setSpacing(4)
 
-        self.btn_add_row = QPushButton("➕ Satır Ekle")
-        self.btn_add_row.setToolTip("Seçili satırın altına yeni satır ekle")
-        self.btn_add_row.clicked.connect(self._add_row)
+        # Row and Column Tools
+        self.btn_add_row = self._create_tool_btn("add_row", "+R", "Satır Ekle (Seçili satırın altına yeni satır ekler)", self._add_row)
         toolbar.addWidget(self.btn_add_row)
 
-        self.btn_del_row = QPushButton("➖ Satır Sil")
-        self.btn_del_row.setToolTip("Seçili satırı sil")
-        self.btn_del_row.clicked.connect(self._del_row)
+        self.btn_del_row = self._create_tool_btn("delete_row", "-R", "Satır Sil (Seçili satırı siler)", self._del_row)
         toolbar.addWidget(self.btn_del_row)
 
-        self.btn_add_col = QPushButton("➕ Sütun Ekle")
-        self.btn_add_col.setToolTip("Yeni sütun ekle")
-        self.btn_add_col.clicked.connect(self._add_column)
+        self.btn_add_col = self._create_tool_btn("add_col", "+C", "Sütun Ekle (Yeni sütun ekler)", self._add_column)
         toolbar.addWidget(self.btn_add_col)
 
-        self.btn_del_col = QPushButton("➖ Sütun Sil")
-        self.btn_del_col.setToolTip("Seçili sütunu sil")
-        self.btn_del_col.clicked.connect(self._del_column)
+        self.btn_del_col = self._create_tool_btn("delete_col", "-C", "Sütun Sil (Seçili sütunu siler)", self._del_column)
         toolbar.addWidget(self.btn_del_col)
 
-        self.btn_stats = QPushButton("📊 İstatistik")
-        self.btn_stats.setToolTip("Seçili sütunun istatistiklerini hesapla")
-        self.btn_stats.clicked.connect(self._show_column_stats)
+        toolbar.addWidget(self._create_vsep())
+
+        # Layout and Content Tools
+        self.btn_autofit = self._create_tool_btn("autofit", "↔", "Sütun Genişliklerini Otomatik Sığdır", self._autofit_columns)
+        toolbar.addWidget(self.btn_autofit)
+
+        self.btn_clear = self._create_tool_btn("clear_cells", "✕", "Seçili Hücreleri Temizle (Delete)", self._clear_selected_cells)
+        toolbar.addWidget(self.btn_clear)
+
+        self.btn_stats = self._create_tool_btn("statistics", "📊", "Sütun İstatistikleri (Toplam, Ortalama, Min, Max)", self._show_column_stats)
         toolbar.addWidget(self.btn_stats)
+
+        toolbar.addWidget(self._create_vsep())
+
+        self.btn_export = self._create_tool_btn("export_csv", "💾", "Tabloyu CSV Olarak Dışa Aktar", self._export_to_csv)
+        toolbar.addWidget(self.btn_export)
 
         toolbar.addStretch()
 
+        # Search / Quick Filter Input
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("🔍 Tabloda ara...")
+        self.search_edit.setPlaceholderText("🔍 Filtrele...")
         self.search_edit.setMaximumWidth(180)
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.textChanged.connect(self._search_cells)
         toolbar.addWidget(self.search_edit)
 
-        layout.addLayout(toolbar)
+        layout.addWidget(self.toolbar_container)
 
         # 2. Formula / Cell Coordinate Bar
         formula_bar = QHBoxLayout()
         formula_bar.setSpacing(6)
 
         self.lbl_cell_coord = QLabel("A1")
-        self.lbl_cell_coord.setFixedWidth(50)
+        self.lbl_cell_coord.setFixedWidth(54)
         self.lbl_cell_coord.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_cell_coord.setStyleSheet("background-color: rgba(128, 128, 128, 0.15); border: 1px solid rgba(128, 128, 128, 0.3); border-radius: 3px; font-weight: bold;")
         formula_bar.addWidget(self.lbl_cell_coord)
 
+        lbl_fx = QLabel("fx")
+        lbl_fx.setStyleSheet("font-weight: bold; font-style: italic; color: #858585; padding: 0 2px;")
+        formula_bar.addWidget(lbl_fx)
+
         self.cell_edit = QLineEdit()
-        self.cell_edit.setPlaceholderText("Hücre değeri...")
+        self.cell_edit.setPlaceholderText("Hücre değeri veya metin...")
         self.cell_edit.returnPressed.connect(self._apply_cell_edit)
         formula_bar.addWidget(self.cell_edit)
 
@@ -121,7 +135,6 @@ class SpreadsheetEditorWidget(QWidget):
         sheet_bar_layout.addStretch()
 
         self.lbl_status = QLabel("0 satır x 0 sütun")
-        self.lbl_status.setStyleSheet("color: #858585; font-size: 11px; padding: 0 8px;")
         sheet_bar_layout.addWidget(self.lbl_status)
 
         layout.addLayout(sheet_bar_layout)
@@ -129,6 +142,131 @@ class SpreadsheetEditorWidget(QWidget):
         # Keyboard shortcuts
         QShortcut(QKeySequence.StandardKey.Copy, self.table, self._copy_selection)
         QShortcut(QKeySequence.StandardKey.Paste, self.table, self._paste_selection)
+        QShortcut(QKeySequence.StandardKey.Delete, self.table, self._clear_selected_cells)
+
+    def _create_vsep(self) -> QFrame:
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.VLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        sep.setStyleSheet("background-color: rgba(128, 128, 128, 0.25); width: 1px; margin: 3px 2px; border: none;")
+        return sep
+
+    def _get_icon(self, icon_name: str) -> QIcon:
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        icon_path = os.path.join(base_dir, "resources", "icons", f"{icon_name}.png")
+        if os.path.isfile(icon_path):
+            return QIcon(icon_path)
+        return QIcon()
+
+    def _create_tool_btn(self, icon_name: str, fallback_text: str, tooltip: str, callback=None) -> QPushButton:
+        btn = QPushButton()
+        icon = self._get_icon(icon_name)
+        if not icon.isNull():
+            btn.setIcon(icon)
+            btn.setIconSize(QSize(16, 16))
+        else:
+            btn.setText(fallback_text)
+
+        btn.setToolTip(tooltip)
+        btn.setFixedSize(28, 28)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        if callback:
+            btn.clicked.connect(callback)
+        return btn
+
+    def apply_theme(self, theme_name: str = None):
+        """Applies dynamic theme styling to toolbar, table, formula bar, and headers."""
+        tokens = ThemeManager.get_tokens(theme_name)
+        bg = tokens.get("panel_bg", "#ffffff")
+        toolbar_bg = tokens.get("toolbar_bg", "#f8fafc")
+        text = tokens.get("text", "#1e293b")
+        text_muted = tokens.get("text_muted", "#64748b")
+        border = tokens.get("border", "#e2e8f0")
+        hover = tokens.get("hover", "rgba(128,128,128,0.18)")
+        active = tokens.get("active", "rgba(128,128,128,0.30)")
+        accent = tokens.get("accent", "#0284c7")
+        grid = tokens.get("grid_line", "#e2e8f0")
+        is_dark = ThemeManager.is_dark(theme_name)
+        alt_bg = tokens.get("hover", "#f8fafc") if not is_dark else tokens.get("active", "#252526")
+
+        tb_qss = f"""
+            #SpreadsheetToolbar QPushButton {{
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                min-width: 28px;
+                max-width: 28px;
+                min-height: 28px;
+                max-height: 28px;
+                color: {text};
+            }}
+            #SpreadsheetToolbar QPushButton:hover {{
+                background-color: {hover};
+                border: 1px solid {border};
+            }}
+            #SpreadsheetToolbar QPushButton:pressed {{
+                background-color: {active};
+            }}
+            #SpreadsheetToolbar QPushButton:disabled {{
+                background-color: transparent;
+                border: 1px solid transparent;
+                color: {text_muted};
+            }}
+        """
+        self.toolbar_container.setStyleSheet(tb_qss)
+
+        # Formula & search styling
+        self.lbl_cell_coord.setStyleSheet(
+            f"background-color: {toolbar_bg}; color: {accent}; border: 1px solid {border}; "
+            f"border-radius: 4px; font-weight: bold; font-size: 11px;"
+        )
+        self.cell_edit.setStyleSheet(
+            f"QLineEdit {{ background-color: {bg}; color: {text}; border: 1px solid {border}; "
+            f"border-radius: 4px; padding: 3px 8px; font-size: 12px; }} "
+            f"QLineEdit:focus {{ border: 1px solid {accent}; }}"
+        )
+        self.search_edit.setStyleSheet(
+            f"QLineEdit {{ background-color: {bg}; color: {text}; border: 1px solid {border}; "
+            f"border-radius: 4px; padding: 3px 8px; font-size: 12px; }} "
+            f"QLineEdit:focus {{ border: 1px solid {accent}; }}"
+        )
+        self.lbl_status.setStyleSheet(f"color: {text_muted}; font-size: 11px; padding: 0 8px;")
+
+        # Table & Headers styling
+        table_qss = f"""
+            QTableWidget {{
+                background-color: {bg};
+                color: {text};
+                gridline-color: {grid};
+                border: 1px solid {border};
+                selection-background-color: {accent};
+                selection-color: #ffffff;
+                font-size: 12px;
+            }}
+            QTableWidget::item:alternate {{
+                background-color: {alt_bg};
+            }}
+            QTableWidget::item:selected {{
+                background-color: {accent};
+                color: #ffffff;
+            }}
+            QHeaderView::section {{
+                background-color: {toolbar_bg};
+                color: {text_muted};
+                border: 1px solid {border};
+                padding: 4px 6px;
+                font-weight: 600;
+                font-size: 11px;
+            }}
+        """
+        self.table.setStyleSheet(table_qss)
+
+        # Sheet TabBar styling
+        self.tab_bar.setStyleSheet(
+            f"QTabBar::tab {{ background: {toolbar_bg}; color: {text_muted}; border: 1px solid {border}; "
+            f"padding: 4px 12px; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; font-size: 11px; }} "
+            f"QTabBar::tab:selected {{ background: {bg}; color: {accent}; font-weight: bold; border-top: 2px solid {accent}; }}"
+        )
 
     @staticmethod
     def _col_idx_to_name(col_idx: int) -> str:
@@ -140,6 +278,7 @@ class SpreadsheetEditorWidget(QWidget):
         return name
 
     def load_data(self, sheets: dict, file_path: str = None):
+        """Populates spreadsheet from a dictionary of DataFrames."""
         if file_path:
             self.current_file = file_path
         self._is_loading = True
@@ -178,11 +317,9 @@ class SpreadsheetEditorWidget(QWidget):
             self.table.setRowCount(rows)
             self.table.setColumnCount(cols)
 
-            # Set Column Headers
             col_labels = [str(c) for c in df.columns]
             self.table.setHorizontalHeaderLabels(col_labels)
 
-            # Populate cells
             for r in range(rows):
                 for c in range(cols):
                     val = df.iat[r, c]
@@ -234,7 +371,6 @@ class SpreadsheetEditorWidget(QWidget):
     def _on_sheet_tab_changed(self, index: int):
         if self._is_loading:
             return
-        # Save modifications in the outgoing sheet
         self._sync_current_table_to_df()
         sheet_name = self.tab_bar.tabText(index)
         self._current_sheet_name = sheet_name
@@ -322,6 +458,31 @@ class SpreadsheetEditorWidget(QWidget):
             self._is_dirty = True
             self.content_changed.emit()
             self.lbl_status.setText(f"{self.table.rowCount():,} satır x {self.table.columnCount()} sütun")
+
+    def _autofit_columns(self):
+        self.table.resizeColumnsToContents()
+
+    def _clear_selected_cells(self):
+        ranges = self.table.selectedRanges()
+        if not ranges:
+            return
+        for r in ranges:
+            for row in range(r.topRow(), r.bottomRow() + 1):
+                for col in range(r.leftColumn(), r.rightColumn() + 1):
+                    item = self.table.item(row, col)
+                    if item:
+                        item.setText("")
+        self._is_dirty = True
+        self.content_changed.emit()
+
+    def _export_to_csv(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Tabloyu CSV Olarak Dışa Aktar", "tablo.csv", "CSV Dosyası (*.csv)")
+        if path:
+            self._sync_current_table_to_df()
+            df = self._sheets.get(self._current_sheet_name, pd.DataFrame())
+            df.to_csv(path, index=False, encoding="utf-8")
+            from ui.toast import ToastNotification
+            ToastNotification.show_toast(self.window(), f"CSV Dışa Aktarıldı: {os.path.basename(path)}", "info")
 
     def _search_cells(self, text: str):
         if not text.strip():
@@ -421,11 +582,14 @@ class SpreadsheetEditorWidget(QWidget):
         menu = QMenu(self)
         menu.addAction("Kopyala (Ctrl+C)", self._copy_selection)
         menu.addAction("Yapıştır (Ctrl+V)", self._paste_selection)
+        menu.addAction("Hücreleri Temizle (Del)", self._clear_selected_cells)
         menu.addSeparator()
         menu.addAction("Satır Ekle", self._add_row)
         menu.addAction("Satır Sil", self._del_row)
         menu.addSeparator()
         menu.addAction("Sütun Ekle", self._add_column)
         menu.addAction("Sütun Sil", self._del_column)
+        menu.addAction("Sütun Genişliklerini Sığdır", self._autofit_columns)
+        menu.addSeparator()
+        menu.addAction("Sütun İstatistikleri", self._show_column_stats)
         menu.exec(self.table.viewport().mapToGlobal(pos))
-

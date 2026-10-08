@@ -4,19 +4,20 @@ from PyQt6.QtWidgets import (
     QPushButton, QColorDialog, QInputDialog, QLabel, QFrame,
     QScrollArea
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import (
     QFont, QTextCharFormat, QColor, QTextCursor,
-    QTextBlockFormat, QTextTableFormat, QTextListFormat
+    QTextBlockFormat, QTextTableFormat, QTextListFormat, QIcon
 )
 from handlers.docx import DocxHandler
+from core.theme import ThemeManager
 
 
 class WordDocumentEditorWidget(QWidget):
     """
     Rich Text / WYSIWYG document editor for Microsoft Word (.docx) files.
-    Features Word-style formatting toolbar (Styles, Font, Size, Bold/Italic/Underline,
-    Color, Alignment, Lists, Tables) with document canvas and .docx save support.
+    Features Word-style formatting toolbar, dark/light paper toggle,
+    A4 page layout, real-time statistics, and .docx export support.
     """
     content_changed = pyqtSignal()
 
@@ -25,7 +26,10 @@ class WordDocumentEditorWidget(QWidget):
         self.current_file = None
         self._is_loading = False
         self._is_dirty = False
+        self._dark_paper_mode = False
+        self._current_theme = "light"
         self._init_ui()
+        self.apply_theme()
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -33,11 +37,20 @@ class WordDocumentEditorWidget(QWidget):
         main_layout.setSpacing(0)
 
         # 1. Word Formatting Toolbar
-        toolbar_container = QWidget()
-        toolbar_container.setStyleSheet("background-color: rgba(128, 128, 128, 0.08); border-bottom: 1px solid rgba(128, 128, 128, 0.2);")
-        toolbar_layout = QHBoxLayout(toolbar_container)
+        self.toolbar_container = QWidget()
+        self.toolbar_container.setObjectName("WordToolbar")
+        toolbar_layout = QHBoxLayout(self.toolbar_container)
         toolbar_layout.setContentsMargins(6, 4, 6, 4)
         toolbar_layout.setSpacing(4)
+
+        # Undo / Redo
+        self.btn_undo = self._create_tool_btn("undo", "↶", "Geri Al (Ctrl+Z)", lambda: self.editor.undo())
+        toolbar_layout.addWidget(self.btn_undo)
+
+        self.btn_redo = self._create_tool_btn("redo", "↷", "Yinele (Ctrl+Y)", lambda: self.editor.redo())
+        toolbar_layout.addWidget(self.btn_redo)
+
+        toolbar_layout.addWidget(self._create_sep())
 
         # Heading / Style Selector
         self.style_combo = QComboBox()
@@ -64,108 +77,211 @@ class WordDocumentEditorWidget(QWidget):
         toolbar_layout.addWidget(self._create_sep())
 
         # Bold, Italic, Underline, Strikethrough
-        self.btn_bold = self._create_btn("<b>B</b>", "Kalın (Ctrl+B)", self._toggle_bold, checkable=True)
+        self.btn_bold = self._create_tool_btn("bold", "B", "Kalın (Ctrl+B)", self._toggle_bold, checkable=True)
         toolbar_layout.addWidget(self.btn_bold)
 
-        self.btn_italic = self._create_btn("<i>I</i>", "İtalik (Ctrl+I)", self._toggle_italic, checkable=True)
+        self.btn_italic = self._create_tool_btn("italic", "I", "İtalik (Ctrl+I)", self._toggle_italic, checkable=True)
         toolbar_layout.addWidget(self.btn_italic)
 
-        self.btn_underline = self._create_btn("<u>U</u>", "Altı Çizili (Ctrl+U)", self._toggle_underline, checkable=True)
+        self.btn_underline = self._create_tool_btn("underline", "U", "Altı Çizili (Ctrl+U)", self._toggle_underline, checkable=True)
         toolbar_layout.addWidget(self.btn_underline)
 
-        self.btn_strike = self._create_btn("<s>S</s>", "Üstü Çizili", self._toggle_strike, checkable=True)
+        self.btn_strike = self._create_tool_btn("strike", "S", "Üstü Çizili", self._toggle_strike, checkable=True)
         toolbar_layout.addWidget(self.btn_strike)
 
         toolbar_layout.addWidget(self._create_sep())
 
         # Colors
-        self.btn_text_color = self._create_btn("A", "Metin Rengi", self._pick_text_color)
-        self.btn_text_color.setStyleSheet("font-weight: bold; border-bottom: 2px solid #ef4444;")
+        self.btn_text_color = self._create_tool_btn("text_color", "A", "Metin Rengi", self._pick_text_color)
         toolbar_layout.addWidget(self.btn_text_color)
 
-        self.btn_bg_color = self._create_btn("🖍️", "Vurgu Rengi (Arka Plan)", self._pick_bg_color)
+        self.btn_bg_color = self._create_tool_btn("bg_color", "🖍", "Vurgu Rengi", self._pick_bg_color)
         toolbar_layout.addWidget(self.btn_bg_color)
 
         toolbar_layout.addWidget(self._create_sep())
 
         # Alignment
-        self.btn_align_left = self._create_btn("⬅", "Sola Hizala", lambda: self._set_alignment(Qt.AlignmentFlag.AlignLeft))
+        self.btn_align_left = self._create_tool_btn("align_left", "⇤", "Sola Hizala", lambda: self._set_alignment(Qt.AlignmentFlag.AlignLeft))
         toolbar_layout.addWidget(self.btn_align_left)
 
-        self.btn_align_center = self._create_btn("⬌", "Ortala", lambda: self._set_alignment(Qt.AlignmentFlag.AlignCenter))
+        self.btn_align_center = self._create_tool_btn("align_center", "⬌", "Ortala", lambda: self._set_alignment(Qt.AlignmentFlag.AlignCenter))
         toolbar_layout.addWidget(self.btn_align_center)
 
-        self.btn_align_right = self._create_btn("➡", "Sağa Hizala", lambda: self._set_alignment(Qt.AlignmentFlag.AlignRight))
+        self.btn_align_right = self._create_tool_btn("align_right", "⇥", "Sağa Hizala", lambda: self._set_alignment(Qt.AlignmentFlag.AlignRight))
         toolbar_layout.addWidget(self.btn_align_right)
 
-        self.btn_align_justify = self._create_btn("☰", "İki Yana Yasla", lambda: self._set_alignment(Qt.AlignmentFlag.AlignJustify))
+        self.btn_align_justify = self._create_tool_btn("align_justify", "☰", "İki Yana Yasla", lambda: self._set_alignment(Qt.AlignmentFlag.AlignJustify))
         toolbar_layout.addWidget(self.btn_align_justify)
 
         toolbar_layout.addWidget(self._create_sep())
 
         # Lists & Tables
-        self.btn_bullet_list = self._create_btn("• Liste", "Madde İşaretli Liste", self._insert_bullet_list)
+        self.btn_bullet_list = self._create_tool_btn("list_bullet", "•=", "Madde İşaretli Liste", self._insert_bullet_list)
         toolbar_layout.addWidget(self.btn_bullet_list)
 
-        self.btn_num_list = self._create_btn("1. Liste", "Numaralı Liste", self._insert_numbered_list)
+        self.btn_num_list = self._create_tool_btn("list_num", "1=", "Numaralı Liste", self._insert_numbered_list)
         toolbar_layout.addWidget(self.btn_num_list)
 
-        self.btn_table = self._create_btn("▦ Tablo", "Tablo Ekle", self._insert_table)
+        self.btn_table = self._create_tool_btn("table", "▦", "Tablo Ekle", self._insert_table)
         toolbar_layout.addWidget(self.btn_table)
 
+        toolbar_layout.addWidget(self._create_sep())
+
+        # Paper Mode Toggle (Dark Paper / White Paper)
+        self.btn_paper_mode = self._create_tool_btn("paper_mode", "◐", "Sayfa Görünüm Modu (Koyu Kağıt / Beyaz Kağıt)", self._toggle_paper_mode, checkable=True)
+        toolbar_layout.addWidget(self.btn_paper_mode)
+
         toolbar_layout.addStretch()
-        main_layout.addWidget(toolbar_container)
+
+        # Word count & statistics
+        self.lbl_stats = QLabel("0 kelime | 0 karakter")
+        self.lbl_stats.setStyleSheet("color: #858585; font-size: 11px; padding: 0 8px;")
+        toolbar_layout.addWidget(self.lbl_stats)
+
+        main_layout.addWidget(self.toolbar_container)
 
         # 2. Document Canvas Container (A4 Paper Look)
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        scroll_area.setStyleSheet("QScrollArea { border: none; background-color: rgba(128, 128, 128, 0.05); }")
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
-        canvas_widget = QWidget()
-        canvas_layout = QVBoxLayout(canvas_widget)
+        self.canvas_widget = QWidget()
+        canvas_layout = QVBoxLayout(self.canvas_widget)
         canvas_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         canvas_layout.setContentsMargins(20, 20, 20, 20)
 
         self.editor = QTextEdit()
         self.editor.setMinimumWidth(720)
         self.editor.setMaximumWidth(850)
-        self.editor.setMinimumHeight(900)
-        self.editor.setStyleSheet(
-            "QTextEdit { background-color: #ffffff; color: #222222; border: 1px solid #d0d0d0; "
-            "border-radius: 4px; padding: 40px; font-family: 'Calibri', 'Segoe UI', sans-serif; font-size: 11pt; line-height: 1.4; }"
-        )
+        self.editor.setMinimumHeight(960)
         self.editor.cursorPositionChanged.connect(self._on_cursor_changed)
         self.editor.textChanged.connect(self._on_text_changed)
 
         canvas_layout.addWidget(self.editor)
-        scroll_area.setWidget(canvas_widget)
-        main_layout.addWidget(scroll_area)
+        self.scroll_area.setWidget(self.canvas_widget)
+        main_layout.addWidget(self.scroll_area)
 
     def _create_sep(self) -> QFrame:
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.VLine)
         sep.setFrameShadow(QFrame.Shadow.Sunken)
-        sep.setStyleSheet("background-color: rgba(128, 128, 128, 0.25); width: 1px; margin: 2px 4px; border: none;")
+        sep.setStyleSheet("background-color: rgba(128, 128, 128, 0.25); width: 1px; margin: 2px 3px; border: none;")
         return sep
 
-    def _create_btn(self, text: str, tooltip: str, callback=None, checkable: bool = False) -> QPushButton:
-        btn = QPushButton(text)
+    def _get_icon(self, icon_name: str) -> QIcon:
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        icon_path = os.path.join(base_dir, "resources", "icons", f"{icon_name}.png")
+        if os.path.isfile(icon_path):
+            return QIcon(icon_path)
+        return QIcon()
+
+    def _create_tool_btn(self, icon_name: str, fallback_text: str, tooltip: str, callback=None, checkable: bool = False) -> QPushButton:
+        btn = QPushButton()
+        icon = self._get_icon(icon_name)
+        if not icon.isNull():
+            btn.setIcon(icon)
+            btn.setIconSize(QSize(16, 16))
+        else:
+            btn.setText(fallback_text)
+
         btn.setToolTip(tooltip)
+        btn.setFixedSize(28, 28)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setFixedHeight(26)
         if checkable:
             btn.setCheckable(True)
         if callback:
             btn.clicked.connect(callback)
-        btn.setStyleSheet(
-            "QPushButton { background: transparent; border: 1px solid transparent; border-radius: 3px; padding: 0 6px; } "
-            "QPushButton:hover { background-color: rgba(128, 128, 128, 0.2); } "
-            "QPushButton:checked { background-color: rgba(0, 122, 204, 0.25); border: 1px solid #007acc; }"
-        )
         return btn
 
+    def _toggle_paper_mode(self):
+        self._dark_paper_mode = self.btn_paper_mode.isChecked()
+        self.apply_theme(self._current_theme)
+
+    def apply_theme(self, theme_name: str = None):
+        """Applies dynamic theme styling to toolbar, canvas, and A4 document page."""
+        if theme_name:
+            self._current_theme = theme_name
+        tokens = ThemeManager.get_tokens(self._current_theme)
+        toolbar_bg = tokens.get("toolbar_bg", "#f8fafc")
+        panel_bg = tokens.get("panel_bg", "#ffffff")
+        text = tokens.get("text", "#1e293b")
+        text_muted = tokens.get("text_muted", "#64748b")
+        border = tokens.get("border", "#e2e8f0")
+        hover = tokens.get("hover", "rgba(128,128,128,0.18)")
+        active = tokens.get("active", "rgba(128,128,128,0.30)")
+        accent = tokens.get("accent", "#0284c7")
+        is_dark = ThemeManager.is_dark(self._current_theme)
+
+        # Toolbar styling
+        tb_qss = f"""
+            #WordToolbar {{
+                background-color: {toolbar_bg};
+                border-bottom: 1px solid {border};
+            }}
+            #WordToolbar QPushButton {{
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                min-width: 28px;
+                max-width: 28px;
+                min-height: 28px;
+                max-height: 28px;
+                color: {text};
+            }}
+            #WordToolbar QPushButton:hover {{
+                background-color: {hover};
+                border: 1px solid {border};
+            }}
+            #WordToolbar QPushButton:pressed {{
+                background-color: {active};
+            }}
+            #WordToolbar QPushButton:checked {{
+                background-color: {active};
+                border: 1px solid {accent};
+            }}
+            #WordToolbar QComboBox {{
+                background-color: {panel_bg};
+                color: {text};
+                border: 1px solid {border};
+                border-radius: 4px;
+                padding: 2px 6px;
+                font-size: 11px;
+            }}
+        """
+        self.toolbar_container.setStyleSheet(tb_qss)
+
+        # Canvas container background
+        canvas_bg = panel_bg if is_dark else "#f1f5f9"
+        self.scroll_area.setStyleSheet(f"QScrollArea {{ border: none; background-color: {canvas_bg}; }}")
+        self.canvas_widget.setStyleSheet(f"background-color: {canvas_bg};")
+
+        # Document Page Styling (Adaptive Paper Mode)
+        if is_dark and self._dark_paper_mode:
+            paper_bg = tokens.get("paper_bg", "#252526")
+            paper_color = tokens.get("paper_text", "#e0e0e0")
+            paper_border = border
+        else:
+            paper_bg = "#ffffff"
+            paper_color = "#1e293b"
+            paper_border = "#cbd5e1"
+
+        page_qss = f"""
+            QTextEdit {{
+                background-color: {paper_bg};
+                color: {paper_color};
+                border: 1px solid {paper_border};
+                border-radius: 4px;
+                padding: 40px;
+                font-family: 'Calibri', 'Segoe UI', sans-serif;
+                font-size: 11pt;
+                line-height: 1.5;
+            }}
+        """
+        self.editor.setStyleSheet(page_qss)
+        self.lbl_stats.setStyleSheet(f"color: {text_muted}; font-size: 11px; padding: 0 8px;")
+
     def load_data(self, data: dict, file_path: str = None):
+        """Loads structured Word document data into the rich text editor."""
         if file_path:
             self.current_file = file_path
         self._is_loading = True
@@ -236,6 +352,7 @@ class WordDocumentEditorWidget(QWidget):
                                 cell_cursor.insertText(cell_txt)
                         cursor.movePosition(QTextCursor.MoveOperation.End)
 
+            self._update_stats()
             self._is_dirty = False
         finally:
             self._is_loading = False
@@ -295,9 +412,16 @@ class WordDocumentEditorWidget(QWidget):
         self.current_file = target
         self._is_dirty = False
 
+    def _update_stats(self):
+        text = self.editor.toPlainText()
+        words = len(text.split()) if text.strip() else 0
+        chars = len(text)
+        self.lbl_stats.setText(f"{words:,} kelime | {chars:,} karakter")
+
     def _on_text_changed(self):
         if self._is_loading:
             return
+        self._update_stats()
         self._is_dirty = True
         self.content_changed.emit()
 
@@ -367,7 +491,6 @@ class WordDocumentEditorWidget(QWidget):
             fmt = QTextCharFormat()
             fmt.setForeground(col)
             self._merge_format(fmt)
-            self.btn_text_color.setStyleSheet(f"font-weight: bold; border-bottom: 2px solid {col.name()};")
 
     def _pick_bg_color(self):
         col = QColorDialog.getColor(Qt.GlobalColor.yellow, self, "Vurgu Rengi Seç")
@@ -407,4 +530,3 @@ class WordDocumentEditorWidget(QWidget):
             cursor.select(QTextCursor.SelectionType.WordUnderCursor)
         cursor.mergeCharFormat(format)
         self.editor.mergeCurrentCharFormat(format)
-

@@ -263,8 +263,9 @@ class AttributeTableWidget(QWidget):
         layout.setSpacing(6)
 
         # Toolbar Container (Theme-adaptive styling)
-        toolbar_container = QWidget()
-        toolbar_container.setObjectName("AttributeTableToolbar")
+        self.toolbar_container = QWidget()
+        self.toolbar_container.setObjectName("AttributeTableToolbar")
+        toolbar_container = self.toolbar_container
         toolbar_container.setStyleSheet(
             "#AttributeTableToolbar QPushButton {"
             "  background-color: transparent;"
@@ -389,6 +390,96 @@ class AttributeTableWidget(QWidget):
         self.table_view.selectionModel().selectionChanged.connect(self._on_selection_changed)
 
         layout.addWidget(self.table_view)
+        self.apply_theme()
+
+    def apply_theme(self, theme_name: str = None):
+        """Applies dynamic theme styling to toolbar, table view, headers, and search box."""
+        from core.theme import ThemeManager
+        tokens = ThemeManager.get_tokens(theme_name)
+        bg = tokens.get("panel_bg", "#ffffff")
+        toolbar_bg = tokens.get("toolbar_bg", "#f8fafc")
+        text = tokens.get("text", "#1e293b")
+        text_muted = tokens.get("text_muted", "#64748b")
+        border = tokens.get("border", "#e2e8f0")
+        hover = tokens.get("hover", "rgba(128,128,128,0.18)")
+        active = tokens.get("active", "rgba(128,128,128,0.30)")
+        accent = tokens.get("accent", "#0284c7")
+        grid = tokens.get("grid_line", "#e2e8f0")
+        is_dark = ThemeManager.is_dark(theme_name)
+        alt_bg = tokens.get("hover", "#f8fafc") if not is_dark else tokens.get("active", "#252526")
+
+        tb_qss = f"""
+            #AttributeTableToolbar QPushButton {{
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                padding: 0px;
+                min-width: 28px;
+                max-width: 28px;
+                min-height: 28px;
+                max-height: 28px;
+                color: {text};
+            }}
+            #AttributeTableToolbar QPushButton:hover {{
+                background-color: {hover};
+                border: 1px solid {border};
+            }}
+            #AttributeTableToolbar QPushButton:pressed {{
+                background-color: {active};
+            }}
+            #AttributeTableToolbar QPushButton:checked {{
+                background-color: {active};
+                border: 1px solid {accent};
+            }}
+            #AttributeTableToolbar QPushButton:disabled {{
+                background-color: transparent;
+                border: 1px solid transparent;
+                color: {text_muted};
+            }}
+            #AttributeTableToolbar QPushButton#btn_del:hover:enabled {{
+                background-color: rgba(239, 68, 68, 0.2);
+                border: 1px solid rgba(239, 68, 68, 0.4);
+            }}
+            #AttributeTableToolbar QPushButton#btn_close:hover {{
+                background-color: rgba(239, 68, 68, 0.2);
+                border: 1px solid rgba(239, 68, 68, 0.4);
+            }}
+        """
+        self.toolbar_container.setStyleSheet(tb_qss)
+
+        table_qss = f"""
+            QTableView {{
+                background-color: {bg};
+                color: {text};
+                gridline-color: {grid};
+                border: 1px solid {border};
+                selection-background-color: {accent};
+                selection-color: #ffffff;
+                font-size: 12px;
+            }}
+            QTableView::item:alternate {{
+                background-color: {alt_bg};
+            }}
+            QTableView::item:selected {{
+                background-color: {accent};
+                color: #ffffff;
+            }}
+            QHeaderView::section {{
+                background-color: {toolbar_bg};
+                color: {text_muted};
+                border: 1px solid {border};
+                padding: 4px 6px;
+                font-weight: 600;
+                font-size: 11px;
+            }}
+        """
+        self.table_view.setStyleSheet(table_qss)
+        self.search_input.setStyleSheet(
+            f"QLineEdit {{ background-color: {bg}; color: {text}; border: 1px solid {border}; "
+            f"border-radius: 4px; padding: 2px 6px; font-size: 11px; }} "
+            f"QLineEdit:focus {{ border: 1px solid {accent}; }}"
+        )
+        self.stats_label.setStyleSheet(f"color: {text_muted}; font-size: 11px;")
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):

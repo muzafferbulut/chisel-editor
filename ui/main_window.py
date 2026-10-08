@@ -442,7 +442,11 @@ class MainWindow(QMainWindow):
     def _on_tab_changed(self, index: int):
         tab = self.tab_widget.widget(index)
         if tab:
-            self.type_label.setText(tab.file_type)
+            badge = tab.get_format_badge() if hasattr(tab, "get_format_badge") else tab.file_type
+            self.type_label.setText(badge)
+            if hasattr(tab, "apply_theme"):
+                tab.apply_theme(ThemeManager._current_theme)
+
             if tab.is_spatial:
                 tab.attach_map_panel(self.shared_map_panel)
                 tab._adjust_spatial_splitter_sizes()
@@ -882,10 +886,13 @@ class MainWindow(QMainWindow):
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
             if tab:
-                if hasattr(tab, "text_editor") and tab.text_editor:
-                    tab.text_editor.setTheme(theme_name)
-                if hasattr(tab, "map_panel") and tab.map_panel:
-                    tab.map_panel.set_theme_tiles(theme_name)
+                if hasattr(tab, "apply_theme"):
+                    tab.apply_theme(theme_name)
+                else:
+                    if hasattr(tab, "text_editor") and tab.text_editor:
+                        tab.text_editor.setTheme(theme_name)
+                    if hasattr(tab, "map_panel") and tab.map_panel:
+                        tab.map_panel.set_theme_tiles(theme_name)
         settings = QSettings("ChiselEditor", "ChiselEditor")
         settings.setValue("current_theme", theme_name)
 
