@@ -148,6 +148,7 @@ class EditorTab(QWidget):
             self.map_panel.table_toggle_requested.connect(self.toggle_table)
             self.map_panel.feature_deleted.connect(self._on_feature_deleted)
             self.map_panel.feature_added.connect(self._on_feature_added)
+            self.map_panel.feature_updated.connect(lambda idx, geom: self._on_feature_updated(idx, geom, from_map=True))
             self.map_panel.service_add_requested.connect(self.service_add_requested.emit)
             self.map_panel.wms_deleted.connect(self.wms_deleted.emit)
 
@@ -457,6 +458,62 @@ class EditorTab(QWidget):
             print(f"Error adding feature: {e}")
             from ui.toast import ToastNotification
             ToastNotification.show_toast(self.window(), f"Geometri ekleme hatası: {e}", "error")
+
+    def _on_feature_updated(self, index: int, geometry_json_str: str, from_map: bool = False):
+        if self._current_gdf is None or self._current_gdf.empty:
+            return
+        if not (0 <= index < len(self._current_gdf)):
+            return
+
+        try:
+            import json
+            from shapely.geometry import shape
+            from ui.toast import ToastNotification
+
+            data = json.loads(geometry_json_str)
+            geom_data = data.get("geometry", data) if isinstance(data, dict) else data
+            shapely_geom = shape(geom_data)
+            if not shapely_geom.is_valid:
+                from shapely.validation import make_valid
+                shapely_geom = make_valid(shapely_geom)
+
+            target_crs = self._current_gdf.crs
+            if target_crs is not None:
+                crs_str = str(target_crs).upper()
+                if crs_str not in ("EPSG:4326", "WGS 84", "OGC:CRS84", "4326"):
+                    try:
+                        import pyproj
+                        from shapely.ops import transform
+                        project = pyproj.Transformer.from_crs("EPSG:4326", target_crs, always_xy=True).transform
+                        shapely_geom = transform(project, shapely_geom)
+                    except Exception as ex:
+                        print(f"Reprojection error in feature update: {ex}")
+
+            geom_col = getattr(self._current_gdf, 'geometry', None).name if hasattr(self._current_gdf, 'geometry') else 'geometry'
+            self._current_gdf.at[self._current_gdf.index[index], geom_col] = shapely_geom
+            if self.active_layer_id and self.active_layer_id in self.spatial_layers:
+                self.spatial_layers[self.active_layer_id]["is_dirty"] = True
+
+            self.is_dirty = True
+            self.state_changed.emit()
+
+            self.table_panel.source_model.set_data(self._current_gdf)
+            self.table_panel._update_stats_label()
+
+            if not from_map and self.map_panel:
+                render_str = SpatialOps.to_geojson_str(self._current_gdf, indent=0)
+                self.map_panel.update_vector_layer_data(
+                    layer_id=self.layer_id,
+                    name=self.spatial_layers.get(self.active_layer_id, {}).get("name", "Mekansal Katman"),
+                    geojson_str=render_str,
+                    geom_type=SpatialOps.get_layer_geometry_type(self._current_gdf)
+                )
+
+            ToastNotification.show_toast(self.window(), f"✏️ Geometri güncellendi (Kayıt #{index + 1})", "info")
+        except Exception as e:
+            print(f"Error in _on_feature_updated: {e}")
+            from ui.toast import ToastNotification
+            ToastNotification.show_toast(self.window(), f"Geometri güncelleme hatası: {e}", "error")
 
     def _on_quick_fit(self):
         if self.map_panel:

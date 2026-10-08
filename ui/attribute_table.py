@@ -3,7 +3,7 @@ import csv
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableView,
     QLineEdit, QPushButton, QLabel, QHeaderView, QFileDialog, QMessageBox,
-    QDialog, QComboBox, QFrame
+    QDialog, QComboBox, QFrame, QTextEdit
 )
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt, pyqtSignal, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QItemSelection, QSize
@@ -117,11 +117,71 @@ class AddFieldDialog(QDialog):
         self.accept()
 
 
+class EditGeometryDialog(QDialog):
+    """QGIS-style dialog to view and update feature geometry via WKT and coordinates."""
+    def __init__(self, geometry, geom_type: str, crs_str: str = "EPSG:4326", parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Geometriyi Düzenle (WKT & Koordinatlar)")
+        self.setMinimumSize(480, 360)
+        self.original_geom = geometry
+        self.geom_type = geom_type
+        self.crs_str = crs_str
+        self.updated_geom = None
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        info_lbl = QLabel(f"<b>Geometri Türü:</b> {self.geom_type.capitalize()} &nbsp;|&nbsp; <b>Projeksiyon:</b> {self.crs_str}")
+        layout.addWidget(info_lbl)
+
+        layout.addWidget(QLabel("<b>WKT (Well-Known Text) Formatında Geometri:</b>"))
+        self.wkt_edit = QTextEdit()
+        self.wkt_edit.setStyleSheet("font-family: Consolas, monospace; font-size: 12px;")
+        if self.original_geom is not None and hasattr(self.original_geom, 'wkt'):
+            self.wkt_edit.setPlainText(self.original_geom.wkt)
+        layout.addWidget(self.wkt_edit)
+
+        tip_lbl = QLabel("<small style='color:#858585;'>💡 Örnekler: POINT(29.0 41.0) | LINESTRING(29 41, 30 41) | POLYGON((29 41, 30 41, 30 42, 29 41))</small>")
+        layout.addWidget(tip_lbl)
+
+        btn_box = QHBoxLayout()
+        btn_cancel = QPushButton("İptal")
+        btn_cancel.clicked.connect(self.reject)
+        btn_ok = QPushButton("Kaydet ve Güncelle")
+        btn_ok.setStyleSheet("background-color: #007acc; color: white; font-weight: bold; border-radius: 4px; padding: 5px 14px;")
+        btn_ok.clicked.connect(self._on_save)
+        btn_box.addStretch()
+        btn_box.addWidget(btn_cancel)
+        btn_box.addWidget(btn_ok)
+        layout.addLayout(btn_box)
+
+    def _on_save(self):
+        text = self.wkt_edit.toPlainText().strip()
+        if not text:
+            QMessageBox.warning(self, "Hata", "Lütfen geçerli bir WKT geometrisi girin.")
+            return
+        try:
+            import shapely.wkt
+            geom = shapely.wkt.loads(text)
+            if not geom.is_valid:
+                from shapely.validation import make_valid
+                geom = make_valid(geom)
+            self.updated_geom = geom
+            self.accept()
+        except Exception as e:
+            QMessageBox.warning(self, "Geçersiz WKT", f"WKT biçimi ayrıştırılamadı:\n{e}")
+
+
 class GeoDataFrameTableModel(QAbstractTableModel):
     """
     High-performance virtual table model for GeoDataFrame / DataFrame.
     Renders 100,000+ rows instantly with 0ms overhead by referencing memory directly.
+    Supports inline cell editing and dynamic data changes.
     """
+    data_changed_signal = pyqtSignal()
 
     def __init__(self, gdf: gpd.GeoDataFrame = None):
         super().__init__()
@@ -151,6 +211,11 @@ class GeoDataFrameTableModel(QAbstractTableModel):
     def columnCount(self, parent=QModelIndex()):
         return len(self._columns)
 
+    def flags(self, index):
+        if not index.isValid():
+            return Qt.ItemFlag.NoItemFlags
+        return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable
+
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid() or self._gdf is None or self._gdf.empty:
             return None
@@ -174,12 +239,71 @@ class GeoDataFrameTableModel(QAbstractTableModel):
                 return f"{val:.4f}" if abs(val) < 10000 else f"{val:,.2f}"
             return str(val)
 
+        elif role == Qt.ItemDataRole.EditRole:
+            if col_name == getattr(self._gdf, 'geometry', None).name if hasattr(self._gdf, 'geometry') else None:
+                if val is not None and hasattr(val, 'wkt'):
+                    return val.wkt
+                return ""
+            if pd.isna(val):
+                return ""
+            return str(val)
+
         elif role == Qt.ItemDataRole.TextAlignmentRole:
             if isinstance(val, (int, float)) and not pd.isna(val):
                 return int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             return int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         return None
+
+    def setData(self, index, value, role=Qt.ItemDataRole.EditRole):
+        if not index.isValid() or role != Qt.ItemDataRole.EditRole or self._gdf is None:
+            return False
+
+        row = index.row()
+        col_idx = index.column()
+        if row >= len(self._gdf) or col_idx >= len(self._columns):
+            return False
+
+        col_name = self._columns[col_idx]
+        geom_name = getattr(self._gdf, 'geometry', None).name if hasattr(self._gdf, 'geometry') else None
+
+        try:
+            if col_name == geom_name:
+                import shapely.wkt
+                val_str = str(value).strip()
+                if not val_str:
+                    return False
+                new_geom = shapely.wkt.loads(val_str)
+                if not new_geom.is_valid:
+                    from shapely.validation import make_valid
+                    new_geom = make_valid(new_geom)
+                self._gdf.at[self._gdf.index[row], col_name] = new_geom
+            else:
+                curr_dtype = self._gdf[col_name].dtype
+                str_val = str(value).strip()
+
+                if str_val == "" or str_val.lower() in ("nan", "none", "null"):
+                    if pd.api.types.is_numeric_dtype(curr_dtype):
+                        converted = None if pd.api.types.is_integer_dtype(curr_dtype) else float('nan')
+                    else:
+                        converted = None
+                elif pd.api.types.is_integer_dtype(curr_dtype):
+                    converted = int(str_val)
+                elif pd.api.types.is_float_dtype(curr_dtype):
+                    converted = float(str_val.replace(',', '.'))
+                elif pd.api.types.is_bool_dtype(curr_dtype):
+                    converted = str_val.lower() in ('true', '1', 't', 'evet', 'doğru', 'yes')
+                else:
+                    converted = str_val
+
+                self._gdf.at[self._gdf.index[row], col_name] = converted
+
+            self.dataChanged.emit(index, index, [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole])
+            self.data_changed_signal.emit()
+            return True
+        except Exception as e:
+            print(f"Error setting cell data: {e}")
+            return False
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if role != Qt.ItemDataRole.DisplayRole:
@@ -355,8 +479,17 @@ class AttributeTableWidget(QWidget):
         toolbar.addWidget(self._create_vsep())
 
         # QGIS Data / Calculation Tools
-        self.btn_add_col = self._create_tool_btn("add_field", "➕", "Yeni Sütun / Alan Ekle", self._add_field)
+        self.btn_add_row = self._create_tool_btn("add_row", "➕ Satır", "Yeni Kayıt / Satır Ekle", self._add_row)
+        self.btn_add_row.setStyleSheet("padding: 0 4px; min-width: 50px; max-width: 65px; font-weight: 600; font-size: 11px;")
+        toolbar.addWidget(self.btn_add_row)
+
+        self.btn_add_col = self._create_tool_btn("add_field", "➕ Alan", "Yeni Sütun / Alan Ekle", self._add_field)
+        self.btn_add_col.setStyleSheet("padding: 0 4px; min-width: 50px; max-width: 65px; font-weight: 600; font-size: 11px;")
         toolbar.addWidget(self.btn_add_col)
+
+        self.btn_edit_geom = self._create_tool_btn("edit_geometry", "✏️", "Seçili Geometriyi Düzenle (WKT & Koordinatlar)", self._edit_selected_geometry)
+        self.btn_edit_geom.setEnabled(False)
+        toolbar.addWidget(self.btn_edit_geom)
 
         self.btn_calc_geom = self._create_tool_btn("calc_geom", "📐", "Geometri Hesapla (Alan, Uzunluk, Koordinatlar)", self._calculate_geometry)
         toolbar.addWidget(self.btn_calc_geom)
@@ -399,6 +532,8 @@ class AttributeTableWidget(QWidget):
 
         self.table_view.setModel(self.proxy_model)
         self.table_view.selectionModel().selectionChanged.connect(self._on_selection_changed)
+        self.table_view.doubleClicked.connect(self._on_table_double_clicked)
+        self.source_model.data_changed_signal.connect(self._on_cell_data_changed)
 
         layout.addWidget(self.table_view)
         self.apply_theme()
@@ -552,6 +687,8 @@ class AttributeTableWidget(QWidget):
         self.btn_zoom_selected.setEnabled(False)
         self.btn_zoom_selected.setToolTip("Haritada Seçilenlere Yakınlaş")
         self.btn_stats.setToolTip("Sütun İstatistikleri (Tüm katman için)")
+        self.btn_edit_geom.setEnabled(False)
+        self.btn_add_row.setEnabled(gdf is not None)
 
         header = self.table_view.horizontalHeader()
         header.setDefaultSectionSize(120)
@@ -634,6 +771,95 @@ class AttributeTableWidget(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "Hata", f"Sütun eklenirken hata oluştu: {e}")
 
+    def _on_cell_data_changed(self):
+        self.data_modified.emit(self._current_gdf)
+
+    def _on_table_double_clicked(self, proxy_idx):
+        if not proxy_idx.isValid() or self._current_gdf is None or self._current_gdf.empty:
+            return
+        src_idx = self.proxy_model.mapToSource(proxy_idx)
+        if not src_idx.isValid():
+            return
+        col_name = self.source_model._columns[src_idx.column()]
+        geom_name = getattr(self._current_gdf, 'geometry', None).name if hasattr(self._current_gdf, 'geometry') else None
+        if col_name == geom_name:
+            self._edit_selected_geometry()
+        else:
+            self.table_view.edit(proxy_idx)
+
+    def _edit_selected_geometry(self):
+        indexes = self.table_view.selectionModel().selectedRows()
+        if not indexes or self._current_gdf is None or self._current_gdf.empty:
+            return
+        src_idx = self.proxy_model.mapToSource(indexes[0])
+        if not src_idx.isValid():
+            return
+        row = src_idx.row()
+        if row < 0 or row >= len(self._current_gdf):
+            return
+
+        geom = self._current_gdf.geometry.iat[row]
+        geom_type = getattr(geom, 'geom_type', 'Nokta') if geom is not None else 'Nokta'
+        crs_str = str(self._current_gdf.crs) if self._current_gdf.crs else "EPSG:4326"
+
+        dlg = EditGeometryDialog(geom, geom_type, crs_str, parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.updated_geom is not None:
+            geom_col = getattr(self._current_gdf, 'geometry', None).name if hasattr(self._current_gdf, 'geometry') else 'geometry'
+            self._current_gdf.at[self._current_gdf.index[row], geom_col] = dlg.updated_geom
+            self.source_model.set_data(self._current_gdf)
+            self.data_modified.emit(self._current_gdf)
+
+    def _add_row(self):
+        if self._current_gdf is None:
+            return
+        geom_col = getattr(self._current_gdf, 'geometry', None).name if hasattr(self._current_gdf, 'geometry') else 'geometry'
+        geom_type = SpatialOps.get_layer_geometry_type(self._current_gdf)
+
+        from shapely.geometry import Point, LineString, Polygon
+
+        # Calculate sensible default location based on existing dataset bounds
+        if not self._current_gdf.empty and self._current_gdf.total_bounds is not None:
+            try:
+                minx, miny, maxx, maxy = self._current_gdf.total_bounds
+                cx = (minx + maxx) / 2.0
+                cy = (miny + maxy) / 2.0
+                dx = max(abs(maxx - minx) * 0.05, 0.001)
+                dy = max(abs(maxy - miny) * 0.05, 0.001)
+            except Exception:
+                cx, cy, dx, dy = 35.0, 39.0, 0.001, 0.001
+        else:
+            cx, cy, dx, dy = 35.0, 39.0, 0.01, 0.01
+
+        if geom_type == "point":
+            default_geom = Point(cx, cy)
+        elif geom_type == "line":
+            default_geom = LineString([(cx - dx, cy - dy), (cx + dx, cy + dy)])
+        elif geom_type == "polygon":
+            default_geom = Polygon([(cx - dx, cy - dy), (cx + dx, cy - dy), (cx + dx, cy + dy), (cx - dx, cy + dy), (cx - dx, cy - dy)])
+        else:
+            default_geom = Point(cx, cy)
+
+        new_row = {col: None for col in self._current_gdf.columns if col != geom_col}
+        new_row[geom_col] = default_geom
+
+        for id_col in ["id", "ID", "fid", "FID", "gid", "objectid"]:
+            if id_col in new_row:
+                new_row[id_col] = len(self._current_gdf) + 1
+
+        target_crs = self._current_gdf.crs or "EPSG:4326"
+        row_gdf = gpd.GeoDataFrame([new_row], crs=target_crs)
+        self._current_gdf = pd.concat([self._current_gdf, row_gdf], ignore_index=True)
+        self.source_model.set_data(self._current_gdf)
+        self.data_modified.emit(self._current_gdf)
+        self._update_stats_label()
+
+        new_idx = len(self._current_gdf) - 1
+        src_idx = self.source_model.index(new_idx, 0)
+        proxy_idx = self.proxy_model.mapFromSource(src_idx)
+        if proxy_idx.isValid():
+            self.table_view.scrollTo(proxy_idx)
+            self.table_view.selectRow(proxy_idx.row())
+
     def _on_selection_changed(self, selected, deselected):
         indexes = self.table_view.selectionModel().selectedRows()
         count = len(indexes)
@@ -641,14 +867,20 @@ class AttributeTableWidget(QWidget):
 
         self.btn_del_selected.setEnabled(has_sel)
         self.btn_zoom_selected.setEnabled(has_sel)
+        self.btn_edit_geom.setEnabled(count == 1)
         if has_sel:
             self.btn_del_selected.setToolTip(f"Seçili {count:,} Kaydı Sil (Del)")
             self.btn_zoom_selected.setToolTip(f"Haritada Seçili {count:,} Geometriye Yakınlaş")
             self.btn_stats.setToolTip(f"Sütun İstatistikleri (Seçili {count:,} kayıt için)")
+            if count == 1:
+                self.btn_edit_geom.setToolTip("Seçili Geometriyi Düzenle (WKT & Koordinatlar)")
+            else:
+                self.btn_edit_geom.setToolTip("Geometri düzenlemek için tek bir kayıt seçin")
         else:
             self.btn_del_selected.setToolTip("Seçili Kayıtları Sil (Del)")
             self.btn_zoom_selected.setToolTip("Haritada Seçilenlere Yakınlaş")
             self.btn_stats.setToolTip("Sütun İstatistikleri (Tüm katman için)")
+            self.btn_edit_geom.setToolTip("Seçili Geometriyi Düzenle (WKT & Koordinatlar)")
 
         if self._block_selection_signals:
             return

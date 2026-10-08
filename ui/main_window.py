@@ -38,6 +38,7 @@ class MainWindow(QMainWindow):
         self.shared_map_panel = MapPreviewPanel()
         self.shared_map_panel.feature_added.connect(self._on_map_feature_added)
         self.shared_map_panel.feature_deleted.connect(self._on_map_feature_deleted)
+        self.shared_map_panel.feature_updated.connect(self._on_map_feature_updated)
         self.shared_map_panel.feature_clicked.connect(self._on_map_feature_clicked)
         self.shared_map_panel.selection_changed.connect(self._on_map_selection_changed)
         self.shared_map_panel.selection_deleted.connect(self._on_map_selection_deleted)
@@ -477,6 +478,11 @@ class MainWindow(QMainWindow):
         tab = self._get_current_tab()
         if tab and tab.is_spatial:
             tab._on_feature_added(feature_json_str)
+
+    def _on_map_feature_updated(self, index: int, feature_json_str: str):
+        tab = self._get_current_tab()
+        if tab and tab.is_spatial:
+            tab._on_feature_updated(index, feature_json_str, from_map=True)
 
     def _on_map_feature_deleted(self, index: int):
         tab = self._get_current_tab()

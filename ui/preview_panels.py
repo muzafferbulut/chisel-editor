@@ -19,6 +19,7 @@ class MapBridge(QObject):
     selectionChanged = pyqtSignal(str)
     selectionDeleted = pyqtSignal(str)
     layerRemoved = pyqtSignal(str)
+    featureUpdated = pyqtSignal(int, str)
 
     @pyqtSlot(int)
     def onFeatureClicked(self, index):
@@ -27,6 +28,10 @@ class MapBridge(QObject):
     @pyqtSlot(int)
     def onFeatureDeleted(self, index):
         self.featureDeleted.emit(index)
+
+    @pyqtSlot(int, str)
+    def onFeatureUpdated(self, index, featureJson):
+        self.featureUpdated.emit(index, featureJson)
 
     @pyqtSlot(str)
     def onFeatureAdded(self, featureJson):
@@ -81,6 +86,7 @@ class AbstractPreviewPanel(QWidget):
 class MapPreviewPanel(AbstractPreviewPanel):
     feature_clicked = pyqtSignal(int)
     feature_deleted = pyqtSignal(int)
+    feature_updated = pyqtSignal(int, str)
     feature_added = pyqtSignal(str)
     table_toggle_requested = pyqtSignal()
     wms_deleted = pyqtSignal(str)
@@ -100,6 +106,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
         self.bridge = MapBridge()
         self.bridge.featureSelected.connect(self.feature_clicked.emit)
         self.bridge.featureDeleted.connect(self.feature_deleted.emit)
+        self.bridge.featureUpdated.connect(self.feature_updated.emit)
         self.bridge.featureAdded.connect(self.feature_added.emit)
         self.bridge.tableToggleRequested.connect(self.table_toggle_requested.emit)
         self.bridge.wmsDeleted.connect(self.wms_deleted.emit)
@@ -399,6 +406,29 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     font-weight: bold;
                     border: 1px solid #00a2ff;
                 }}
+                .vertex-handle-icon {{
+                    background: transparent;
+                    border: none;
+                }}
+                .vertex-handle-inner {{
+                    width: 11px;
+                    height: 11px;
+                    background: #ffffff;
+                    border: 2px solid #0078d4;
+                    border-radius: 50%;
+                    box-shadow: 0 0 5px rgba(0,0,0,0.6);
+                    cursor: grab;
+                    transition: transform 0.12s ease;
+                    box-sizing: border-box;
+                }}
+                .vertex-handle-inner:hover {{
+                    transform: scale(1.35);
+                    background: #ffb703;
+                    border-color: #fb8500;
+                }}
+                .vertex-handle-inner:active {{
+                    cursor: grabbing;
+                }}
             </style>
         </head>
         <body>
@@ -440,6 +470,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 <button class="hud-vbtn" id="btnAddPoint" onclick="toggleDrawMode('point')" data-tip="Nokta Ekle (Haritaya Tıkla)" title="Nokta Ekle">📍+</button>
                 <button class="hud-vbtn" id="btnAddLine" onclick="toggleDrawMode('line')" data-tip="Çizgi Ekle (Çiz & Çift Tıkla)" title="Çizgi Ekle">〰️+</button>
                 <button class="hud-vbtn" id="btnAddPolygon" onclick="toggleDrawMode('polygon')" data-tip="Çokgen Ekle (Çiz & Çift Tıkla)" title="Çokgen Ekle">📐+</button>
+                <button class="hud-vbtn" id="btnEditGeom" onclick="toggleVertexEditMode()" data-tip="Düğümleri Düzenle (Düğüm Noktaları)" title="Düğüm Düzenle">✏️</button>
                 <button class="hud-vbtn hud-vbtn-del" id="btnDelete" onclick="deleteSelectedFeatures()" data-tip="Seçili Geometrileri Sil (Del)" title="Seçili Geometrileri Sil">🗑️</button>
                 
                 <div class="hud-vdivider"></div>
@@ -865,6 +896,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }}
 
                     cancelDrawMode();
+                    if (typeof finishVertexEditMode === 'function') finishVertexEditMode();
                     if (selectMode === 'box') setSelectTool('click');
                     if (measureActive) toggleMeasure();
                     closeAllFlyouts();
@@ -917,6 +949,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 function setSelectTool(mode) {{
                     if (drawMode) cancelDrawMode();
                     if (measureActive) toggleMeasure();
+                    if (mode === 'box' && typeof finishVertexEditMode === 'function') finishVertexEditMode();
                     closeAllFlyouts();
 
                     selectMode = mode;
@@ -944,6 +977,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     var btnZoom = document.getElementById('btnZoomSel');
                     var btnClear = document.getElementById('btnClearSel');
                     var btnDel = document.getElementById('btnDelete');
+                    var btnEdit = document.getElementById('btnEditGeom');
 
                     if (count > 0) {{
                         if (btnZoom) btnZoom.classList.remove('disabled');
@@ -958,6 +992,19 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         if (btnDel) {{
                             btnDel.classList.remove('has-selection');
                             btnDel.setAttribute('data-tip', 'Seçili Geometrileri Sil (Önce Geometri Seçin)');
+                        }}
+                    }}
+
+                    if (btnEdit) {{
+                        if (count === 1) {{
+                            btnEdit.classList.remove('disabled');
+                            btnEdit.setAttribute('data-tip', 'Düğümleri Düzenle (Köşe Noktaları ✏️)');
+                        }} else if (count > 1) {{
+                            btnEdit.classList.add('disabled');
+                            btnEdit.setAttribute('data-tip', '⚠️ Düğüm düzenlemek için tek bir geometri seçiniz');
+                        }} else {{
+                            btnEdit.classList.remove('disabled');
+                            btnEdit.setAttribute('data-tip', 'Düğümleri Düzenle (Düğüm Noktaları)');
                         }}
                     }}
                 }}
@@ -1040,9 +1087,17 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     selectedFeatureIndex = selectedIndices.size === 1 ? indices[0] : -1;
                     selectedFeatureLayerId = lId;
                     refreshLayerStyles(lId);
+                    if (vertexEditActive) {{
+                        if (selectedIndices.size === 1) {{
+                            attachVertexHandles(lId, selectedFeatureIndex);
+                        }} else {{
+                            clearVertexHandles();
+                        }}
+                    }}
                 }}
 
                 function clearSelection() {{
+                    if (vertexEditActive) finishVertexEditMode();
                     if (selectedIndices.size === 0) return;
                     selectedIndices.clear();
                     selectedFeatureIndex = -1;
@@ -1077,6 +1132,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
 
                 function deleteSelectedFeatures() {{
+                    if (vertexEditActive) finishVertexEditMode();
                     if (selectedIndices.size === 0) {{
                         showWarningBanner("Silinecek seçili nesne yok!");
                         return;
@@ -1101,6 +1157,223 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     deleteSelectedFeatures();
                 }}
 
+                // --- Vertex Editing (Node Tool) ---
+                var vertexEditActive = false;
+                var vertexEditLayerId = null;
+                var vertexEditFeatureIdx = -1;
+                var vertexMarkers = [];
+
+                function toggleVertexEditMode() {{
+                    if (vertexEditActive) {{
+                        finishVertexEditMode();
+                    }} else {{
+                        startVertexEditMode();
+                    }}
+                }}
+
+                function startVertexEditMode() {{
+                    if (!activeLayerId || !vectorLayers[activeLayerId]) {{
+                        showWarningBanner("⚠️ Düğüm düzenlemek için önce bir katman açın!");
+                        return;
+                    }}
+
+                    if (drawMode) cancelDrawMode();
+                    if (measureActive) toggleMeasure();
+                    if (selectMode === 'box') setSelectTool('click');
+
+                    vertexEditActive = true;
+                    var btnEdit = document.getElementById('btnEditGeom');
+                    if (btnEdit) btnEdit.classList.add('active');
+
+                    if (selectedIndices.size === 1) {{
+                        var idx = Array.from(selectedIndices)[0];
+                        attachVertexHandles(activeLayerId, idx);
+                    }} else if (selectedIndices.size > 1) {{
+                        showWarningBanner("⚠️ Düğüm düzenlemek için tek bir geometri seçiniz!");
+                    }} else {{
+                        showWarningBanner("✏️ Düğümlerini düzenlemek istediğiniz geometriye tıklayın.");
+                    }}
+                }}
+
+                function finishVertexEditMode() {{
+                    clearVertexHandles();
+                    vertexEditActive = false;
+                    vertexEditLayerId = null;
+                    vertexEditFeatureIdx = -1;
+                    var btnEdit = document.getElementById('btnEditGeom');
+                    if (btnEdit) btnEdit.classList.remove('active');
+                }}
+
+                function clearVertexHandles() {{
+                    vertexMarkers.forEach(function(m) {{
+                        map.removeLayer(m);
+                    }});
+                    vertexMarkers = [];
+                }}
+
+                function notifyFeatureUpdated(featureIdx, geom) {{
+                    if (pyBridge && pyBridge.onFeatureUpdated) {{
+                        pyBridge.onFeatureUpdated(featureIdx, JSON.stringify(geom));
+                    }}
+                }}
+
+                function attachVertexHandles(layerId, featureIdx) {{
+                    clearVertexHandles();
+                    var lObj = vectorLayers[layerId];
+                    if (!lObj || !lObj.indexMap) return;
+                    var target = lObj.indexMap[featureIdx];
+                    if (!target) return;
+
+                    vertexEditActive = true;
+                    vertexEditLayerId = layerId;
+                    vertexEditFeatureIdx = featureIdx;
+
+                    var btnEdit = document.getElementById('btnEditGeom');
+                    if (btnEdit) btnEdit.classList.add('active');
+
+                    var shapes = [];
+                    if (target.eachLayer && !(target instanceof L.Polyline)) {{
+                        target.eachLayer(function(child) {{ shapes.push(child); }});
+                    }} else {{
+                        shapes.push(target);
+                    }}
+
+                    shapes.forEach(function(subLayer) {{
+                        attachHandlesToSubLayer(subLayer, featureIdx);
+                    }});
+                }}
+
+                function attachHandlesToSubLayer(subLayer, featureIdx) {{
+                    // Point / CircleMarker
+                    if (subLayer.getLatLng && !subLayer.getLatLngs) {{
+                        var pt = subLayer.getLatLng();
+                        var m = L.marker(pt, {{
+                            draggable: true,
+                            icon: L.divIcon({{
+                                className: 'vertex-handle-icon',
+                                html: '<div class="vertex-handle-inner"></div>',
+                                iconSize: [12, 12],
+                                iconAnchor: [6, 6]
+                            }}),
+                            zIndexOffset: 10000
+                        }}).addTo(map);
+
+                        m.on('drag', function() {{
+                            subLayer.setLatLng(m.getLatLng());
+                        }});
+
+                        m.on('dragend', function() {{
+                            var newPos = m.getLatLng();
+                            subLayer.setLatLng(newPos);
+                            var geom = {{
+                                type: "Point",
+                                coordinates: [newPos.lng, newPos.lat]
+                            }};
+                            notifyFeatureUpdated(featureIdx, geom);
+                        }});
+
+                        vertexMarkers.push(m);
+                        return;
+                    }}
+
+                    // Polyline or Polygon
+                    if (subLayer.getLatLngs) {{
+                        var rawLatLngs = subLayer.getLatLngs();
+                        var isPoly = (subLayer instanceof L.Polygon);
+
+                        if (isPoly) {{
+                            var rings = Array.isArray(rawLatLngs[0]) ? rawLatLngs : [rawLatLngs];
+                            rings.forEach(function(ring, rIdx) {{
+                                ring.forEach(function(pt, pIdx) {{
+                                    var m = L.marker(pt, {{
+                                        draggable: true,
+                                        icon: L.divIcon({{
+                                            className: 'vertex-handle-icon',
+                                            html: '<div class="vertex-handle-inner"></div>',
+                                            iconSize: [12, 12],
+                                            iconAnchor: [6, 6]
+                                        }}),
+                                        zIndexOffset: 10000
+                                    }}).addTo(map);
+
+                                    m.on('drag', function() {{
+                                        ring[pIdx] = m.getLatLng();
+                                        subLayer.setLatLngs(rawLatLngs);
+                                    }});
+
+                                    m.on('dragend', function() {{
+                                        ring[pIdx] = m.getLatLng();
+                                        subLayer.setLatLngs(rawLatLngs);
+                                        var polyCoords = rings.map(function(r) {{
+                                            var pts = r.map(function(p) {{ return [p.lng, p.lat]; }});
+                                            if (pts.length > 0) {{
+                                                var first = pts[0];
+                                                var last = pts[pts.length - 1];
+                                                if (first[0] !== last[0] || first[1] !== last[1]) {{
+                                                    pts.push([first[0], first[1]]);
+                                                }}
+                                            }}
+                                            return pts;
+                                        }});
+                                        var geom = {{
+                                            type: "Polygon",
+                                            coordinates: polyCoords
+                                        }};
+                                        notifyFeatureUpdated(featureIdx, geom);
+                                    }});
+
+                                    vertexMarkers.push(m);
+                                }});
+                            }});
+                        }} else {{
+                            var isMultiLine = Array.isArray(rawLatLngs[0]);
+                            var lineParts = isMultiLine ? rawLatLngs : [rawLatLngs];
+
+                            lineParts.forEach(function(part, partIdx) {{
+                                part.forEach(function(pt, pIdx) {{
+                                    var m = L.marker(pt, {{
+                                        draggable: true,
+                                        icon: L.divIcon({{
+                                            className: 'vertex-handle-icon',
+                                            html: '<div class="vertex-handle-inner"></div>',
+                                            iconSize: [12, 12],
+                                            iconAnchor: [6, 6]
+                                        }}),
+                                        zIndexOffset: 10000
+                                    }}).addTo(map);
+
+                                    m.on('drag', function() {{
+                                        part[pIdx] = m.getLatLng();
+                                        subLayer.setLatLngs(rawLatLngs);
+                                    }});
+
+                                    m.on('dragend', function() {{
+                                        part[pIdx] = m.getLatLng();
+                                        subLayer.setLatLngs(rawLatLngs);
+                                        var geom;
+                                        if (isMultiLine) {{
+                                            geom = {{
+                                                type: "MultiLineString",
+                                                coordinates: lineParts.map(function(lp) {{
+                                                    return lp.map(function(p) {{ return [p.lng, p.lat]; }});
+                                                }})
+                                            }};
+                                        }} else {{
+                                            geom = {{
+                                                type: "LineString",
+                                                coordinates: part.map(function(p) {{ return [p.lng, p.lat]; }})
+                                            }};
+                                        }}
+                                        notifyFeatureUpdated(featureIdx, geom);
+                                    }});
+
+                                    vertexMarkers.push(m);
+                                }});
+                            }});
+                        }}
+                    }}
+                }}
+
                 // --- Measurement Ruler Tool ---
                 var measureActive = false;
                 var measurePoints = [];
@@ -1110,6 +1383,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 var measureTooltip = null;
 
                 function toggleMeasure() {{
+                    if (typeof finishVertexEditMode === 'function') finishVertexEditMode();
                     measureActive = !measureActive;
                     var btn = document.getElementById('btnMeasure');
                     if (btn) btn.classList.toggle('active', measureActive);
@@ -1357,6 +1631,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 // --- Keyboard Handlers ---
                 document.addEventListener('keydown', function(e) {{
                     if (e.key === 'Escape') {{
+                        if (vertexEditActive) finishVertexEditMode();
                         if (isBoxSelecting && boxRectLayer) {{
                             map.removeLayer(boxRectLayer);
                             boxRectLayer = null;
@@ -1375,6 +1650,17 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 function handleFeatureClick(currentIdx, layerId, feature, layer, e) {{
                     if (drawMode || measureActive || selectMode === 'box') return;
+
+                    if (vertexEditActive) {{
+                        selectedIndices.clear();
+                        selectedIndices.add(currentIdx);
+                        selectedFeatureIndex = currentIdx;
+                        selectedFeatureLayerId = layerId;
+                        refreshLayerStyles(layerId);
+                        notifySelectionChanged();
+                        attachVertexHandles(layerId, currentIdx);
+                        return;
+                    }}
 
                     var isMulti = e.originalEvent && (e.originalEvent.ctrlKey || e.originalEvent.shiftKey);
 
