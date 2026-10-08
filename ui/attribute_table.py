@@ -224,7 +224,7 @@ class AttributeTableWidget(QWidget):
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.VLine)
         sep.setFrameShadow(QFrame.Shadow.Sunken)
-        sep.setStyleSheet("color: #3e3e42; background-color: #3e3e42; width: 1px; margin: 3px 2px;")
+        sep.setStyleSheet("background-color: rgba(128, 128, 128, 0.25); width: 1px; margin: 3px 2px; border: none;")
         return sep
 
     def _get_icon(self, icon_name: str) -> QIcon:
@@ -262,47 +262,46 @@ class AttributeTableWidget(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(6)
 
-        # Toolbar Container
+        # Toolbar Container (Theme-adaptive styling)
         toolbar_container = QWidget()
         toolbar_container.setObjectName("AttributeTableToolbar")
         toolbar_container.setStyleSheet(
             "#AttributeTableToolbar QPushButton {"
-            "  border: 1px solid #3c3c3c;"
-            "  background-color: #252526;"
-            "  color: #e0e0e0;"
+            "  background-color: transparent;"
+            "  border: 1px solid transparent;"
             "  border-radius: 4px;"
-            "  font-size: 13px;"
             "  padding: 0px;"
+            "  min-width: 28px;"
+            "  max-width: 28px;"
+            "  min-height: 28px;"
+            "  max-height: 28px;"
             "}"
             "#AttributeTableToolbar QPushButton:hover {"
-            "  background-color: #37373d;"
-            "  border-color: #007acc;"
-            "  color: #ffffff;"
+            "  background-color: rgba(128, 128, 128, 0.2);"
+            "  border: 1px solid rgba(128, 128, 128, 0.35);"
+            "}"
+            "#AttributeTableToolbar QPushButton:pressed {"
+            "  background-color: rgba(128, 128, 128, 0.35);"
             "}"
             "#AttributeTableToolbar QPushButton:checked {"
-            "  background-color: #094771;"
-            "  border-color: #007acc;"
-            "  color: #ffffff;"
+            "  background-color: rgba(0, 122, 204, 0.25);"
+            "  border: 1px solid #007acc;"
             "}"
             "#AttributeTableToolbar QPushButton:disabled {"
-            "  background-color: #1e1e1e;"
-            "  border-color: #2d2d2d;"
-            "  color: #555555;"
+            "  background-color: transparent;"
+            "  border: 1px solid transparent;"
             "}"
             "#AttributeTableToolbar QPushButton#btn_del:hover:enabled {"
-            "  background-color: rgba(239, 68, 68, 0.25);"
-            "  border-color: #ef4444;"
-            "  color: #ef4444;"
+            "  background-color: rgba(239, 68, 68, 0.2);"
+            "  border: 1px solid rgba(239, 68, 68, 0.4);"
             "}"
             "#AttributeTableToolbar QPushButton#btn_close {"
             "  border: 1px solid transparent;"
             "  font-weight: bold;"
             "  font-size: 13px;"
-            "  color: #858585;"
             "}"
             "#AttributeTableToolbar QPushButton#btn_close:hover {"
             "  background-color: rgba(239, 68, 68, 0.2);"
-            "  color: #ef4444;"
             "  border: 1px solid rgba(239, 68, 68, 0.4);"
             "}"
         )

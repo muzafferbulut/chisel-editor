@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QLabel, QApplication, QTabWidget, QProgressBar, QPushButton,
     QWidget, QHBoxLayout, QSplitter
 )
-from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QKeySequence
+from PyQt6.QtGui import QAction, QActionGroup, QDragEnterEvent, QDropEvent, QKeySequence
 from PyQt6.QtCore import Qt, QSettings, QTimer
 
 from handlers.factory import HandlerFactory
@@ -307,12 +307,17 @@ class MainWindow(QMainWindow):
 
         view_menu.addSeparator()
         theme_menu: QMenu = view_menu.addMenu("Theme")
-        act_light = QAction("Light", self)
-        act_dark = QAction("Dark", self)
-        act_light.triggered.connect(lambda: self._change_theme("light"))
-        act_dark.triggered.connect(lambda: self._change_theme("dark"))
-        theme_menu.addAction(act_light)
-        theme_menu.addAction(act_dark)
+        self.theme_action_group = QActionGroup(self)
+        self.theme_action_group.setExclusive(True)
+
+        for theme_key, theme_label in ThemeManager.AVAILABLE_THEMES.items():
+            act = QAction(theme_label, self)
+            act.setCheckable(True)
+            if theme_key == ThemeManager._current_theme:
+                act.setChecked(True)
+            act.triggered.connect(lambda checked, tk=theme_key: self._change_theme(tk))
+            self.theme_action_group.addAction(act)
+            theme_menu.addAction(act)
 
         # --- GIS / Spatial Menu ---
         gis_menu: QMenu = menu_bar.addMenu("GIS")
@@ -828,11 +833,17 @@ class MainWindow(QMainWindow):
 
     def _change_theme(self, theme_name: str):
         ThemeManager.apply_theme(QApplication.instance(), theme_name)
-        self.shared_map_panel.set_theme_tiles(theme_name)
+        if hasattr(self, "shared_map_panel") and self.shared_map_panel:
+            self.shared_map_panel.set_theme_tiles(theme_name)
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
             if tab:
-                tab.text_editor.setTheme(theme_name)
+                if hasattr(tab, "text_editor") and tab.text_editor:
+                    tab.text_editor.setTheme(theme_name)
+                if hasattr(tab, "map_panel") and tab.map_panel:
+                    tab.map_panel.set_theme_tiles(theme_name)
+        settings = QSettings("ChiselEditor", "ChiselEditor")
+        settings.setValue("current_theme", theme_name)
 
     def _show_shortcuts(self):
         QMessageBox.information(

@@ -12,7 +12,7 @@ class ToastNotification(QWidget):
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        is_dark = ThemeManager._current_theme == "dark"
+        is_dark = ThemeManager.is_dark()
         bg_color = "#333333" if is_dark else "#24292e"
         text_color = "#ffffff"
         border_color = {

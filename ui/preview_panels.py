@@ -523,7 +523,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }}
                 }}
 
-                var currentBase = '{theme}' === 'dark' ? 'dark' : 'osm';
+                var currentBase = '{'dark' if ThemeManager.is_dark(theme) else 'osm'}';
                 if (freeTiles[currentBase]) freeTiles[currentBase].addTo(map);
                 applyTileFilter(currentBase);
                 updateActiveBaseButton(currentBase);
@@ -1986,7 +1986,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
     def set_theme_tiles(self, theme_name: str):
         if self._is_loaded:
-            tile_key = 'dark' if theme_name == 'dark' else 'light'
+            tile_key = 'dark' if ThemeManager.is_dark(theme_name) else 'osm'
             self.web_view.page().runJavaScript(f"setBaseMap('{tile_key}');")
 
     def set_table_active(self, active: bool):
@@ -2000,7 +2000,7 @@ class MarkdownPreviewPanel(AbstractPreviewPanel):
     def render_content(self, content: str):
         try:
             raw_html = markdown.markdown(content, extensions=['extra', 'codehilite', 'tables'])
-            is_dark = ThemeManager._current_theme == "dark"
+            is_dark = ThemeManager.is_dark()
             bg_color = "#1e1e1e" if is_dark else "#ffffff"
             text_color = "#cccccc" if is_dark else "#24292e"
             code_bg = "#2d2d2d" if is_dark else "#f6f8fa"
