@@ -376,6 +376,36 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     color: #ff5252;
                     background: rgba(231, 76, 60, 0.2);
                 }}
+                .hud-layer-tag {{
+                    font-size: 9px;
+                    font-weight: 700;
+                    padding: 1px 4px;
+                    border-radius: 3px;
+                    letter-spacing: 0.3px;
+                    flex-shrink: 0;
+                    line-height: 1.2;
+                }}
+                .hud-layer-tag.wfs-tag {{
+                    background: rgba(46, 204, 113, 0.2);
+                    color: #2ecc71;
+                    border: 1px solid rgba(46, 204, 113, 0.4);
+                }}
+                .hud-layer-tag.wms-tag {{
+                    background: rgba(56, 189, 248, 0.2);
+                    color: #38bdf8;
+                    border: 1px solid rgba(56, 189, 248, 0.4);
+                }}
+                .hud-layers-section-header {{
+                    font-size: 10px;
+                    font-weight: 700;
+                    color: #858585;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    padding: 5px 2px 2px 2px;
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                }}
                 .hud-flyout-btn {{
                     background: rgba(255, 255, 255, 0.1);
                     border: 1px solid rgba(255, 255, 255, 0.15);
@@ -445,7 +475,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                                 <span>🗂️ Katmanlar</span>
                                 <span id="layerTotalCountBadge" class="hud-layer-count-badge">0</span>
                             </span>
-                            <button class="hud-layers-add-btn" onclick="requestAddService()" title="WMS / WFS Servisi Ekle">+ WMS</button>
+                            <button class="hud-layers-add-btn" onclick="requestAddService()" title="WMS / WFS Servisi ve Altlık Harita Ekle">+ WMS & WFS</button>
                         </div>
                         <div class="hud-layers-list" id="layersListContainer">
                             <div style="color: #858585; font-size: 11px; padding: 6px 2px; text-align: center;">(Katman yok)</div>
@@ -476,19 +506,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 <div class="hud-vdivider"></div>
                 
                 <button class="hud-vbtn" id="btnMeasure" onclick="toggleMeasure()" data-tip="Mesafe / Alan Ölçümü" title="Ölçüm">📏</button>
-                
-                <div class="hud-vdivider"></div>
-                
-                <div style="position: relative;">
-                    <button class="hud-vbtn" id="btnBasemap" onclick="toggleBasemapFlyout()" data-tip="Altlık Harita Değiştir" title="Altlık Harita">🗺️</button>
-                    <div class="hud-flyout" id="basemapFlyout">
-                        <button class="hud-flyout-btn active" id="btnOsm" onclick="setBaseMap('osm')" title="OpenStreetMap">OSM</button>
-                        <button class="hud-flyout-btn" id="btnSat" onclick="setBaseMap('sat')" title="Esri Uydu">Uydu</button>
-                        <button class="hud-flyout-btn" id="btnTopo" onclick="setBaseMap('topo')" title="OpenTopoMap">Topo</button>
-                        <button class="hud-flyout-btn" id="btnDark" onclick="setBaseMap('dark')" title="Karanlık Mod">Koyu</button>
-                        <button class="hud-flyout-btn" id="btnNone" onclick="setBaseMap('none')" title="Boş Zemin">Yok</button>
-                    </div>
-                </div>
             </div>
 
             <script>
@@ -520,10 +537,9 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }}
                 }}
 
-                var currentBase = '{'dark' if ThemeManager.is_dark(theme) else 'osm'}';
+                var currentBase = 'osm';
                 if (freeTiles[currentBase]) freeTiles[currentBase].addTo(map);
                 applyTileFilter(currentBase);
-                updateActiveBaseButton(currentBase);
 
                 function setBaseMap(type) {{
                     if (freeTiles[currentBase]) map.removeLayer(freeTiles[currentBase]);
@@ -531,18 +547,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     if (freeTiles[type]) freeTiles[type].addTo(map);
                     applyTileFilter(type);
                     bringVectorsToFront();
-                    updateActiveBaseButton(type);
-                }}
-
-                function updateActiveBaseButton(type) {{
-                    ['btnOsm', 'btnSat', 'btnTopo', 'btnDark', 'btnNone'].forEach(id => {{
-                        var btn = document.getElementById(id);
-                        if (btn) btn.classList.remove('active');
-                    }});
-                    var mapBtn = {{ osm: 'btnOsm', sat: 'btnSat', topo: 'btnTopo', dark: 'btnDark', none: 'btnNone' }}[type];
-                    if (mapBtn && document.getElementById(mapBtn)) {{
-                        document.getElementById(mapBtn).classList.add('active');
-                    }}
                 }}
 
                 var geojsonLayer = null;
@@ -604,8 +608,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 function toggleLayersFlyout() {{
                     var lFlyout = document.getElementById('layersFlyout');
-                    var bFlyout = document.getElementById('basemapFlyout');
-                    if (bFlyout) bFlyout.classList.remove('open');
                     var isOpen = false;
                     if (lFlyout) {{
                         isOpen = lFlyout.classList.toggle('open');
@@ -615,19 +617,8 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     if (isOpen) renderLayersPanel();
                 }}
 
-                function toggleBasemapFlyout() {{
-                    var bFlyout = document.getElementById('basemapFlyout');
-                    var lFlyout = document.getElementById('layersFlyout');
-                    if (lFlyout) lFlyout.classList.remove('open');
-                    var btnL = document.getElementById('btnLayers');
-                    if (btnL) btnL.classList.remove('active');
-                    if (bFlyout) bFlyout.classList.toggle('open');
-                }}
-
                 function closeAllFlyouts() {{
-                    var bFlyout = document.getElementById('basemapFlyout');
                     var lFlyout = document.getElementById('layersFlyout');
-                    if (bFlyout) bFlyout.classList.remove('open');
                     if (lFlyout) lFlyout.classList.remove('open');
                     var btnL = document.getElementById('btnLayers');
                     if (btnL) btnL.classList.remove('active');
@@ -712,42 +703,51 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     if (badge) badge.innerText = totalCount;
 
                     if (totalCount === 0) {{
-                        container.innerHTML = '<div style="color: #858585; font-size: 11px; padding: 8px 4px; text-align: center;">(Katman yok)</div>';
+                        container.innerHTML = '<div style="color: #858585; font-size: 11px; padding: 8px 4px; text-align: center;">(Katman veya servis yok)</div>';
                         return;
                     }}
 
                     var html = '';
 
-                    // 1. Vector Layers (QGIS Layer Tree format)
-                    vKeys.forEach(function(k) {{
-                        var l = vectorLayers[k];
-                        var chk = l.visible ? 'checked' : '';
-                        var symHtml = getLayerSymbolHtml(l.geomType, l.color);
-                        var countStr = l.count > 0 ? ' <span style="color:#858585; font-size:10px;">(' + l.count.toLocaleString() + ')</span>' : '';
+                    // 1. Vector & WFS Layers (QGIS Layer Tree format)
+                    if (vKeys.length > 0) {{
+                        html += '<div class="hud-layers-section-header">📁 Vektör & WFS (' + vKeys.length + ')</div>';
+                        vKeys.forEach(function(k) {{
+                            var l = vectorLayers[k];
+                            var chk = l.visible ? 'checked' : '';
+                            var symHtml = getLayerSymbolHtml(l.geomType, l.color);
+                            var countStr = l.count > 0 ? ' <span style="color:#858585; font-size:10px;">(' + l.count.toLocaleString() + ')</span>' : '';
+                            var isWfs = (l.isWfs || (l.name && (l.name.indexOf('(WFS)') !== -1 || l.name.indexOf('[WFS]') !== -1 || l.name.indexOf('WFS') !== -1)));
+                            var tagHtml = isWfs ? '<span class="hud-layer-tag wfs-tag" title="WFS Servisi">WFS</span> ' : '';
 
-                        html += 
-                            '<div class="hud-layer-item' + (l.isActive ? ' active-layer' : '') + '" onclick="requestSetActiveLayer(\\x27' + l.id + '\\x27)" title="' + l.name + (l.isActive ? ' (Aktif)' : '') + '">' +
-                            '<input type="checkbox" ' + chk + ' onclick="event.stopPropagation();" onchange="setVectorLayerVisibility(\\x27' + l.id + '\\x27, this.checked)" title="Görünürlük"/>' +
-                            symHtml +
-                            '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; font-size:11px;' + (l.isActive ? ' font-weight:600; color:#4cc2ff;' : '') + '">' + l.name + countStr + '</span>' +
-                            '<button class="hud-layer-btn-del" onclick="event.stopPropagation(); removeVectorLayerUi(\\x27' + l.id + '\\x27)" title="Katmanı Kaldır">✕</button>' +
-                            '</div>';
-                    }});
+                            html += 
+                                '<div class="hud-layer-item' + (l.isActive ? ' active-layer' : '') + '" onclick="requestSetActiveLayer(\\x27' + l.id + '\\x27)" title="' + l.name + (l.isActive ? ' (Aktif)' : '') + '">' +
+                                '<input type="checkbox" ' + chk + ' onclick="event.stopPropagation();" onchange="setVectorLayerVisibility(\\x27' + l.id + '\\x27, this.checked)" title="Görünürlük"/>' +
+                                symHtml +
+                                tagHtml +
+                                '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; font-size:11px;' + (l.isActive ? ' font-weight:600; color:#4cc2ff;' : '') + '">' + l.name + countStr + '</span>' +
+                                '<button class="hud-layer-btn-del" onclick="event.stopPropagation(); removeVectorLayerUi(\\x27' + l.id + '\\x27)" title="Katmanı Kaldır">✕</button>' +
+                                '</div>';
+                        }});
+                    }}
 
-                    // 2. Web Services (WMS) - only rendered if any added
+                    // 2. Web Services (WMS & Altlık Servisleri)
                     if (wKeys.length > 0) {{
                         if (vKeys.length > 0) {{
-                            html += '<div style="height:1px; background:rgba(255,255,255,0.08); margin:4px 0;"></div>';
+                            html += '<div style="height:1px; background:rgba(255,255,255,0.08); margin:6px 0 4px 0;"></div>';
                         }}
+                        html += '<div class="hud-layers-section-header">🌐 WMS & Servisler (' + wKeys.length + ')</div>';
                         wKeys.forEach(function(k) {{
                             var layer = wmsRegistry[k];
                             var chk = layer.visible ? 'checked' : '';
                             var title = layer.title || layer.layerName;
                             var wmsSym = getWmsSymbolHtml();
+                            var tagHtml = '<span class="hud-layer-tag wms-tag" title="WMS / Harita Servisi">WMS</span> ';
                             html += 
                                 '<div class="hud-layer-item" title="' + title + '">' +
                                 '<input type="checkbox" ' + chk + ' onclick="event.stopPropagation();" onchange="toggleWmsVisibility(\\x27' + layer.id + '\\x27, this.checked)" title="Görünürlük"/>' +
                                 wmsSym +
+                                tagHtml +
                                 '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; font-size:11px;">' + title + '</span>' +
                                 '<button class="hud-layer-btn-del" onclick="event.stopPropagation(); removeWms(\\x27' + layer.id + '\\x27)" title="Servisi Kaldır">✕</button>' +
                                 '</div>';
@@ -757,15 +757,21 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     container.innerHTML = html;
                 }}
 
-                // --- WMS Layer Management ---
+                // --- WMS & XYZ Tile Layer Management ---
                 function addWmsLayer(layerId, url, layers, format, transparent, title) {{
                     if (wmsLayers[layerId]) map.removeLayer(wmsLayers[layerId]);
-                    wmsLayers[layerId] = L.tileLayer.wms(url, {{
-                        layers: layers,
-                        format: format || 'image/png',
-                        transparent: transparent !== false,
-                        maxZoom: 20
-                    }}).addTo(map);
+                    if (url.indexOf('{{z}}') !== -1) {{
+                        wmsLayers[layerId] = L.tileLayer(url, {{
+                            maxZoom: 20
+                        }}).addTo(map);
+                    }} else {{
+                        wmsLayers[layerId] = L.tileLayer.wms(url, {{
+                            layers: layers,
+                            format: format || 'image/png',
+                            transparent: transparent !== false,
+                            maxZoom: 20
+                        }}).addTo(map);
+                    }}
                     wmsRegistry[layerId] = {{
                         id: layerId,
                         title: title || layers,
@@ -1787,9 +1793,10 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     return {{ leafletLayer: lLayer, indexMap: indexMap }};
                 }}
 
-                function setVectorLayer(layerId, name, geojsonData, isActive, geomType, color, fitBounds) {{
+                function setVectorLayer(layerId, name, geojsonData, isActive, geomType, color, fitBounds, isWfs) {{
                     if (!layerId) layerId = 'default';
                     name = name || 'Mekansal Katman';
+                    var isWfsLayer = !!isWfs || (name && (name.indexOf('(WFS)') !== -1 || name.indexOf('[WFS]') !== -1 || name.indexOf('WFS') !== -1));
 
                     var prevVisible = true;
                     var assignedColor = color;
@@ -1851,13 +1858,21 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         isActive: !!isActive,
                         leafletLayer: lGeojson,
                         geojsonData: geojsonData,
-                        indexMap: lIndexMap
+                        indexMap: lIndexMap,
+                        isWfs: isWfsLayer
                     }};
 
                     if (isActive) {{
                         setActiveVectorLayer(layerId, detectedGeom);
                     }} else {{
                         renderLayersPanel();
+                    }}
+
+                    var lFlyout = document.getElementById('layersFlyout');
+                    var btnL = document.getElementById('btnLayers');
+                    if (lFlyout && !lFlyout.classList.contains('open')) {{
+                        lFlyout.classList.add('open');
+                        if (btnL) btnL.classList.add('active');
                     }}
 
                     if (fitBounds === true) {{
@@ -2060,13 +2075,19 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 self._pending_content = None
             if getattr(self, '_pending_vector_layers', None):
                 last_fit_layer = None
-                for lid, (lname, lgjson, lia, lgt, lcol, lfb) in list(self._pending_vector_layers.items()):
-                    self.set_vector_layer(lid, lname, lgjson, lia, lgt, lcol, lfb)
+                for lid, item in list(self._pending_vector_layers.items()):
+                    lname, lgjson, lia, lgt, lcol, lfb = item[:6]
+                    lwfs = item[6] if len(item) > 6 else False
+                    self.set_vector_layer(lid, lname, lgjson, lia, lgt, lcol, lfb, lwfs)
                     if lfb:
                         last_fit_layer = lid
                 self._pending_vector_layers.clear()
                 if last_fit_layer:
                     self.fit_bounds(last_fit_layer)
+            if getattr(self, '_pending_wms_layers', None):
+                for wid, (wurl, wlayer, wfmt, wtrans, wtitle) in list(self._pending_wms_layers.items()):
+                    self.add_wms_layer(wid, wurl, wlayer, wfmt, wtrans, wtitle)
+                self._pending_wms_layers.clear()
             if getattr(self, '_pending_active_layer', None):
                 lid, lgt = self._pending_active_layer
                 self.set_active_vector_layer(lid, lgt)
@@ -2078,8 +2099,11 @@ class MapPreviewPanel(AbstractPreviewPanel):
             if getattr(self, '_pending_geom_type', None):
                 self.set_layer_geometry_type(self._pending_geom_type)
                 self._pending_geom_type = None
+            if getattr(self, '_pending_basemap', None):
+                self.set_basemap(self._pending_basemap)
+                self._pending_basemap = None
 
-    def set_vector_layer(self, layer_id: str, name: str, geojson_str: str, is_active: bool = True, geom_type: str = "any", color: str = None, fit_bounds: bool = False):
+    def set_vector_layer(self, layer_id: str, name: str, geojson_str: str, is_active: bool = True, geom_type: str = "any", color: str = None, fit_bounds: bool = False, is_wfs: bool = False):
         if not geojson_str or not geojson_str.strip():
             return
         if self._is_loaded:
@@ -2089,12 +2113,13 @@ class MapPreviewPanel(AbstractPreviewPanel):
             esc_color = json.dumps(color) if color else "null"
             act_str = "true" if is_active else "false"
             fit_str = "true" if fit_bounds else "false"
-            js_code = f"setVectorLayer({esc_id}, {esc_name}, {geojson_str}, {act_str}, {esc_type}, {esc_color}, {fit_str});"
+            wfs_str = "true" if is_wfs else "false"
+            js_code = f"setVectorLayer({esc_id}, {esc_name}, {geojson_str}, {act_str}, {esc_type}, {esc_color}, {fit_str}, {wfs_str});"
             self.web_view.page().runJavaScript(js_code)
         else:
             if not hasattr(self, '_pending_vector_layers'):
                 self._pending_vector_layers = {}
-            self._pending_vector_layers[layer_id] = (name, geojson_str, is_active, geom_type, color, fit_bounds)
+            self._pending_vector_layers[layer_id] = (name, geojson_str, is_active, geom_type, color, fit_bounds, is_wfs)
 
     def update_vector_layer_data(self, layer_id: str, geojson_str: str, name: str = None, geom_type: str = "any"):
         if not geojson_str or not geojson_str.strip():
@@ -2226,17 +2251,31 @@ class MapPreviewPanel(AbstractPreviewPanel):
             esc_title = json.dumps(title or layer_name)
             trans_str = "true" if transparent else "false"
             self.web_view.page().runJavaScript(f"addWmsLayer({esc_id}, {esc_url}, {esc_layer}, {esc_fmt}, {trans_str}, {esc_title});")
+        else:
+            if not hasattr(self, '_pending_wms_layers'):
+                self._pending_wms_layers = {}
+            self._pending_wms_layers[layer_id] = (url, layer_name, fmt, transparent, title)
 
     def remove_wms_layer(self, layer_id: str):
         if self._is_loaded:
             esc_id = json.dumps(layer_id)
             self.web_view.page().runJavaScript(f"removeWmsLayer({esc_id});")
+        else:
+            if hasattr(self, '_pending_wms_layers') and layer_id in self._pending_wms_layers:
+                del self._pending_wms_layers[layer_id]
 
     def set_wms_visibility(self, layer_id: str, visible: bool):
         if self._is_loaded:
             esc_id = json.dumps(layer_id)
             vis_str = "true" if visible else "false"
             self.web_view.page().runJavaScript(f"setWmsVisibility({esc_id}, {vis_str});")
+
+    def set_basemap(self, base_type: str):
+        if self._is_loaded:
+            esc_type = json.dumps(base_type)
+            self.web_view.page().runJavaScript(f"setBaseMap({esc_type});")
+        else:
+            self._pending_basemap = base_type
 
     def set_theme_tiles(self, theme_name: str):
         if self._is_loaded:

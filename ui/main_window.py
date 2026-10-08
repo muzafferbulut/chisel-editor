@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QLabel, QApplication, QTabWidget, QProgressBar, QPushButton,
     QWidget, QHBoxLayout, QSplitter
 )
-from PyQt6.QtGui import QAction, QActionGroup, QDragEnterEvent, QDropEvent, QKeySequence
+from PyQt6.QtGui import QAction, QActionGroup, QDragEnterEvent, QDropEvent, QKeySequence, QCursor
 from PyQt6.QtCore import Qt, QSettings, QTimer
 
 from handlers.factory import HandlerFactory
@@ -43,7 +43,7 @@ class MainWindow(QMainWindow):
         self.shared_map_panel.selection_changed.connect(self._on_map_selection_changed)
         self.shared_map_panel.selection_deleted.connect(self._on_map_selection_deleted)
         self.shared_map_panel.table_toggle_requested.connect(self._on_map_table_toggle_requested)
-        self.shared_map_panel.service_add_requested.connect(self._show_wms_dialog)
+        self.shared_map_panel.service_add_requested.connect(self._show_service_menu)
         self.shared_map_panel.wms_deleted.connect(self._on_wms_remove_requested)
         self.shared_map_panel.active_layer_requested.connect(self._on_active_layer_requested)
         self.shared_map_panel.layer_removed.connect(self._on_map_layer_removed)
@@ -328,11 +328,25 @@ class MainWindow(QMainWindow):
         # --- GIS / Spatial Menu ---
         gis_menu: QMenu = menu_bar.addMenu("GIS")
 
-        # Servis Ekle Submenu
-        service_menu = gis_menu.addMenu("🌐 Servis Ekle")
-        act_wms = QAction("🗺️ WMS Katmanı Ekle...", self)
+        # Servis & Altlık Harita Submenu
+        service_menu = gis_menu.addMenu("🌐 Servis & Altlık Harita")
+        
+        basemap_submenu = service_menu.addMenu("🗺️ Altlık Servisi Ekle")
+        act_b_osm = basemap_submenu.addAction("🗺️ OpenStreetMap (Varsayılan OSM)")
+        act_b_osm.triggered.connect(lambda: self._add_preset_service("osm"))
+        act_b_sat = basemap_submenu.addAction("🛰️ Esri Dünya Uydu (Satellite)")
+        act_b_sat.triggered.connect(lambda: self._add_preset_service("sat"))
+        act_b_topo = basemap_submenu.addAction("🏔️ OpenTopoMap Topoğrafik")
+        act_b_topo.triggered.connect(lambda: self._add_preset_service("topo"))
+        act_b_dark = basemap_submenu.addAction("🌙 CartoDB / Koyu Mod")
+        act_b_dark.triggered.connect(lambda: self._add_preset_service("dark"))
+        act_b_none = basemap_submenu.addAction("🚫 Altlık Yok (Boş Zemin)")
+        act_b_none.triggered.connect(self._clear_all_basemaps)
+
+        service_menu.addSeparator()
+        act_wms = QAction("🌐 WMS Katmanı Ekle...", self)
         act_wms.triggered.connect(self._show_wms_dialog)
-        act_wfs = QAction("📡 WFS Katmanı Ekle...", self)
+        act_wfs = QAction("📡 WFS Katmanı İndir...", self)
         act_wfs.triggered.connect(self._show_wfs_dialog)
         service_menu.addAction(act_wms)
         service_menu.addAction(act_wfs)
@@ -413,7 +427,7 @@ class MainWindow(QMainWindow):
         tab.text_editor.cursorPositionChanged.connect(self._update_cursor_info)
         tab.text_editor.file_dropped.connect(self._handle_file_drop)
         tab.state_changed.connect(lambda: self._on_tab_state_changed(tab))
-        tab.service_add_requested.connect(self._show_wms_dialog)
+        tab.service_add_requested.connect(self._show_service_menu)
         tab.wms_deleted.connect(self._on_wms_remove_requested)
 
         idx = self.tab_widget.addTab(tab, tab.get_title())
@@ -744,24 +758,94 @@ class MainWindow(QMainWindow):
         except Exception as e:
             ToastNotification.show_toast(self, f"Kaydetme hatası: {str(e)}", "error")
 
-    # --- WMS & WFS Service Integrations ---
-    def _show_wms_dialog(self):
-        tab = self._get_current_tab()
-        if not tab:
+    # --- WMS, WFS & Basemap Service Integrations ---
+    PRESET_BASEMAP_URLS = {
+        "sat": ("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", "esri_satellite", "🛰️ Esri Dünya Uydu (Satellite)"),
+        "topo": ("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", "opentopomap", "🏔️ OpenTopoMap Topoğrafik"),
+        "dark": ("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", "cartodb_dark", "🌙 CartoDB Koyu Mod"),
+        "osm": ("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", "osm", "🗺️ OpenStreetMap (Varsayılan OSM)"),
+    }
+
+    def _ensure_spatial_tab(self):
+        spatial_tab = self._find_spatial_tab()
+        if spatial_tab is not None:
+            self.tab_widget.setCurrentWidget(spatial_tab)
+            if not spatial_tab.is_spatial:
+                spatial_tab.is_spatial = True
+            spatial_tab.set_view_mode("map")
+            return spatial_tab
+
+        curr = self._get_current_tab()
+        if curr and curr.current_file is None and not curr.is_dirty and not curr.is_spatial:
+            tab = curr
+        else:
             tab = self._add_new_tab()
 
+        tab.is_spatial = True
+        tab.file_type = "Mekansal Katman"
+        tab.set_view_mode("map")
+        self._update_tab_title(tab)
+        self.tab_widget.setCurrentWidget(tab)
+        return tab
+
+    def _add_preset_service(self, key: str):
+        if key not in self.PRESET_BASEMAP_URLS:
+            return
+        url, layer_name, title = self.PRESET_BASEMAP_URLS[key]
+        layer_id = f"service_{key}"
+        self._ensure_spatial_tab()
+        self.shared_map_panel.add_wms_layer(layer_id, url, layer_name, title=title)
+        ToastNotification.show_toast(self, f"Servis Eklendi: {title}", "info")
+
+    def _clear_all_basemaps(self):
+        for key in self.PRESET_BASEMAP_URLS:
+            self.shared_map_panel.remove_wms_layer(f"service_{key}")
+        self.shared_map_panel.set_basemap("none")
+        ToastNotification.show_toast(self, "Altlıklar Temizlendi", "info")
+
+    def _show_service_menu(self):
+        self._ensure_spatial_tab()
+        menu = QMenu(self)
+
+        # Altlık & Servis Seçenekleri
+        menu.addSection("🗺️ Altlık & Harita Servisleri")
+        act_osm = menu.addAction("🗺️ OpenStreetMap (Varsayılan OSM)")
+        act_osm.triggered.connect(lambda: self._add_preset_service("osm"))
+
+        act_sat = menu.addAction("🛰️ Esri Dünya Uydu (Satellite)")
+        act_sat.triggered.connect(lambda: self._add_preset_service("sat"))
+
+        act_topo = menu.addAction("🏔️ OpenTopoMap Topoğrafik (Topo)")
+        act_topo.triggered.connect(lambda: self._add_preset_service("topo"))
+
+        act_dark = menu.addAction("🌙 CartoDB / Koyu Mod (Dark)")
+        act_dark.triggered.connect(lambda: self._add_preset_service("dark"))
+
+        menu.addSeparator()
+        menu.addSection("🌐 Web Servisleri (OGC)")
+        act_wms = menu.addAction("🗺️ Özel WMS Katmanı Ekle...")
+        act_wms.triggered.connect(self._show_wms_dialog)
+
+        act_wfs = menu.addAction("📡 WFS Vektör Katmanı İndir...")
+        act_wfs.triggered.connect(self._show_wfs_dialog)
+
+        menu.addSeparator()
+        act_none = menu.addAction("🚫 Altlık Haritayı Kaldır (Boş Zemin)")
+        act_none.triggered.connect(self._clear_all_basemaps)
+
+        menu.exec(QCursor.pos())
+
+    def _show_wms_dialog(self):
+        self._ensure_spatial_tab()
         dlg = WMSDialog(self)
         if dlg.exec():
             layer_id = f"wms_{self._wms_counter}"
             self._wms_counter += 1
             self.shared_map_panel.add_wms_layer(layer_id, dlg.wms_url, dlg.layer_name, dlg.format, dlg.transparent, title=dlg.title)
-            # Ensure map is visible
-            if not tab.is_spatial and not tab.right_stack.isVisible():
-                tab.attach_map_panel(self.shared_map_panel)
-                tab.set_view_mode("code_map")
             ToastNotification.show_toast(self, f"WMS Katmanı Eklendi: {dlg.title}", "info")
 
     def _show_wfs_dialog(self):
+        self._ensure_spatial_tab()
         dlg = WFSDialog(self)
         if dlg.exec():
             self.progress_bar.show()
@@ -776,8 +860,12 @@ class MainWindow(QMainWindow):
             return
 
         if gdf is not None and not gdf.empty:
-            self._on_file_loaded(f"{layer_name}.geojson", "", True, gdf, None)
-            ToastNotification.show_toast(self, f"WFS Katmanı İndirildi: {len(gdf):,} özellik", "info")
+            spatial_tab = self._ensure_spatial_tab()
+            wfs_title = f"{layer_name} (WFS)"
+            spatial_tab.add_spatial_layer(file_path=None, gdf=gdf, custom_name=wfs_title, is_wfs=True)
+            self._update_tab_title(spatial_tab)
+            QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(spatial_tab.layer_id))
+            ToastNotification.show_toast(self, f"WFS Katmanı Eklendi: {wfs_title} ({len(gdf):,} özellik)", "info")
 
     def _on_wms_visibility_changed(self, layer_id: str, visible: bool):
         self.shared_map_panel.set_wms_visibility(layer_id, visible)

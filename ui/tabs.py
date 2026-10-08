@@ -194,7 +194,7 @@ class EditorTab(QWidget):
                 return True
         return False
 
-    def add_spatial_layer(self, file_path: str, gdf: gpd.GeoDataFrame, raw_geojson: str = None) -> str:
+    def add_spatial_layer(self, file_path: str, gdf: gpd.GeoDataFrame, raw_geojson: str = None, custom_name: str = None, is_wfs: bool = False) -> str:
         self.is_spatial = True
         self.file_type = "Mekansal Katman"
 
@@ -205,7 +205,7 @@ class EditorTab(QWidget):
                     self.set_active_layer(lid)
                     return lid
 
-        layer_name = os.path.basename(file_path) if file_path else f"Katman {len(self.spatial_layers) + 1}"
+        layer_name = custom_name or (os.path.basename(file_path) if file_path else f"Katman {len(self.spatial_layers) + 1}")
         layer_id = f"layer_{uuid.uuid4().hex[:8]}"
 
         feat_count = len(gdf) if gdf is not None else 0
@@ -220,6 +220,7 @@ class EditorTab(QWidget):
             "geom_type": geom_type,
             "is_large": is_large,
             "is_dirty": False,
+            "is_wfs": is_wfs,
         }
 
         self._is_loading = True
@@ -238,7 +239,8 @@ class EditorTab(QWidget):
                 geojson_str=render_geojson,
                 is_active=True,
                 geom_type=geom_type,
-                fit_bounds=True
+                fit_bounds=True,
+                is_wfs=is_wfs
             )
 
         self._is_loading = False

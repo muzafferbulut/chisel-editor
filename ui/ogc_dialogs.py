@@ -11,7 +11,10 @@ class WMSDialog(QDialog):
     Includes verified free public WMS server presets.
     """
     PRESETS = [
-        ("Terrestris OpenStreetMap WMS (Free Global)", "https://ows.terrestris.de/osm/service", "OSM-WMS"),
+        ("🛰️ Esri Dünya Uydu Görüntüsü (Satellite)", "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", "esri_satellite"),
+        ("🏔️ OpenTopoMap Topoğrafik Harita (Topo)", "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", "opentopomap"),
+        ("🌙 CartoDB Koyu Mod (Dark Basemap)", "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", "cartodb_dark"),
+        ("🗺️ Terrestris OpenStreetMap WMS (Free Global)", "https://ows.terrestris.de/osm/service", "OSM-WMS"),
         ("Terrestris Topographic OSM WMS (Free)", "https://ows.terrestris.de/osm/service", "TOPO-WMS"),
         ("Terrestris Grayscale OSM WMS (Free)", "https://ows.terrestris.de/osm/service", "OSM-Overlay-WMS"),
         ("Mundialis Global Shaded Relief WMS (Free)", "https://ows.mundialis.de/services/service", "SRTM30-Colored")
