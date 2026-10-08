@@ -23,12 +23,8 @@ class FileLoadWorker(QThread):
             if handler.is_spatial and hasattr(handler, 'read_gdf'):
                 gdf = handler.read_gdf(self.file_path, **self.kwargs)
                 clean_gdf = SpatialOps.sanitize_gdf_for_json(gdf)
-                # Performance Optimization: Avoid serializing 100k+ rows to JSON
-                if len(clean_gdf) <= 3000:
-                    content = clean_gdf.to_json()
-                else:
-                    content = SpatialOps.to_geojson_str(clean_gdf.iloc[:50])
-                self.finished.emit(self.file_path, content, True, clean_gdf, "")
+                # Spatial data is rendered visually (Map + Attribute Table) - no raw JSON serialization needed
+                self.finished.emit(self.file_path, "", True, clean_gdf, "")
             else:
                 content = handler.read(self.file_path, **self.kwargs)
                 self.finished.emit(self.file_path, content, False, None, "")

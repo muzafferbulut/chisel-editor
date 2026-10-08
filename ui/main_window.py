@@ -529,9 +529,17 @@ class MainWindow(QMainWindow):
             ToastNotification.show_toast(self, f"Açıldı: {os.path.basename(folder)}", "info")
 
     def _open_file(self):
+        filter_str = (
+            "Tüm Desteklenen Dosyalar (*.geojson *.shp *.kml *.gpkg *.fgb *.xlsx *.xls *.docx *.pdf *.csv *.txt *.md *.py *.json);;"
+            "Mekansal Katmanlar (*.geojson *.shp *.kml *.gpkg *.fgb);;"
+            "Elektronik Tablolar (*.xlsx *.xls *.csv);;"
+            "Word Belgeleri (*.docx);;"
+            "PDF Belgeleri (*.pdf);;"
+            "Kod ve Metin (*.txt *.md *.py *.json *.js *.html *.css);;"
+            "Tüm Dosyalar (*)"
+        )
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Open File", self._current_folder,
-            "All Supported Files (*.geojson *.json *.shp *.kml *.gpkg *.fgb *.csv *.txt *.md *.py);;All Files (*)"
+            self, "Dosya Aç", self._current_folder, filter_str
         )
         if file_path:
             self._load_file(file_path)
@@ -576,12 +584,19 @@ class MainWindow(QMainWindow):
         tab.is_dirty = False
 
         ext = os.path.splitext(file_path)[1].lower()
-        type_names = {
-            ".geojson": "GeoJSON", ".shp": "ESRI Shapefile", ".kml": "KML",
-            ".gpkg": "GeoPackage", ".fgb": "FlatGeobuf", ".md": "Markdown",
-            ".json": "JSON", ".py": "Python", ".csv": "CSV"
-        }
-        file_type = type_names.get(ext, "Plain Text")
+        if ext in {".xlsx", ".xls"}:
+            file_type = "Spreadsheet"
+        elif ext in {".docx", ".doc"}:
+            file_type = "Word"
+        elif ext == ".pdf":
+            file_type = "PDF"
+        else:
+            type_names = {
+                ".geojson": "GeoJSON", ".shp": "ESRI Shapefile", ".kml": "KML",
+                ".gpkg": "GeoPackage", ".fgb": "FlatGeobuf", ".md": "Markdown",
+                ".json": "JSON", ".py": "Python", ".csv": "CSV"
+            }
+            file_type = type_names.get(ext, "Plain Text")
 
         tab.configure_for_file_type(file_type, is_spatial, content, gdf=gdf)
         self._update_tab_title(tab)
@@ -615,8 +630,15 @@ class MainWindow(QMainWindow):
         tab = self._get_current_tab()
         if not tab:
             return
-        filt = "GeoJSON (*.geojson);;All Files (*)" if tab.is_spatial else "All Files (*)"
-        file_path, _ = QFileDialog.getSaveFileName(self, "Save File As", tab.current_file or self._current_folder, filt)
+        if tab.file_type == "Spreadsheet":
+            filt = "Excel Çalışma Kitabı (*.xlsx);;Tüm Dosyalar (*)"
+        elif tab.file_type == "Word":
+            filt = "Word Belgesi (*.docx);;Tüm Dosyalar (*)"
+        elif tab.is_spatial:
+            filt = "GeoJSON (*.geojson);;Tüm Dosyalar (*)"
+        else:
+            filt = "Tüm Dosyalar (*)"
+        file_path, _ = QFileDialog.getSaveFileName(self, "Farklı Kaydet", tab.current_file or self._current_folder, filt)
         if file_path:
             self._write_file(file_path)
 
@@ -625,15 +647,27 @@ class MainWindow(QMainWindow):
         if not tab:
             return
         try:
-            handler = HandlerFactory.get_handler(file_path)
-            content = tab.text_editor.toPlainText()
-            handler.write(file_path, content)
+            if tab.file_type == "Spreadsheet":
+                tab.spreadsheet_editor.save_to_file(file_path)
+            elif tab.file_type == "Word":
+                tab.document_editor.save_to_file(file_path)
+            elif tab.file_type == "PDF":
+                ToastNotification.show_toast(self, "PDF dosyaları salt okunurdur.", "info")
+                return
+            elif tab.is_spatial:
+                handler = HandlerFactory.get_handler(file_path)
+                handler.write(file_path, tab._current_gdf)
+            else:
+                handler = HandlerFactory.get_handler(file_path)
+                content = tab.text_editor.toPlainText()
+                handler.write(file_path, content)
+
             tab.current_file = file_path
             tab.is_dirty = False
             self._update_tab_title(tab)
-            ToastNotification.show_toast(self, f"Saved: {os.path.basename(file_path)}", "info")
+            ToastNotification.show_toast(self, f"Kaydedildi: {os.path.basename(file_path)}", "info")
         except Exception as e:
-            ToastNotification.show_toast(self, f"Save failed: {str(e)}", "error")
+            ToastNotification.show_toast(self, f"Kaydetme hatası: {str(e)}", "error")
 
     # --- WMS & WFS Service Integrations ---
     def _show_wms_dialog(self):
@@ -814,19 +848,21 @@ class MainWindow(QMainWindow):
 
     def _show_find(self):
         tab = self._get_current_tab()
-        if not tab or not hasattr(tab, "text_editor"):
+        if not tab or tab.is_spatial or tab.file_type in ("Spreadsheet", "Word", "PDF"):
             return
-        if tab.text_editor.isHidden():
-            tab.set_view_mode("code_map" if tab.is_spatial else "code")
-        tab.text_editor.trigger_find()
+        if hasattr(tab, "text_editor"):
+            if tab.text_editor.isHidden():
+                tab.set_view_mode("code")
+            tab.text_editor.trigger_find()
 
     def _show_replace(self):
         tab = self._get_current_tab()
-        if not tab or not hasattr(tab, "text_editor"):
+        if not tab or tab.is_spatial or tab.file_type in ("Spreadsheet", "Word", "PDF"):
             return
-        if tab.text_editor.isHidden():
-            tab.set_view_mode("code_map" if tab.is_spatial else "code")
-        tab.text_editor.trigger_replace()
+        if hasattr(tab, "text_editor"):
+            if tab.text_editor.isHidden():
+                tab.set_view_mode("code")
+            tab.text_editor.trigger_replace()
 
     def _show_find_replace(self):
         self._show_replace()

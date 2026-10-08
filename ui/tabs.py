@@ -5,6 +5,9 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from ui.editor import MonacoEditor
 from ui.preview_panels import MapPreviewPanel, MarkdownPreviewPanel
 from ui.attribute_table import AttributeTableWidget
+from ui.spreadsheet_editor import SpreadsheetEditorWidget
+from ui.document_editor import WordDocumentEditorWidget
+from ui.pdf_viewer import PdfViewerWidget
 from core.spatial_ops import SpatialOps
 
 
@@ -34,18 +37,30 @@ class EditorTab(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
 
-        # Main Splitter (Left: Code Editor, Right: Spatial / Markdown)
-        self.splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.splitter.setHandleWidth(2)
+        # Root Stack for switching between document paradigms:
+        # Index 0: Code / Markdown Splitter
+        # Index 1: Pure Spatial GIS Splitter (Map + Attribute Table)
+        # Index 2: Spreadsheet Editor (.xlsx, .xls)
+        # Index 3: Word Document Editor (.docx)
+        # Index 4: PDF Viewer (.pdf)
+        self.main_stack = QStackedWidget()
 
-        # Code Editor on the left
+        # 0. Code Editor & Markdown Container
+        self.code_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.code_splitter.setHandleWidth(2)
         self.text_editor = MonacoEditor()
-        self.splitter.addWidget(self.text_editor)
+        self.code_splitter.addWidget(self.text_editor)
 
-        # Right Container: Spatial (0) or Markdown (1)
         self.right_stack = QStackedWidget()
+        self.markdown_panel = MarkdownPreviewPanel()
+        self.right_stack.addWidget(self.markdown_panel)
+        self.code_splitter.addWidget(self.right_stack)
+        self.right_stack.hide()
 
-        # Spatial View: Vertical splitter with Map on top and Attribute Table docked at bottom
+        # Backward compatibility alias
+        self.splitter = self.code_splitter
+
+        # 1. Spatial GIS View (Vertical Splitter: Map top, Attribute Table bottom)
         self.spatial_splitter = QSplitter(Qt.Orientation.Vertical)
         self.spatial_splitter.setHandleWidth(3)
 
@@ -56,20 +71,30 @@ class EditorTab(QWidget):
         self.spatial_splitter.addWidget(self.table_panel)
         self.table_panel.hide()
 
-        self.markdown_panel = MarkdownPreviewPanel()
+        # 2. Native Interactive Spreadsheet Editor
+        self.spreadsheet_editor = SpreadsheetEditorWidget()
+        self.spreadsheet_editor.content_changed.connect(self._mark_dirty)
 
-        self.right_stack.addWidget(self.spatial_splitter)  # index 0: Spatial
-        self.right_stack.addWidget(self.markdown_panel)    # index 1: Markdown
+        # 3. Native Rich Text Word Document Editor
+        self.document_editor = WordDocumentEditorWidget()
+        self.document_editor.content_changed.connect(self._mark_dirty)
 
-        self.splitter.addWidget(self.right_stack)
-        self.splitter.setSizes([500, 650])
+        # 4. Native High-Performance PDF Reader
+        self.pdf_viewer = PdfViewerWidget()
 
-        self.layout.addWidget(self.splitter)
+        # Add all document environments to main stack
+        self.main_stack.addWidget(self.code_splitter)       # 0
+        self.main_stack.addWidget(self.spatial_splitter)    # 1
+        self.main_stack.addWidget(self.spreadsheet_editor)  # 2
+        self.main_stack.addWidget(self.document_editor)     # 3
+        self.main_stack.addWidget(self.pdf_viewer)          # 4
 
-        # Default mode for new/unopened tab: Pure code view (preview hidden)
+        self.layout.addWidget(self.main_stack)
+
+        # Default mode for initial blank tab: Code view
         self.set_view_mode("code")
 
-        # Bi-directional sync & interactions
+        # Bi-directional sync & interactions for spatial GIS
         self.table_panel.features_selected.connect(self._on_table_features_selected)
         self.table_panel.delete_requested.connect(self._on_features_deleted)
         self.table_panel.close_requested.connect(self.toggle_table)
@@ -86,7 +111,7 @@ class EditorTab(QWidget):
             self.map_panel.service_add_requested.connect(self.service_add_requested.emit)
             self.map_panel.wms_deleted.connect(self.wms_deleted.emit)
 
-        # Auto-refresh timer for code edits
+        # Auto-refresh timer for code edits (Markdown, etc.)
         self.preview_timer = QTimer()
         self.preview_timer.setSingleShot(True)
         self.preview_timer.setInterval(600)
@@ -102,9 +127,14 @@ class EditorTab(QWidget):
             self.spatial_splitter.addWidget(panel)
         panel.show()
 
+    def _mark_dirty(self):
+        if not self.is_dirty:
+            self.is_dirty = True
+            self.state_changed.emit()
+
     def set_spatial_data(self, gdf: gpd.GeoDataFrame, raw_geojson: str = None):
         self.is_spatial = True
-        self.file_type = "GeoJSON"
+        self.file_type = "Mekansal Katman"
         self._current_gdf = gdf
         feat_count = len(gdf) if gdf is not None else 0
         self._is_large_dataset = (feat_count > 3000)
@@ -115,7 +145,7 @@ class EditorTab(QWidget):
         if gdf is not None and not gdf.empty:
             self.table_panel.load_data(gdf)
 
-        # 2. Render Map via Leaflet
+        # 2. Render Map via Leaflet (No Monaco code buffering or JSON text display!)
         layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
         geom_type = SpatialOps.get_layer_geometry_type(gdf)
 
@@ -138,26 +168,9 @@ class EditorTab(QWidget):
                 fit_bounds=True
             )
 
-        # 3. Monaco Editor: Avoid freezing WebEngine by buffering large text
-        if raw_geojson is None and render_geojson:
-            raw_geojson = render_geojson
-        if raw_geojson:
-            if len(raw_geojson) < 500_000 and not self._is_large_dataset:
-                self.text_editor.setPlainText(raw_geojson)
-            else:
-                count = len(gdf) if gdf is not None else 0
-                size_mb = (len(raw_geojson) if raw_geojson else 0) / (1024 * 1024)
-                preview = (
-                    f"// Mekansal Veri: {count:,} adet geometrik özellik yüklendi ({size_mb:.1f} MB).\n"
-                    f"// QGIS Modu: R-Tree indeksleme ve dinamik LOD devrededir.\n\n"
-                    f"{raw_geojson[:1200] if raw_geojson else ''}\n\n... [Büyük veri performansı için sınırlandırıldı] ..."
-                )
-                self.text_editor.setPlainText(preview)
-            self.text_editor.setLanguage("GeoJSON")
-
         self._is_loading = False
 
-        # Open directly in full map view (user can open attribute table on demand)
+        # Open in pure map GIS view
         self.set_view_mode("map")
         if self.map_panel:
             QTimer.singleShot(120, lambda: self.map_panel.fit_bounds(self.layer_id) if self.map_panel else None)
@@ -196,10 +209,7 @@ class EditorTab(QWidget):
     def update_spatial_gdf(self, gdf: gpd.GeoDataFrame, fit_bounds: bool = False):
         self._current_gdf = gdf
         self._is_large_dataset = (len(gdf) > 3000) if gdf is not None else False
-        geojson_str = SpatialOps.to_geojson_str(gdf, indent=2)
         self._is_loading = True
-        if not self._is_large_dataset and len(geojson_str) < 500_000:
-            self.text_editor.setPlainText(geojson_str)
         self.table_panel.load_data(gdf)
         layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
         geom_type = SpatialOps.get_layer_geometry_type(gdf)
@@ -208,7 +218,7 @@ class EditorTab(QWidget):
                 init_gdf = SpatialOps.get_overview_lod(gdf, max_features=3000)
                 render_str = SpatialOps.to_geojson_str(init_gdf)
             else:
-                render_str = geojson_str
+                render_str = SpatialOps.to_geojson_str(gdf, indent=0)
             self.map_panel.set_vector_layer(
                 layer_id=self.layer_id,
                 name=layer_name,
@@ -333,9 +343,8 @@ class EditorTab(QWidget):
     def is_table_visible(self) -> bool:
         return (
             self.is_spatial
+            and self.main_stack.currentWidget() == self.spatial_splitter
             and self.table_panel.isVisible()
-            and self.right_stack.isVisible()
-            and self.right_stack.currentIndex() == 0
         )
 
     def _adjust_spatial_splitter_sizes(self):
@@ -348,56 +357,64 @@ class EditorTab(QWidget):
 
     def set_view_mode(self, mode: str):
         if mode == "code":
+            if self.is_spatial:
+                self.set_view_mode("map")
+                return
+            self.main_stack.setCurrentIndex(0)
             self.text_editor.show()
             self.right_stack.hide()
 
         elif mode == "code_map":
+            if self.is_spatial:
+                self.set_view_mode("map")
+                return
+            self.main_stack.setCurrentIndex(0)
             self.text_editor.show()
             self.right_stack.setCurrentIndex(0)
             self.right_stack.show()
-            self.map_panel.show()
-            self.table_panel.hide()
-            self.map_panel.set_table_active(False)
-            self.splitter.setSizes([500, 650])
+            self.code_splitter.setSizes([500, 650])
 
         elif mode == "table_map":
-            self.text_editor.hide()
-            self.right_stack.setCurrentIndex(0)
-            self.right_stack.show()
+            self.main_stack.setCurrentIndex(1)
             self.map_panel.show()
             self.table_panel.show()
             self.map_panel.set_table_active(True)
             self._adjust_spatial_splitter_sizes()
 
         elif mode == "map":
-            self.text_editor.hide()
-            self.right_stack.setCurrentIndex(0)
-            self.right_stack.show()
+            self.main_stack.setCurrentIndex(1)
             self.map_panel.show()
             self.table_panel.hide()
             self.map_panel.set_table_active(False)
 
         elif mode == "table":
-            self.text_editor.hide()
-            self.right_stack.setCurrentIndex(0)
-            self.right_stack.show()
+            self.main_stack.setCurrentIndex(1)
             self.map_panel.hide()
             self.table_panel.show()
             self.map_panel.set_table_active(True)
 
         elif mode == "markdown":
+            self.main_stack.setCurrentIndex(0)
             self.text_editor.show()
-            self.right_stack.setCurrentIndex(1)
+            self.right_stack.setCurrentIndex(0)
             self.right_stack.show()
-            self.splitter.setSizes([500, 500])
+            self.code_splitter.setSizes([500, 500])
+
+        elif mode == "spreadsheet":
+            self.main_stack.setCurrentIndex(2)
+
+        elif mode == "word":
+            self.main_stack.setCurrentIndex(3)
+
+        elif mode == "pdf":
+            self.main_stack.setCurrentIndex(4)
 
     def toggle_table(self):
-        """Toggles bottom attribute table under the map."""
+        """Toggles bottom attribute table under the map in spatial view."""
         if not self.is_spatial:
             return
 
-        # If spatial container is not visible, switch to spatial view with table
-        if not self.right_stack.isVisible() or self.right_stack.currentIndex() != 0:
+        if self.main_stack.currentWidget() != self.spatial_splitter:
             self.set_view_mode("table_map")
             self.state_changed.emit()
             return
@@ -437,16 +454,29 @@ class EditorTab(QWidget):
         self.file_type = file_type
         self.is_spatial = is_spatial
 
-        if is_spatial:
+        if file_type == "Spreadsheet":
+            self.set_view_mode("spreadsheet")
+            if self.current_file and os.path.exists(self.current_file):
+                self.spreadsheet_editor.load_file(self.current_file)
+        elif file_type == "Word":
+            self.set_view_mode("word")
+            if self.current_file and os.path.exists(self.current_file):
+                self.document_editor.load_file(self.current_file)
+        elif file_type == "PDF":
+            self.set_view_mode("pdf")
+            if self.current_file and os.path.exists(self.current_file):
+                self.pdf_viewer.load_file(self.current_file)
+        elif is_spatial:
             if gdf is None and content.strip():
                 try:
                     gdf = SpatialOps.parse_geojson_str(content)
                 except Exception:
                     gdf = None
-            self.set_spatial_data(gdf, content)
+            self.set_spatial_data(gdf)
         elif file_type == "Markdown":
             self.set_view_mode("markdown")
             self.markdown_panel.render_content(content)
+            self.text_editor.setPlainText(content)
         else:
             self.set_view_mode("code")
             self.text_editor.setPlainText(content)
@@ -462,27 +492,8 @@ class EditorTab(QWidget):
             self.state_changed.emit()
 
     def _refresh_preview(self):
-        content = self.text_editor.toPlainText()
-        if self.is_spatial:
-            if SpatialOps.is_valid_geojson_content(content):
-                try:
-                    gdf = SpatialOps.parse_geojson_str(content)
-                    self._current_gdf = gdf
-                    self.table_panel.load_data(gdf)
-                    layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
-                    geom_type = SpatialOps.get_layer_geometry_type(gdf)
-                    if self.map_panel:
-                        self.map_panel.set_vector_layer(
-                            layer_id=self.layer_id,
-                            name=layer_name,
-                            geojson_str=content,
-                            is_active=True,
-                            geom_type=geom_type,
-                            fit_bounds=False
-                        )
-                except Exception:
-                    pass
-        elif self.file_type == "Markdown" and self.right_stack.isVisible():
+        if self.file_type == "Markdown" and self.right_stack.isVisible():
+            content = self.text_editor.toPlainText()
             self.markdown_panel.render_content(content)
 
     def get_title(self):
