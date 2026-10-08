@@ -128,26 +128,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden;
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                 }}
-                .hud-panel {{
-                    position: absolute;
-                    background: rgba(30, 30, 30, 0.88);
-                    color: #e0e0e0;
-                    backdrop-filter: blur(8px);
-                    border: 1px solid rgba(255, 255, 255, 0.15);
-                    border-radius: 6px;
-                    padding: 5px 10px;
-                    font-size: 11px;
-                    z-index: 1000;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                    user-select: none;
-                }}
-                .hud-coords {{
-                    bottom: 12px;
-                    right: 12px;
-                    font-family: monospace;
-                    display: flex;
-                    gap: 12px;
-                }}
                 .hud-toolbar-v {{
                     position: absolute;
                     top: 14px;
@@ -204,10 +184,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     background: rgba(255, 255, 255, 0.05) !important;
                     border-color: rgba(231, 76, 60, 0.4) !important;
                     color: #888888 !important;
-                }}
-                .hud-banner.hud-banner-warn {{
-                    background: rgba(192, 57, 43, 0.95) !important;
-                    box-shadow: 0 4px 16px rgba(192, 57, 43, 0.4) !important;
                 }}
                 .hud-vbtn-del:hover {{
                     background: #d32f2f !important;
@@ -434,44 +410,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     border-color: #0078d4;
                     color: #fff;
                     font-weight: bold;
-                }}
-                .hud-banner {{
-                    position: absolute;
-                    top: 14px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    background: rgba(0, 120, 212, 0.94);
-                    color: #fff;
-                    padding: 6px 14px;
-                    border-radius: 20px;
-                    font-size: 12px;
-                    font-weight: 500;
-                    display: none;
-                    align-items: center;
-                    gap: 12px;
-                    z-index: 1005;
-                    box-shadow: 0 4px 16px rgba(0,0,0,0.35);
-                    backdrop-filter: blur(6px);
-                }}
-                .hud-banner.active {{
-                    display: flex;
-                }}
-                .hud-banner-cancel {{
-                    background: rgba(255, 255, 255, 0.2);
-                    border: none;
-                    color: #fff;
-                    padding: 2px 8px;
-                    border-radius: 10px;
-                    font-size: 11px;
-                    cursor: pointer;
-                }}
-                .hud-banner-cancel:hover {{
-                    background: rgba(255, 255, 255, 0.35);
-                .hud-stats {{
-                    top: 12px;
-                    left: 54px;
-                    font-weight: 500;
-                }}
                 .hud-slider {{
                     width: 70px;
                     cursor: pointer;
@@ -486,51 +424,10 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     font-weight: bold;
                     border: 1px solid #00a2ff;
                 }}
-                .hud-selection {{
-                    background: rgba(30, 30, 30, 0.94);
-                    border: 1px solid rgba(245, 158, 11, 0.7);
-                    color: #fbbf24;
-                    display: none;
-                    align-items: center;
-                    gap: 6px;
-                    padding: 4px 8px;
-                    font-weight: 600;
-                    border-radius: 6px;
-                    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
-                }}
-                .hud-selection-btn {{
-                    background: rgba(255, 255, 255, 0.12);
-                    border: 1px solid rgba(255, 255, 255, 0.2);
-                    color: #f1f5f9;
-                    border-radius: 3px;
-                    padding: 2px 6px;
-                    font-size: 10px;
-                    cursor: pointer;
-                    transition: all 0.15s ease;
-                }}
-                .hud-selection-btn:hover {{
-                    background: #0078d4;
-                    border-color: #4cc2ff;
-                    color: #ffffff;
-                }}
             </style>
         </head>
         <body>
             <div id="map"></div>
-
-            <div style="position: absolute; top: 12px; left: 54px; display: flex; gap: 8px; z-index: 1000; align-items: center;">
-                <div class="hud-panel hud-stats" id="statsPill" style="position: static;">Mekansal Katman</div>
-                <div class="hud-panel hud-selection" id="selectionPill" style="position: static;">
-                    <span id="selectionPillText">0 seçili</span>
-                    <button class="hud-selection-btn" onclick="zoomToSelected()" title="Seçilenlere Yakınlaş">🔍 Odaklan</button>
-                    <button class="hud-selection-btn" onclick="clearSelection()" title="Seçimi Temizle">✕ Temizle</button>
-                </div>
-            </div>
-
-            <div class="hud-banner" id="drawBanner">
-                <span id="drawBannerText">Haritaya tıklayarak nokta ekleyin</span>
-                <button class="hud-banner-cancel" onclick="cancelBanner()">İptal (Esc)</button>
-            </div>
 
             <!-- Vertical Action Toolbar on the Far Right -->
             <div class="hud-toolbar-v">
@@ -595,10 +492,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <div class="hud-panel hud-coords" id="coordsPill">
-                <span>Lat: 39.0000°</span><span>Lng: 35.0000°</span><span>Zoom: 5</span>
             </div>
 
             <script>
@@ -910,11 +803,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 // --- Map Mouse Move & Coordinate Tracking ---
                 map.on('mousemove', function(e) {{
-                    document.getElementById('coordsPill').innerHTML = 
-                        '<span>Lat: ' + e.latlng.lat.toFixed(4) + '°</span>' +
-                        '<span>Lng: ' + e.latlng.lng.toFixed(4) + '°</span>' +
-                        '<span>Zoom: ' + map.getZoom() + '</span>';
-
                     if (isBoxSelecting && boxRectLayer && boxStartLatLng) {{
                         boxRectLayer.setBounds(L.latLngBounds(boxStartLatLng, e.latlng));
                     }}
@@ -967,7 +855,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 var polyDrawLine = null;
                 var polyDrawPoly = null;
                 var selectedFeatureIndex = -1;
-                var warnBannerTimer = null;
 
                 function setLayerGeometryType(geomType) {{
                     activeLayerGeomType = (geomType || 'any').toLowerCase();
@@ -1037,16 +924,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
 
                 function showWarningBanner(msg, duration) {{
-                    var banner = document.getElementById('drawBanner');
-                    var bannerText = document.getElementById('drawBannerText');
-                    if (!banner || !bannerText) return;
-                    if (warnBannerTimer) clearTimeout(warnBannerTimer);
-
-                    bannerText.textContent = msg;
-                    banner.classList.add('active', 'hud-banner-warn');
-                    warnBannerTimer = setTimeout(function() {{
-                        banner.classList.remove('active', 'hud-banner-warn');
-                    }}, duration || 3500);
+                    console.warn(msg);
                 }}
 
                 function toggleDrawMode(mode) {{
@@ -1075,22 +953,15 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     if (mode === 'line' && bLine) bLine.classList.add('active');
                     if (mode === 'polygon' && bPoly) bPoly.classList.add('active');
 
-                    var banner = document.getElementById('drawBanner');
-                    var bannerText = document.getElementById('drawBannerText');
-                    if (banner) banner.classList.remove('hud-banner-warn');
                     if (mode === 'point') {{
-                        bannerText.textContent = '📍 Haritaya tıklayarak yeni nokta ekleyin';
                         map.getContainer().style.cursor = 'crosshair';
                     }} else if (mode === 'line') {{
-                        bannerText.textContent = '〰️ Noktaları tıklayın. Çizgiyi bitirmek için çift tıklayın';
                         map.getContainer().style.cursor = 'crosshair';
                         map.doubleClickZoom.disable();
                     }} else if (mode === 'polygon') {{
-                        bannerText.textContent = '📐 Köşeleri tıklayın. Alanı bitirmek için çift tıklayın';
                         map.getContainer().style.cursor = 'crosshair';
                         map.doubleClickZoom.disable();
                     }}
-                    if (banner) banner.classList.add('active');
                 }}
 
                 function cancelDrawMode() {{
@@ -1104,9 +975,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     if (bPoint) bPoint.classList.remove('active');
                     if (bLine) bLine.classList.remove('active');
                     if (bPoly) bPoly.classList.remove('active');
-
-                    var banner = document.getElementById('drawBanner');
-                    if (banner && selectMode !== 'box') banner.classList.remove('active', 'hud-banner-warn');
 
                     clearPolyDraw();
                 }}
@@ -1133,23 +1001,12 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     if (bClick) bClick.classList.toggle('active', mode === 'click');
                     if (bBox) bBox.classList.toggle('active', mode === 'box');
 
-                    var banner = document.getElementById('drawBanner');
-                    var bannerText = document.getElementById('drawBannerText');
-
                     if (mode === 'box') {{
                         map.dragging.disable();
                         map.getContainer().style.cursor = 'crosshair';
-                        if (banner && bannerText) {{
-                            bannerText.textContent = '⬚ Kutu ile Seçim: Dikdörtgen çizerek nesneleri seçin (Ctrl/Shift: Mevcut seçime ekler)';
-                            banner.classList.add('active');
-                            banner.classList.remove('hud-banner-warn');
-                        }}
                     }} else {{
                         map.dragging.enable();
                         map.getContainer().style.cursor = '';
-                        if (banner && !drawMode) {{
-                            banner.classList.remove('active');
-                        }}
                     }}
                 }}
 
@@ -1160,17 +1017,11 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 function updateSelectionUI() {{
                     var count = selectedIndices.size;
-                    var pill = document.getElementById('selectionPill');
-                    var pillText = document.getElementById('selectionPillText');
                     var btnZoom = document.getElementById('btnZoomSel');
                     var btnClear = document.getElementById('btnClearSel');
                     var btnDel = document.getElementById('btnDelete');
 
                     if (count > 0) {{
-                        if (pill) {{
-                            pill.style.display = 'flex';
-                            if (pillText) pillText.textContent = count + ' seçili';
-                        }}
                         if (btnZoom) btnZoom.classList.remove('disabled');
                         if (btnClear) btnClear.classList.remove('disabled');
                         if (btnDel) {{
@@ -1178,7 +1029,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                             btnDel.setAttribute('data-tip', 'Seçili ' + count + ' Geometriyi Sil (Del)');
                         }}
                     }} else {{
-                        if (pill) pill.style.display = 'none';
                         if (btnZoom) btnZoom.classList.add('disabled');
                         if (btnClear) btnClear.classList.add('disabled');
                         if (btnDel) {{
@@ -1781,15 +1631,11 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                     var activeObj = vectorLayers[layerId];
                     if (activeObj) {{
-                        document.getElementById('statsPill').innerHTML = 
-                            '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + activeObj.color + ';margin-right:5px;"></span>' +
-                            activeObj.name + ' (' + activeObj.count.toLocaleString() + ')';
                         setLayerGeometryType(geomType || activeObj.geomType);
                         if (activeObj.leafletLayer && activeObj.visible) {{
                             activeObj.leafletLayer.bringToFront();
                         }}
                     }} else {{
-                        document.getElementById('statsPill').textContent = 'Mekansal Katman';
                         setLayerGeometryType('any');
                     }}
 
@@ -1827,7 +1673,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                             setActiveVectorLayer(remaining[0]);
                         }} else {{
                             activeLayerId = null;
-                            document.getElementById('statsPill').textContent = 'Mekansal Katman';
                             setLayerGeometryType('any');
                         }}
                     }}
@@ -1842,7 +1687,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }});
                     vectorLayers = {{}};
                     activeLayerId = null;
-                    document.getElementById('statsPill').textContent = 'Mekansal Katman';
                     setLayerGeometryType('any');
                     renderLayersPanel();
                 }}
@@ -1850,12 +1694,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 function updateLayerName(layerId, name) {{
                     if (vectorLayers[layerId]) {{
                         vectorLayers[layerId].name = name;
-                        if (layerId === activeLayerId) {{
-                            var l = vectorLayers[layerId];
-                            document.getElementById('statsPill').innerHTML = 
-                                '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + l.color + ';margin-right:5px;"></span>' +
-                                name + ' (' + l.count.toLocaleString() + ')';
-                        }}
                         renderLayersPanel();
                     }}
                 }}
