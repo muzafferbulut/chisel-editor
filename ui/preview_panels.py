@@ -18,6 +18,7 @@ class MapBridge(QObject):
     viewportChanged = pyqtSignal(float, float, float, float, int)
     selectionChanged = pyqtSignal(str)
     selectionDeleted = pyqtSignal(str)
+    layerRemoved = pyqtSignal(str)
 
     @pyqtSlot(int)
     def onFeatureClicked(self, index):
@@ -46,6 +47,10 @@ class MapBridge(QObject):
     @pyqtSlot(str)
     def onActiveLayerRequested(self, layerId):
         self.activeLayerRequested.emit(layerId)
+
+    @pyqtSlot(str)
+    def onLayerRemoved(self, layerId):
+        self.layerRemoved.emit(layerId)
 
     @pyqtSlot(float, float, float, float, int)
     def onViewportChanged(self, minx, miny, maxx, maxy, zoom):
@@ -81,6 +86,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
     wms_deleted = pyqtSignal(str)
     service_add_requested = pyqtSignal()
     active_layer_requested = pyqtSignal(str)
+    layer_removed = pyqtSignal(str)
     viewport_changed = pyqtSignal(float, float, float, float, int)
     selection_changed = pyqtSignal(list)
     selection_deleted = pyqtSignal(list)
@@ -99,6 +105,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
         self.bridge.wmsDeleted.connect(self.wms_deleted.emit)
         self.bridge.serviceAddRequested.connect(self.service_add_requested.emit)
         self.bridge.activeLayerRequested.connect(self.active_layer_requested.emit)
+        self.bridge.layerRemoved.connect(self.layer_removed.emit)
         self.bridge.viewportChanged.connect(self.viewport_changed.emit)
         self.bridge.selectionChanged.connect(self._on_bridge_selection_changed)
         self.bridge.selectionDeleted.connect(self._on_bridge_selection_deleted)
@@ -710,6 +717,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                                     '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; ' + (l.isActive ? 'font-weight:600; color:#4cc2ff;' : '') + '" title="' + l.name + '">' + geomIcon + ' ' + l.name + ' (' + l.count.toLocaleString() + ')</span>' +
                                     '</label>' +
                                     activeBadge +
+                                    '<button class="hud-layer-btn-del" onclick="removeVectorLayerUi(\\x27' + l.id + '\\x27)" title="Katmanı Kaldır">🗑️</button>' +
                                     '</div>';
                             }});
                             vContainer.innerHTML = html;
@@ -1473,7 +1481,11 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     refreshLayerStyles(layerId);
                     notifySelectionChanged();
 
-                    if (pyBridge && layerId === activeLayerId && selectedIndices.size === 1) {{
+                    if (layerId !== activeLayerId) {{
+                        requestSetActiveLayer(layerId);
+                    }}
+
+                    if (pyBridge && selectedIndices.size === 1) {{
                         pyBridge.onFeatureClicked(currentIdx);
                     }}
                 }}
@@ -1719,6 +1731,13 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     setActiveVectorLayer(layerId);
                     if (pyBridge && pyBridge.onActiveLayerRequested) {{
                         pyBridge.onActiveLayerRequested(layerId);
+                    }}
+                }}
+
+                function removeVectorLayerUi(layerId) {{
+                    removeVectorLayer(layerId);
+                    if (pyBridge && pyBridge.onLayerRemoved) {{
+                        pyBridge.onLayerRemoved(layerId);
                     }}
                 }}
 

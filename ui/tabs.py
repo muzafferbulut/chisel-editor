@@ -1,4 +1,6 @@
 import os
+import uuid
+from typing import Optional
 import geopandas as gpd
 from PyQt6.QtWidgets import QWidget, QSplitter, QStackedWidget, QVBoxLayout
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
@@ -20,17 +22,54 @@ class EditorTab(QWidget):
 
     def __init__(self, parent=None, map_panel: MapPreviewPanel = None):
         super().__init__(parent)
-        self.layer_id = f"layer_{id(self)}"
-        self.current_file = None
+        self._default_layer_id = f"layer_{id(self)}"
+        self._current_file = None
         self.is_dirty = False
         self.file_type = "Plain Text"
         self._is_loading = False
         self.is_spatial = False
         self._is_large_dataset = False
-        self._current_gdf = None
+        self._fallback_gdf = None
+        self.spatial_layers = {}
+        self.active_layer_id = None
         self._custom_map_panel = map_panel
 
         self._init_ui()
+
+    @property
+    def layer_id(self) -> str:
+        return self.active_layer_id or getattr(self, "_default_layer_id", f"layer_{id(self)}")
+
+    @layer_id.setter
+    def layer_id(self, val: str):
+        self._default_layer_id = val
+
+    @property
+    def _current_gdf(self) -> Optional[gpd.GeoDataFrame]:
+        if self.active_layer_id and self.active_layer_id in self.spatial_layers:
+            return self.spatial_layers[self.active_layer_id].get("gdf")
+        return getattr(self, "_fallback_gdf", None)
+
+    @_current_gdf.setter
+    def _current_gdf(self, val):
+        if self.active_layer_id and self.active_layer_id in self.spatial_layers:
+            self.spatial_layers[self.active_layer_id]["gdf"] = val
+        self._fallback_gdf = val
+
+    @property
+    def current_file(self) -> Optional[str]:
+        if self.is_spatial:
+            if self.active_layer_id and self.active_layer_id in self.spatial_layers:
+                return self.spatial_layers[self.active_layer_id].get("file_path")
+            return getattr(self, "_current_file", None)
+        return getattr(self, "_current_file", None)
+
+    @current_file.setter
+    def current_file(self, val: Optional[str]):
+        self._current_file = val
+        if self.is_spatial and self.active_layer_id and self.active_layer_id in self.spatial_layers:
+            self.spatial_layers[self.active_layer_id]["file_path"] = val
+            self.spatial_layers[self.active_layer_id]["name"] = os.path.basename(val) if val else "Katman"
 
     def _init_ui(self):
         self.layout = QVBoxLayout(self)
@@ -100,6 +139,7 @@ class EditorTab(QWidget):
         self.table_panel.close_requested.connect(self.toggle_table)
         self.table_panel.data_modified.connect(self._on_table_data_modified)
         self.table_panel.zoom_to_selected_requested.connect(self._on_table_zoom_to_selected)
+        self.table_panel.layer_changed.connect(self.set_active_layer)
 
         if self._custom_map_panel is None:
             self.map_panel.feature_clicked.connect(self.table_panel.select_feature)
@@ -132,25 +172,57 @@ class EditorTab(QWidget):
             self.is_dirty = True
             self.state_changed.emit()
 
-    def set_spatial_data(self, gdf: gpd.GeoDataFrame, raw_geojson: str = None):
+    def has_file(self, file_path: str) -> bool:
+        if not file_path:
+            return False
+        norm = os.path.abspath(file_path).lower()
+        if self.is_spatial:
+            for info in self.spatial_layers.values():
+                if info.get("file_path") and os.path.abspath(info["file_path"]).lower() == norm:
+                    return True
+            return False
+        return bool(self.current_file and os.path.abspath(self.current_file).lower() == norm)
+
+    def set_active_layer_by_file(self, file_path: str) -> bool:
+        if not file_path:
+            return False
+        norm = os.path.abspath(file_path).lower()
+        for lid, info in self.spatial_layers.items():
+            if info.get("file_path") and os.path.abspath(info["file_path"]).lower() == norm:
+                self.set_active_layer(lid)
+                return True
+        return False
+
+    def add_spatial_layer(self, file_path: str, gdf: gpd.GeoDataFrame, raw_geojson: str = None) -> str:
         self.is_spatial = True
         self.file_type = "Mekansal Katman"
-        self._current_gdf = gdf
+
+        if file_path:
+            norm = os.path.abspath(file_path).lower()
+            for lid, info in self.spatial_layers.items():
+                if info.get("file_path") and os.path.abspath(info["file_path"]).lower() == norm:
+                    self.set_active_layer(lid)
+                    return lid
+
+        layer_name = os.path.basename(file_path) if file_path else f"Katman {len(self.spatial_layers) + 1}"
+        layer_id = f"layer_{uuid.uuid4().hex[:8]}"
+
         feat_count = len(gdf) if gdf is not None else 0
-        self._is_large_dataset = (feat_count > 3000)
-
-        self._is_loading = True
-
-        # 1. Load Virtual Attribute Table immediately (Instant 0ms overhead)
-        if gdf is not None and not gdf.empty:
-            self.table_panel.load_data(gdf)
-
-        # 2. Render Map via Leaflet (No Monaco code buffering or JSON text display!)
-        layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
+        is_large = (feat_count > 3000)
         geom_type = SpatialOps.get_layer_geometry_type(gdf)
 
-        if self._is_large_dataset:
-            # QGIS-style initial LOD overview: sample or simplified view for ultra-fast initial render
+        self.spatial_layers[layer_id] = {
+            "id": layer_id,
+            "name": layer_name,
+            "file_path": file_path,
+            "gdf": gdf,
+            "geom_type": geom_type,
+            "is_large": is_large,
+            "is_dirty": False,
+        }
+
+        self._is_loading = True
+        if is_large:
             init_gdf = SpatialOps.get_overview_lod(gdf, max_features=3000)
             render_geojson = SpatialOps.to_geojson_str(init_gdf)
         else:
@@ -160,7 +232,7 @@ class EditorTab(QWidget):
 
         if render_geojson and self.map_panel:
             self.map_panel.set_vector_layer(
-                layer_id=self.layer_id,
+                layer_id=layer_id,
                 name=layer_name,
                 geojson_str=render_geojson,
                 is_active=True,
@@ -169,12 +241,55 @@ class EditorTab(QWidget):
             )
 
         self._is_loading = False
-
-        # Open in pure map GIS view
+        self.set_active_layer(layer_id)
         self.set_view_mode("map")
-        if self.map_panel:
-            QTimer.singleShot(120, lambda: self.map_panel.fit_bounds(self.layer_id) if self.map_panel else None)
         self.spatial_data_ready.emit(gdf)
+        return layer_id
+
+    def set_active_layer(self, layer_id: str):
+        if layer_id not in self.spatial_layers:
+            return
+        self.active_layer_id = layer_id
+        info = self.spatial_layers[layer_id]
+        self._current_file = info.get("file_path")
+        self._is_large_dataset = info.get("is_large", False)
+
+        if info.get("gdf") is not None and not info["gdf"].empty:
+            self.table_panel.load_data(info["gdf"], layer_name=info["name"], layer_id=layer_id)
+        else:
+            self.table_panel.load_data(None)
+
+        self._sync_table_layers()
+
+        if self.map_panel:
+            self.map_panel.set_active_vector_layer(layer_id, info.get("geom_type", "any"))
+
+        self.state_changed.emit()
+
+    def remove_spatial_layer(self, layer_id: str):
+        if layer_id in self.spatial_layers:
+            del self.spatial_layers[layer_id]
+            if self.map_panel:
+                self.map_panel.remove_vector_layer(layer_id)
+
+            if self.active_layer_id == layer_id:
+                if self.spatial_layers:
+                    first_id = next(iter(self.spatial_layers))
+                    self.set_active_layer(first_id)
+                else:
+                    self.active_layer_id = None
+                    self._current_file = None
+                    self.table_panel.load_data(None)
+
+            self._sync_table_layers()
+            self.state_changed.emit()
+
+    def _sync_table_layers(self):
+        layers = [(info["id"], info["name"], info["geom_type"]) for info in self.spatial_layers.values()]
+        self.table_panel.update_layer_list(layers, self.active_layer_id)
+
+    def set_spatial_data(self, gdf: gpd.GeoDataFrame, raw_geojson: str = None):
+        self.add_spatial_layer(self.current_file, gdf, raw_geojson=raw_geojson)
 
     def _update_viewport_data(self, minx: float, miny: float, maxx: float, maxy: float, zoom: int):
         if not self._is_large_dataset or self._current_gdf is None or self._current_gdf.empty:
@@ -207,11 +322,18 @@ class EditorTab(QWidget):
             )
 
     def update_spatial_gdf(self, gdf: gpd.GeoDataFrame, fit_bounds: bool = False):
-        self._current_gdf = gdf
+        if self.active_layer_id and self.active_layer_id in self.spatial_layers:
+            self.spatial_layers[self.active_layer_id]["gdf"] = gdf
+            self.spatial_layers[self.active_layer_id]["is_dirty"] = True
+            layer_name = self.spatial_layers[self.active_layer_id]["name"]
+        else:
+            self._fallback_gdf = gdf
+            layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
+
         self._is_large_dataset = (len(gdf) > 3000) if gdf is not None else False
         self._is_loading = True
-        self.table_panel.load_data(gdf)
-        layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
+        self.table_panel.load_data(gdf, layer_name=layer_name, layer_id=self.layer_id)
+
         geom_type = SpatialOps.get_layer_geometry_type(gdf)
         if self.map_panel:
             if self._is_large_dataset:
@@ -532,6 +654,19 @@ class EditorTab(QWidget):
         return "📝 Kod"
 
     def get_title(self):
+        if self.is_spatial:
+            count = len(self.spatial_layers)
+            if count == 0:
+                title = "🗺️ Harita"
+            elif count == 1:
+                single = next(iter(self.spatial_layers.values()))
+                title = f"🗺️ {single['name']}"
+            else:
+                title = f"🗺️ Harita ({count} Katman)"
+            if any(l.get("is_dirty", False) for l in self.spatial_layers.values()) or self.is_dirty:
+                title += " *"
+            return title
+
         title = os.path.basename(self.current_file) if self.current_file else "Untitled"
         if self.is_dirty:
             title += " *"

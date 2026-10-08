@@ -212,11 +212,13 @@ class AttributeTableWidget(QWidget):
     data_modified = pyqtSignal(object)
     zoom_to_selected_requested = pyqtSignal()
     close_requested = pyqtSignal()
+    layer_changed = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._current_gdf = None
         self._block_selection_signals = False
+        self._block_layer_signals = False
         self._cached_selected_rows = set()
         self._init_ui()
 
@@ -309,6 +311,15 @@ class AttributeTableWidget(QWidget):
         toolbar = QHBoxLayout(toolbar_container)
         toolbar.setContentsMargins(0, 0, 0, 0)
         toolbar.setSpacing(4)
+
+        # Active Layer Selector Dropdown
+        self.layer_combo = QComboBox()
+        self.layer_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.layer_combo.setToolTip("Aktif Katmanı Değiştir")
+        self.layer_combo.currentIndexChanged.connect(self._on_layer_combo_changed)
+        toolbar.addWidget(self.layer_combo)
+
+        toolbar.addWidget(self._create_vsep())
 
         # Quick Search Box
         self.search_input = QLineEdit()
@@ -479,7 +490,44 @@ class AttributeTableWidget(QWidget):
             f"border-radius: 4px; padding: 2px 6px; font-size: 11px; }} "
             f"QLineEdit:focus {{ border: 1px solid {accent}; }}"
         )
+        self.layer_combo.setStyleSheet(
+            f"QComboBox {{ background-color: {bg}; color: {text}; border: 1px solid {border}; "
+            f"border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: 600; min-height: 22px; }} "
+            f"QComboBox:hover {{ border: 1px solid {accent}; }} "
+            f"QComboBox::drop-down {{ border: none; width: 14px; }} "
+            f"QComboBox QAbstractItemView {{ background-color: {bg}; color: {text}; selection-background-color: {accent}; selection-color: #ffffff; border: 1px solid {border}; padding: 3px; }}"
+        )
         self.stats_label.setStyleSheet(f"color: {text_muted}; font-size: 11px;")
+
+    def update_layer_list(self, layers: list, active_id: str):
+        """Updates the layer selector dropdown with list of (layer_id, name, geom_type)."""
+        self._block_layer_signals = True
+        self.layer_combo.clear()
+        if not layers:
+            self.layer_combo.addItem("Katman Yok", "")
+            self.layer_combo.setEnabled(False)
+        elif len(layers) == 1:
+            lid, name, gtype = layers[0]
+            icon_str = "📍" if gtype == "point" else ("〰️" if gtype == "line" else ("📐" if gtype == "polygon" else "🔶"))
+            self.layer_combo.addItem(f"{icon_str} {name}", lid)
+            self.layer_combo.setEnabled(False)
+        else:
+            self.layer_combo.setEnabled(True)
+            active_idx = 0
+            for i, (lid, name, gtype) in enumerate(layers):
+                icon_str = "📍" if gtype == "point" else ("〰️" if gtype == "line" else ("📐" if gtype == "polygon" else "🔶"))
+                self.layer_combo.addItem(f"{icon_str} {name}", lid)
+                if lid == active_id:
+                    active_idx = i
+            self.layer_combo.setCurrentIndex(active_idx)
+        self._block_layer_signals = False
+
+    def _on_layer_combo_changed(self, index: int):
+        if self._block_layer_signals or index < 0:
+            return
+        layer_id = self.layer_combo.itemData(index)
+        if layer_id:
+            self.layer_changed.emit(layer_id)
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
@@ -488,7 +536,7 @@ class AttributeTableWidget(QWidget):
                 return
         super().keyPressEvent(event)
 
-    def load_data(self, gdf: gpd.GeoDataFrame):
+    def load_data(self, gdf: gpd.GeoDataFrame, layer_name: str = None, layer_id: str = None):
         self._current_gdf = gdf
         self.btn_show_selected.blockSignals(True)
         self.btn_show_selected.setChecked(False)

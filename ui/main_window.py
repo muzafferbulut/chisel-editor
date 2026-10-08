@@ -44,7 +44,8 @@ class MainWindow(QMainWindow):
         self.shared_map_panel.table_toggle_requested.connect(self._on_map_table_toggle_requested)
         self.shared_map_panel.service_add_requested.connect(self._show_wms_dialog)
         self.shared_map_panel.wms_deleted.connect(self._on_wms_remove_requested)
-        self.shared_map_panel.active_layer_requested.connect(self._switch_to_tab_by_layer_id)
+        self.shared_map_panel.active_layer_requested.connect(self._on_active_layer_requested)
+        self.shared_map_panel.layer_removed.connect(self._on_map_layer_removed)
         self.shared_map_panel.viewport_changed.connect(self._on_map_viewport_changed)
 
         # Restore last opened folder
@@ -418,10 +419,17 @@ class MainWindow(QMainWindow):
         self.tab_widget.setCurrentIndex(idx)
         return tab
 
+    def _find_spatial_tab(self):
+        for i in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(i)
+            if tab and getattr(tab, "is_spatial", False):
+                return tab
+        return None
+
     def _close_tab(self, index: int):
         tab = self.tab_widget.widget(index)
         if tab and tab.is_spatial:
-            self.shared_map_panel.remove_vector_layer(tab.layer_id)
+            self.shared_map_panel.clear_all_vector_layers()
         self.tab_widget.removeTab(index)
         if self.tab_widget.count() == 0:
             self._add_new_tab()
@@ -495,12 +503,25 @@ class MainWindow(QMainWindow):
         if tab and tab.is_spatial:
             tab.toggle_table()
 
-    def _switch_to_tab_by_layer_id(self, layer_id: str):
-        for i in range(self.tab_widget.count()):
-            tab = self.tab_widget.widget(i)
-            if getattr(tab, "layer_id", None) == layer_id:
-                self.tab_widget.setCurrentIndex(i)
-                break
+    def _on_active_layer_requested(self, layer_id: str):
+        spatial_tab = self._find_spatial_tab()
+        if spatial_tab:
+            spatial_tab.set_active_layer(layer_id)
+            self._update_tab_title(spatial_tab)
+            idx = self.tab_widget.indexOf(spatial_tab)
+            if idx != -1:
+                self.tab_widget.setCurrentIndex(idx)
+                self._on_tab_changed(idx)
+
+    def _on_map_layer_removed(self, layer_id: str):
+        spatial_tab = self._find_spatial_tab()
+        if spatial_tab:
+            spatial_tab.remove_spatial_layer(layer_id)
+            self._update_tab_title(spatial_tab)
+            idx = self.tab_widget.indexOf(spatial_tab)
+            if idx != -1:
+                self._on_tab_changed(idx)
+            ToastNotification.show_toast(self, "Katman haritadan kaldırıldı", "info")
 
     def _on_map_viewport_changed(self, minx: float, miny: float, maxx: float, maxy: float, zoom: int):
         tab = self._get_current_tab()
@@ -555,8 +576,16 @@ class MainWindow(QMainWindow):
     def _load_file(self, file_path: str, **kwargs):
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
-            if tab and tab.current_file == file_path:
+            if tab and hasattr(tab, "has_file") and tab.has_file(file_path):
                 self.tab_widget.setCurrentIndex(i)
+                if tab.is_spatial:
+                    tab.set_active_layer_by_file(file_path)
+                    self._on_tab_changed(i)
+                ToastNotification.show_toast(self, f"Zaten açık: {os.path.basename(file_path)}", "info")
+                return
+            elif tab and tab.current_file == file_path:
+                self.tab_widget.setCurrentIndex(i)
+                ToastNotification.show_toast(self, f"Zaten açık: {os.path.basename(file_path)}", "info")
                 return
 
         self.progress_bar.show()
@@ -584,17 +613,46 @@ class MainWindow(QMainWindow):
             ToastNotification.show_toast(self, f"Hata: {error}", "error")
             return
 
+        if is_spatial:
+            spatial_tab = self._find_spatial_tab()
+            if spatial_tab is not None:
+                # Add layer to existing single spatial map tab
+                spatial_tab.add_spatial_layer(file_path, gdf)
+                idx = self.tab_widget.indexOf(spatial_tab)
+                self.tab_widget.setCurrentIndex(idx)
+                self._update_tab_title(spatial_tab)
+                self._on_tab_changed(idx)
+                self._save_session_state()
+                QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(spatial_tab.layer_id))
+                ToastNotification.show_toast(self, f"Haritaya Eklendi: {os.path.basename(file_path)}", "info")
+                return
+            else:
+                curr = self._get_current_tab()
+                if curr and curr.current_file is None and not curr.is_dirty and not curr.is_spatial:
+                    tab = curr
+                else:
+                    tab = self._add_new_tab()
+
+                tab.current_file = file_path
+                tab.is_dirty = False
+                tab.configure_for_file_type("Mekansal Katman", True, content, gdf=gdf)
+                self._update_tab_title(tab)
+                self._on_tab_changed(self.tab_widget.currentIndex())
+                self._save_session_state()
+                QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(tab.layer_id))
+                ToastNotification.show_toast(self, f"Açıldı: {os.path.basename(file_path)}", "info")
+                return
+
+        # Non-spatial documents / code
         tab = self._get_current_tab()
-        if tab is None or tab.current_file is not None or tab.is_dirty:
+        if tab is None or tab.current_file is not None or tab.is_dirty or tab.is_spatial:
             tab = self._add_new_tab()
 
         tab.current_file = file_path
         tab.is_dirty = False
 
         ext = os.path.splitext(file_path)[1].lower()
-        if is_spatial:
-            file_type = "Mekansal Katman"
-        elif ext in {".xlsx", ".xls", ".csv"}:
+        if ext in {".xlsx", ".xls", ".csv"}:
             file_type = "Spreadsheet"
         elif ext in {".docx", ".doc"}:
             file_type = "Word"
@@ -602,9 +660,7 @@ class MainWindow(QMainWindow):
             file_type = "PDF"
         else:
             type_names = {
-                ".geojson": "GeoJSON", ".shp": "ESRI Shapefile", ".kml": "KML",
-                ".gpkg": "GeoPackage", ".fgb": "FlatGeobuf", ".md": "Markdown",
-                ".json": "JSON", ".py": "Python"
+                ".md": "Markdown", ".json": "JSON", ".py": "Python"
             }
             file_type = type_names.get(ext, "Plain Text")
 
@@ -612,9 +668,6 @@ class MainWindow(QMainWindow):
         self._update_tab_title(tab)
         self._on_tab_changed(self.tab_widget.currentIndex())
         self._save_session_state()
-
-        if is_spatial:
-            QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(tab.layer_id))
 
         ToastNotification.show_toast(self, f"Açıldı: {os.path.basename(file_path)}", "info")
 
@@ -717,12 +770,7 @@ class MainWindow(QMainWindow):
             return
 
         if gdf is not None and not gdf.empty:
-            tab = self._add_new_tab()
-            tab.current_file = f"{layer_name}.geojson"
-            tab.configure_for_file_type("GeoJSON", True, "", gdf=gdf)
-            self._update_tab_title(tab)
-            self._on_tab_changed(self.tab_widget.currentIndex())
-            QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(tab.layer_id))
+            self._on_file_loaded(f"{layer_name}.geojson", "", True, gdf, None)
             ToastNotification.show_toast(self, f"WFS Katmanı İndirildi: {len(gdf):,} özellik", "info")
 
     def _on_wms_visibility_changed(self, layer_id: str, visible: bool):
@@ -854,12 +902,7 @@ class MainWindow(QMainWindow):
 
     def _load_sample_spatial_data(self):
         sample_gdf = SpatialOps.create_sample_spatial_data()
-        tab = self._add_new_tab()
-        tab.current_file = "turkey_sample_zones.geojson"
-        tab.configure_for_file_type("GeoJSON", True, "", gdf=sample_gdf)
-        self._update_tab_title(tab)
-        self._on_tab_changed(self.tab_widget.currentIndex())
-        QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(tab.layer_id))
+        self._on_file_loaded("turkey_sample_zones.geojson", "", True, sample_gdf, None)
         ToastNotification.show_toast(self, "🧪 Örnek Mekansal Veri Yüklendi!", "info")
 
     def _show_find(self):
