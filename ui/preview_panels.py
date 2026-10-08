@@ -349,13 +349,13 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     border-color: rgba(76, 194, 255, 0.35) !important;
                     border-left: 3px solid #0078d4 !important;
                 }}
-                .hud-layer-color-dot {{
-                    width: 8px;
-                    height: 8px;
-                    border-radius: 50%;
+                .hud-layer-symbology {{
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 16px;
+                    height: 16px;
                     flex-shrink: 0;
-                    display: inline-block;
-                    box-shadow: 0 0 3px rgba(0,0,0,0.5);
                 }}
                 .hud-layer-btn-del {{
                     background: transparent;
@@ -664,6 +664,42 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     setWmsVisibility(layerId, visible);
                 }}
 
+                function getLayerSymbolHtml(geomType, color) {{
+                    var c = color || '#0078d4';
+                    var gt = (geomType || 'any').toLowerCase();
+                    if (gt === 'point') {{
+                        return '<span class="hud-layer-symbology" title="Nokta Katmanı">' +
+                               '<svg width="15" height="15" viewBox="0 0 15 15">' +
+                               '<circle cx="7.5" cy="7.5" r="4.5" fill="' + c + '" stroke="#ffffff" stroke-width="1.2"/>' +
+                               '</svg></span>';
+                    }} else if (gt === 'line') {{
+                        return '<span class="hud-layer-symbology" title="Çizgi Katmanı">' +
+                               '<svg width="15" height="15" viewBox="0 0 15 15">' +
+                               '<path d="M 2 12 L 6.5 3.5 L 13 8" fill="none" stroke="' + c + '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+                               '</svg></span>';
+                    }} else if (gt === 'polygon') {{
+                        return '<span class="hud-layer-symbology" title="Çokgen Katmanı">' +
+                               '<svg width="15" height="15" viewBox="0 0 15 15">' +
+                               '<polygon points="2.5,4.5 9.5,2 13,8 5,12.5" fill="' + c + '" fill-opacity="0.45" stroke="' + c + '" stroke-width="1.8" stroke-linejoin="round"/>' +
+                               '</svg></span>';
+                    }} else {{
+                        return '<span class="hud-layer-symbology" title="Karma Katman">' +
+                               '<svg width="15" height="15" viewBox="0 0 15 15">' +
+                               '<polygon points="1.5,5.5 7,2 11.5,6.5 6,12" fill="' + c + '" fill-opacity="0.35" stroke="' + c + '" stroke-width="1.4"/>' +
+                               '<circle cx="10" cy="4" r="2.2" fill="' + c + '" stroke="#ffffff" stroke-width="0.8"/>' +
+                               '</svg></span>';
+                    }}
+                }}
+
+                function getWmsSymbolHtml() {{
+                    return '<span class="hud-layer-symbology" title="WMS / Harita Servisi">' +
+                           '<svg width="15" height="15" viewBox="0 0 15 15">' +
+                           '<circle cx="7.5" cy="7.5" r="5.5" fill="none" stroke="#38bdf8" stroke-width="1.2"/>' +
+                           '<ellipse cx="7.5" cy="7.5" rx="2.5" ry="5.5" fill="none" stroke="#38bdf8" stroke-width="1.0"/>' +
+                           '<line x1="2" y1="7.5" x2="13" y2="7.5" stroke="#38bdf8" stroke-width="1.0"/>' +
+                           '</svg></span>';
+                }}
+
                 function renderLayersPanel() {{
                     var container = document.getElementById('layersListContainer');
                     if (!container) return;
@@ -686,14 +722,13 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     vKeys.forEach(function(k) {{
                         var l = vectorLayers[k];
                         var chk = l.visible ? 'checked' : '';
-                        var geomIcon = l.geomType === 'point' ? '📍' : (l.geomType === 'line' ? '〰️' : (l.geomType === 'polygon' ? '📐' : '🔶'));
+                        var symHtml = getLayerSymbolHtml(l.geomType, l.color);
                         var countStr = l.count > 0 ? ' <span style="color:#858585; font-size:10px;">(' + l.count.toLocaleString() + ')</span>' : '';
 
                         html += 
                             '<div class="hud-layer-item' + (l.isActive ? ' active-layer' : '') + '" onclick="requestSetActiveLayer(\\x27' + l.id + '\\x27)" title="' + l.name + (l.isActive ? ' (Aktif)' : '') + '">' +
                             '<input type="checkbox" ' + chk + ' onclick="event.stopPropagation();" onchange="setVectorLayerVisibility(\\x27' + l.id + '\\x27, this.checked)" title="Görünürlük"/>' +
-                            '<span class="hud-layer-color-dot" style="background:' + l.color + ';"></span>' +
-                            '<span style="font-size:11px; flex-shrink:0;">' + geomIcon + '</span>' +
+                            symHtml +
                             '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; font-size:11px;' + (l.isActive ? ' font-weight:600; color:#4cc2ff;' : '') + '">' + l.name + countStr + '</span>' +
                             '<button class="hud-layer-btn-del" onclick="event.stopPropagation(); removeVectorLayerUi(\\x27' + l.id + '\\x27)" title="Katmanı Kaldır">✕</button>' +
                             '</div>';
@@ -708,10 +743,11 @@ class MapPreviewPanel(AbstractPreviewPanel):
                             var layer = wmsRegistry[k];
                             var chk = layer.visible ? 'checked' : '';
                             var title = layer.title || layer.layerName;
+                            var wmsSym = getWmsSymbolHtml();
                             html += 
                                 '<div class="hud-layer-item" title="' + title + '">' +
                                 '<input type="checkbox" ' + chk + ' onclick="event.stopPropagation();" onchange="toggleWmsVisibility(\\x27' + layer.id + '\\x27, this.checked)" title="Görünürlük"/>' +
-                                '<span style="font-size:11px; flex-shrink:0;">🌐</span>' +
+                                wmsSym +
                                 '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; font-size:11px;">' + title + '</span>' +
                                 '<button class="hud-layer-btn-del" onclick="event.stopPropagation(); removeWms(\\x27' + layer.id + '\\x27)" title="Servisi Kaldır">✕</button>' +
                                 '</div>';
