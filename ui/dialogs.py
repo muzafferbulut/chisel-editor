@@ -392,19 +392,25 @@ class ExportSpatialDialog(QDialog):
 
 class ColumnStatisticsDialog(QDialog):
 
-    def __init__(self, gdf, columns: list, parent=None):
+    def __init__(self, gdf, columns: list, scope_desc: str = None, parent=None):
         super().__init__(parent)
         self.gdf = gdf
         self.columns = columns
-        self.setWindowTitle("Sütun İstatistikleri")
-        self.resize(420, 320)
+        self.scope_desc = scope_desc
+        self.setWindowTitle(f"Sütun İstatistikleri ({scope_desc})" if scope_desc else "Sütun İstatistikleri")
+        self.resize(440, 350)
         self.setModal(True)
         self._setup_ui()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        layout.setSpacing(10)
         layout.setContentsMargins(16, 16, 16, 16)
+
+        if self.scope_desc:
+            lbl_scope = QLabel(f"<b>Kapsam:</b> <span style='color: #38bdf8;'>{self.scope_desc}</span>")
+            lbl_scope.setStyleSheet("background-color: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 4px; padding: 4px 8px; font-size: 11px;")
+            layout.addWidget(lbl_scope)
 
         sel_layout = QHBoxLayout()
         sel_layout.addWidget(QLabel("<b>Sütun Seç:</b>"))

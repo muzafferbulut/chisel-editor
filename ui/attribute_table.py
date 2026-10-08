@@ -1,10 +1,12 @@
+import os
 import csv
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableView,
     QLineEdit, QPushButton, QLabel, QHeaderView, QFileDialog, QMessageBox,
     QDialog, QComboBox, QFrame
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QItemSelection
+from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt, pyqtSignal, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QItemSelection, QSize
 import geopandas as gpd
 import pandas as pd
 from core.spatial_ops import SpatialOps
@@ -225,8 +227,22 @@ class AttributeTableWidget(QWidget):
         sep.setStyleSheet("color: #3e3e42; background-color: #3e3e42; width: 1px; margin: 3px 2px;")
         return sep
 
-    def _create_tool_btn(self, icon: str, tooltip: str, callback=None, checkable: bool = False, obj_name: str = "") -> QPushButton:
-        btn = QPushButton(icon)
+    def _get_icon(self, icon_name: str) -> QIcon:
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        icon_path = os.path.join(base_dir, "resources", "icons", f"{icon_name}.png")
+        if os.path.isfile(icon_path):
+            return QIcon(icon_path)
+        return QIcon()
+
+    def _create_tool_btn(self, icon_name: str, fallback_text: str, tooltip: str, callback=None, checkable: bool = False, obj_name: str = "") -> QPushButton:
+        btn = QPushButton()
+        icon = self._get_icon(icon_name)
+        if not icon.isNull():
+            btn.setIcon(icon)
+            btn.setIconSize(QSize(16, 16))
+        else:
+            btn.setText(fallback_text)
+
         btn.setToolTip(tooltip)
         btn.setFixedSize(28, 28)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -309,47 +325,47 @@ class AttributeTableWidget(QWidget):
         toolbar.addWidget(self._create_vsep())
 
         # QGIS Selection Tools
-        self.btn_zoom_selected = self._create_tool_btn("🔍", "Haritada Seçilenlere Yakınlaş", self._zoom_to_selected)
+        self.btn_zoom_selected = self._create_tool_btn("zoom_to_selected", "🔍", "Haritada Seçilenlere Yakınlaş", self._zoom_to_selected)
         self.btn_zoom_selected.setEnabled(False)
         toolbar.addWidget(self.btn_zoom_selected)
 
-        self.btn_select_all = self._create_tool_btn("🔲", "Tümünü Seç (Ctrl+A)", self._select_all)
+        self.btn_select_all = self._create_tool_btn("select_all", "🔲", "Tümünü Seç (Ctrl+A)", self._select_all)
         toolbar.addWidget(self.btn_select_all)
 
-        self.btn_invert_sel = self._create_tool_btn("🔄", "Seçimi Tersine Çevir", self._invert_selection)
+        self.btn_invert_sel = self._create_tool_btn("invert_selection", "🔄", "Seçimi Tersine Çevir", self._invert_selection)
         toolbar.addWidget(self.btn_invert_sel)
 
-        self.btn_clear_sel = self._create_tool_btn("✖", "Seçimi Temizle", self._clear_selection)
+        self.btn_clear_sel = self._create_tool_btn("clear_selection", "✖", "Seçimi Temizle", self._clear_selection)
         toolbar.addWidget(self.btn_clear_sel)
 
-        self.btn_show_selected = self._create_tool_btn("🎯", "Yalnızca Seçilenleri Göster / Tümünü Göster", self._toggle_show_selected, checkable=True)
+        self.btn_show_selected = self._create_tool_btn("show_selected", "🎯", "Yalnızca Seçilenleri Göster / Tümünü Göster", self._toggle_show_selected, checkable=True)
         toolbar.addWidget(self.btn_show_selected)
 
         toolbar.addWidget(self._create_vsep())
 
         # QGIS Data / Calculation Tools
-        self.btn_add_col = self._create_tool_btn("➕", "Yeni Sütun / Alan Ekle", self._add_field)
+        self.btn_add_col = self._create_tool_btn("add_field", "➕", "Yeni Sütun / Alan Ekle", self._add_field)
         toolbar.addWidget(self.btn_add_col)
 
-        self.btn_calc_geom = self._create_tool_btn("📐", "Geometri Hesapla (Alan, Uzunluk, Koordinatlar)", self._calculate_geometry)
+        self.btn_calc_geom = self._create_tool_btn("calc_geom", "📐", "Geometri Hesapla (Alan, Uzunluk, Koordinatlar)", self._calculate_geometry)
         toolbar.addWidget(self.btn_calc_geom)
 
-        self.btn_stats = self._create_tool_btn("📊", "Sütun İstatistikleri (Toplam, Ortalama, Min, Max)", self._show_column_statistics)
+        self.btn_stats = self._create_tool_btn("statistics", "📊", "Sütun İstatistikleri (Tüm katman için)", self._show_column_statistics)
         toolbar.addWidget(self.btn_stats)
 
-        self.btn_del_selected = self._create_tool_btn("🗑️", "Seçili Kayıtları Sil (Del)", self._delete_selected_rows, obj_name="btn_del")
+        self.btn_del_selected = self._create_tool_btn("delete_selected", "🗑️", "Seçili Kayıtları Sil (Del)", self._delete_selected_rows, obj_name="btn_del")
         self.btn_del_selected.setEnabled(False)
         toolbar.addWidget(self.btn_del_selected)
 
         toolbar.addWidget(self._create_vsep())
 
         # Export & Close
-        self.btn_export_csv = self._create_tool_btn("💾", "Öznitelik Tablosunu CSV Olarak Dışa Aktar", self._export_csv)
+        self.btn_export_csv = self._create_tool_btn("export_csv", "💾", "Öznitelik Tablosunu CSV Olarak Dışa Aktar", self._export_csv)
         toolbar.addWidget(self.btn_export_csv)
 
         toolbar.addStretch()
 
-        self.btn_close = self._create_tool_btn("✕", "Öznitelik Tablosunu Kapat (F6)", self.close_requested.emit, obj_name="btn_close")
+        self.btn_close = self._create_tool_btn("close", "✕", "Öznitelik Tablosunu Kapat (F6)", self.close_requested.emit, obj_name="btn_close")
         toolbar.addWidget(self.btn_close)
 
         layout.addWidget(toolbar_container)
@@ -397,6 +413,7 @@ class AttributeTableWidget(QWidget):
         self.btn_del_selected.setToolTip("Seçili Kayıtları Sil (Del)")
         self.btn_zoom_selected.setEnabled(False)
         self.btn_zoom_selected.setToolTip("Haritada Seçilenlere Yakınlaş")
+        self.btn_stats.setToolTip("Sütun İstatistikleri (Tüm katman için)")
 
         header = self.table_view.horizontalHeader()
         header.setDefaultSectionSize(120)
@@ -489,9 +506,11 @@ class AttributeTableWidget(QWidget):
         if has_sel:
             self.btn_del_selected.setToolTip(f"Seçili {count:,} Kaydı Sil (Del)")
             self.btn_zoom_selected.setToolTip(f"Haritada Seçili {count:,} Geometriye Yakınlaş")
+            self.btn_stats.setToolTip(f"Sütun İstatistikleri (Seçili {count:,} kayıt için)")
         else:
             self.btn_del_selected.setToolTip("Seçili Kayıtları Sil (Del)")
             self.btn_zoom_selected.setToolTip("Haritada Seçilenlere Yakınlaş")
+            self.btn_stats.setToolTip("Sütun İstatistikleri (Tüm katman için)")
 
         if self._block_selection_signals:
             return
@@ -543,6 +562,7 @@ class AttributeTableWidget(QWidget):
                 self.btn_del_selected.setToolTip("Seçili Kayıtları Sil (Del)")
                 self.btn_zoom_selected.setEnabled(False)
                 self.btn_zoom_selected.setToolTip("Haritada Seçilenlere Yakınlaş")
+                self.btn_stats.setToolTip("Sütun İstatistikleri (Tüm katman için)")
                 return
 
             selection = QItemSelection()
@@ -570,9 +590,11 @@ class AttributeTableWidget(QWidget):
             if count > 0:
                 self.btn_del_selected.setToolTip(f"Seçili {count:,} Kaydı Sil (Del)")
                 self.btn_zoom_selected.setToolTip(f"Haritada Seçili {count:,} Geometriye Yakınlaş")
+                self.btn_stats.setToolTip(f"Sütun İstatistikleri (Seçili {count:,} kayıt için)")
             else:
                 self.btn_del_selected.setToolTip("Seçili Kayıtları Sil (Del)")
                 self.btn_zoom_selected.setToolTip("Haritada Seçilenlere Yakınlaş")
+                self.btn_stats.setToolTip("Sütun İstatistikleri (Tüm katman için)")
         finally:
             self._block_selection_signals = False
 
@@ -589,8 +611,23 @@ class AttributeTableWidget(QWidget):
             QMessageBox.information(self, "Öznitelik Yok", "İstatistik hesaplanacak öznitelik sütunu bulunamadı.")
             return
 
+        # Check if there are selected rows in the table
+        indexes = self.table_view.selectionModel().selectedRows()
+        selected_source_rows = []
+        for proxy_idx in indexes:
+            src_idx = self.proxy_model.mapToSource(proxy_idx)
+            if src_idx.isValid():
+                selected_source_rows.append(src_idx.row())
+
+        if selected_source_rows:
+            target_gdf = self._current_gdf.iloc[selected_source_rows]
+            scope_desc = f"Seçili {len(selected_source_rows):,} Kayıt"
+        else:
+            target_gdf = self._current_gdf
+            scope_desc = f"Tüm Katman ({len(self._current_gdf):,} Kayıt)"
+
         from ui.dialogs import ColumnStatisticsDialog
-        dlg = ColumnStatisticsDialog(self._current_gdf, cols, parent=self)
+        dlg = ColumnStatisticsDialog(target_gdf, cols, scope_desc=scope_desc, parent=self)
         dlg.exec()
 
     def _calculate_geometry(self):
