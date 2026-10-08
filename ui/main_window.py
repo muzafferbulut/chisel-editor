@@ -39,6 +39,8 @@ class MainWindow(QMainWindow):
         self.shared_map_panel.feature_added.connect(self._on_map_feature_added)
         self.shared_map_panel.feature_deleted.connect(self._on_map_feature_deleted)
         self.shared_map_panel.feature_clicked.connect(self._on_map_feature_clicked)
+        self.shared_map_panel.selection_changed.connect(self._on_map_selection_changed)
+        self.shared_map_panel.selection_deleted.connect(self._on_map_selection_deleted)
         self.shared_map_panel.table_toggle_requested.connect(self._on_map_table_toggle_requested)
         self.shared_map_panel.service_add_requested.connect(self._show_wms_dialog)
         self.shared_map_panel.wms_deleted.connect(self._on_wms_remove_requested)
@@ -458,12 +460,22 @@ class MainWindow(QMainWindow):
     def _on_map_feature_deleted(self, index: int):
         tab = self._get_current_tab()
         if tab and tab.is_spatial:
-            tab._on_feature_deleted(index)
+            tab._on_features_deleted([index])
+
+    def _on_map_selection_deleted(self, indices: list):
+        tab = self._get_current_tab()
+        if tab and tab.is_spatial:
+            tab._on_features_deleted(indices)
 
     def _on_map_feature_clicked(self, index: int):
         tab = self._get_current_tab()
         if tab and tab.is_spatial:
             tab.table_panel.select_feature(index)
+
+    def _on_map_selection_changed(self, indices: list):
+        tab = self._get_current_tab()
+        if tab and tab.is_spatial:
+            tab.table_panel.select_features(indices)
 
     def _on_map_table_toggle_requested(self):
         tab = self._get_current_tab()

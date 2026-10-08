@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableView,
     QLineEdit, QPushButton, QLabel, QHeaderView, QFileDialog, QMessageBox
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QAbstractTableModel, QModelIndex, QSortFilterProxyModel
+from PyQt6.QtCore import Qt, pyqtSignal, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QItemSelection
 import geopandas as gpd
 import pandas as pd
 from core.spatial_ops import SpatialOps
@@ -99,12 +99,15 @@ class GeoDataFrameTableModel(QAbstractTableModel):
 
 class AttributeTableWidget(QWidget):
     feature_selected = pyqtSignal(int)
+    features_selected = pyqtSignal(list)
+    delete_requested = pyqtSignal(list)
     data_modified = pyqtSignal(object)
     close_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._current_gdf = None
+        self._block_selection_signals = False
         self._init_ui()
 
     def _init_ui(self):
@@ -135,6 +138,12 @@ class AttributeTableWidget(QWidget):
         self.btn_calc_geom.clicked.connect(self._calculate_geometry)
         toolbar.addWidget(self.btn_calc_geom)
 
+        self.btn_del_selected = QPushButton("🗑️ Sil")
+        self.btn_del_selected.setToolTip("Seçili kayıtları sil (Del)")
+        self.btn_del_selected.setEnabled(False)
+        self.btn_del_selected.clicked.connect(self._delete_selected_rows)
+        toolbar.addWidget(self.btn_del_selected)
+
         self.btn_export_csv = QPushButton("CSV")
         self.btn_export_csv.setToolTip("Öznitelik tablosunu CSV olarak kaydet")
         self.btn_export_csv.clicked.connect(self._export_csv)
@@ -157,7 +166,7 @@ class AttributeTableWidget(QWidget):
         self.table_view = QTableView()
         self.table_view.setAlternatingRowColors(True)
         self.table_view.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
-        self.table_view.setSelectionMode(QTableView.SelectionMode.SingleSelection)
+        self.table_view.setSelectionMode(QTableView.SelectionMode.ExtendedSelection)
         self.table_view.setSortingEnabled(True)
         self.table_view.horizontalHeader().setStretchLastSection(False)
         self.table_view.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
@@ -174,12 +183,21 @@ class AttributeTableWidget(QWidget):
 
         layout.addWidget(self.table_view)
 
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            if self.btn_del_selected.isEnabled():
+                self._delete_selected_rows()
+                return
+        super().keyPressEvent(event)
+
     def load_data(self, gdf: gpd.GeoDataFrame):
         self._current_gdf = gdf
         self.source_model.set_data(gdf)
 
         count = len(gdf) if gdf is not None and not gdf.empty else 0
         self.stats_label.setText(f"{count:,} özellik")
+        self.btn_del_selected.setEnabled(False)
+        self.btn_del_selected.setText("🗑️ Sil")
         header = self.table_view.horizontalHeader()
         header.setDefaultSectionSize(120)
         for col in range(min(5, self.source_model.columnCount())):
@@ -196,20 +214,91 @@ class AttributeTableWidget(QWidget):
 
     def _on_selection_changed(self, selected, deselected):
         indexes = self.table_view.selectionModel().selectedRows()
+        count = len(indexes)
+        if count > 0:
+            self.btn_del_selected.setEnabled(True)
+            self.btn_del_selected.setText(f"🗑️ Sil ({count})")
+        else:
+            self.btn_del_selected.setEnabled(False)
+            self.btn_del_selected.setText("🗑️ Sil")
+
+        if self._block_selection_signals:
+            return
+
+        source_rows = []
+        for proxy_idx in indexes:
+            src_idx = self.proxy_model.mapToSource(proxy_idx)
+            if src_idx.isValid():
+                source_rows.append(src_idx.row())
+
+        self.features_selected.emit(source_rows)
+        if source_rows:
+            self.feature_selected.emit(source_rows[0])
+
+    def _delete_selected_rows(self):
+        indexes = self.table_view.selectionModel().selectedRows()
         if not indexes:
             return
-        proxy_idx = indexes[0]
-        source_idx = self.proxy_model.mapToSource(proxy_idx)
-        self.feature_selected.emit(source_idx.row())
+        source_rows = []
+        for proxy_idx in indexes:
+            src_idx = self.proxy_model.mapToSource(proxy_idx)
+            if src_idx.isValid():
+                source_rows.append(src_idx.row())
+        if not source_rows:
+            return
+
+        count = len(source_rows)
+        if count > 10:
+            reply = QMessageBox.question(
+                self, "Satırları Sil",
+                f"{count:,} adet seçili öznitelik kaydını ve geometrisini silmek istediğinize emin misiniz?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        self.delete_requested.emit(source_rows)
+
+    def select_features(self, indices: list):
+        if self._block_selection_signals:
+            return
+        self._block_selection_signals = True
+        try:
+            sel_model = self.table_view.selectionModel()
+            sel_model.clearSelection()
+            if not indices or self.source_model.rowCount() == 0:
+                self.btn_del_selected.setEnabled(False)
+                self.btn_del_selected.setText("🗑️ Sil")
+                return
+
+            selection = QItemSelection()
+            col_count = self.proxy_model.columnCount()
+            first_valid_proxy = None
+
+            for idx in indices:
+                if 0 <= idx < self.source_model.rowCount():
+                    src_idx = self.source_model.index(idx, 0)
+                    proxy_idx = self.proxy_model.mapFromSource(src_idx)
+                    if proxy_idx.isValid():
+                        if first_valid_proxy is None:
+                            first_valid_proxy = proxy_idx
+                        tl = self.proxy_model.index(proxy_idx.row(), 0)
+                        br = self.proxy_model.index(proxy_idx.row(), col_count - 1)
+                        selection.select(tl, br)
+
+            sel_model.select(selection, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+            if first_valid_proxy:
+                self.table_view.scrollTo(first_valid_proxy, QTableView.ScrollHint.PositionAtCenter)
+
+            count = len(indices)
+            self.btn_del_selected.setEnabled(count > 0)
+            self.btn_del_selected.setText(f"🗑️ Sil ({count})" if count > 0 else "🗑️ Sil")
+        finally:
+            self._block_selection_signals = False
 
     def select_feature(self, index: int):
-        if index < 0 or index >= self.source_model.rowCount():
-            return
-        source_idx = self.source_model.index(index, 0)
-        proxy_idx = self.proxy_model.mapFromSource(source_idx)
-        if proxy_idx.isValid():
-            self.table_view.selectRow(proxy_idx.row())
-            self.table_view.scrollTo(proxy_idx, QTableView.ScrollHint.PositionAtCenter)
+        self.select_features([index])
 
     def _show_column_statistics(self):
         if self._current_gdf is None or self._current_gdf.empty:

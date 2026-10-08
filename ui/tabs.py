@@ -70,12 +70,15 @@ class EditorTab(QWidget):
         self.set_view_mode("code")
 
         # Bi-directional sync & interactions
-        self.table_panel.feature_selected.connect(lambda idx: self.map_panel.highlight_feature(idx, self.layer_id) if self.map_panel else None)
+        self.table_panel.features_selected.connect(self._on_table_features_selected)
+        self.table_panel.delete_requested.connect(self._on_features_deleted)
         self.table_panel.close_requested.connect(self.toggle_table)
         self.table_panel.data_modified.connect(self._on_table_data_modified)
 
         if self._custom_map_panel is None:
             self.map_panel.feature_clicked.connect(self.table_panel.select_feature)
+            self.map_panel.selection_changed.connect(self.table_panel.select_features)
+            self.map_panel.selection_deleted.connect(self._on_features_deleted)
             self.map_panel.table_toggle_requested.connect(self.toggle_table)
             self.map_panel.feature_deleted.connect(self._on_feature_deleted)
             self.map_panel.feature_added.connect(self._on_feature_added)
@@ -221,17 +224,42 @@ class EditorTab(QWidget):
         self.update_spatial_gdf(new_gdf)
 
     def _on_feature_deleted(self, index: int):
-        if self._current_gdf is None or self._current_gdf.empty:
-            return
-        if index < 0 or index >= len(self._current_gdf):
+        self._on_features_deleted([index])
+
+    def _on_features_deleted(self, indices: list):
+        if self._current_gdf is None or self._current_gdf.empty or not indices:
             return
         try:
-            new_gdf = self._current_gdf.drop(self._current_gdf.index[index]).reset_index(drop=True)
+            valid_indices = [i for i in indices if 0 <= i < len(self._current_gdf)]
+            if not valid_indices:
+                return
+
+            if len(valid_indices) > 10:
+                from PyQt6.QtWidgets import QMessageBox
+                reply = QMessageBox.question(
+                    self, "Geometrileri Sil",
+                    f"{len(valid_indices):,} adet seçili geometriyi silmek istediğinize emin misiniz?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
+
+            drop_indices = [self._current_gdf.index[i] for i in valid_indices]
+            new_gdf = self._current_gdf.drop(index=drop_indices).reset_index(drop=True)
             self.update_spatial_gdf(new_gdf)
+            if self.map_panel:
+                self.map_panel.clear_selection(self.layer_id)
             from ui.toast import ToastNotification
-            ToastNotification.show_toast(self.window(), f"🗑️ Geometri silindi. (Kalan: {len(new_gdf)})", "info")
+            count = len(drop_indices)
+            msg = f"🗑️ {count:,} adet geometri silindi. (Kalan: {len(new_gdf):,})" if count > 1 else f"🗑️ Geometri silindi. (Kalan: {len(new_gdf):,})"
+            ToastNotification.show_toast(self.window(), msg, "info")
         except Exception as e:
-            print(f"Error deleting feature: {e}")
+            print(f"Error deleting features: {e}")
+
+    def _on_table_features_selected(self, indices: list):
+        if self.map_panel:
+            self.map_panel.set_selected_features(indices, self.layer_id)
 
     def _on_feature_added(self, feature_json_str: str):
         try:

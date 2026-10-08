@@ -16,6 +16,8 @@ class MapBridge(QObject):
     serviceAddRequested = pyqtSignal()
     activeLayerRequested = pyqtSignal(str)
     viewportChanged = pyqtSignal(float, float, float, float, int)
+    selectionChanged = pyqtSignal(str)
+    selectionDeleted = pyqtSignal(str)
 
     @pyqtSlot(int)
     def onFeatureClicked(self, index):
@@ -49,6 +51,14 @@ class MapBridge(QObject):
     def onViewportChanged(self, minx, miny, maxx, maxy, zoom):
         self.viewportChanged.emit(minx, miny, maxx, maxy, zoom)
 
+    @pyqtSlot(str)
+    def onSelectionChanged(self, indicesJson):
+        self.selectionChanged.emit(indicesJson)
+
+    @pyqtSlot(str)
+    def onSelectionDeleted(self, indicesJson):
+        self.selectionDeleted.emit(indicesJson)
+
 
 class AbstractPreviewPanel(QWidget):
 
@@ -72,6 +82,8 @@ class MapPreviewPanel(AbstractPreviewPanel):
     service_add_requested = pyqtSignal()
     active_layer_requested = pyqtSignal(str)
     viewport_changed = pyqtSignal(float, float, float, float, int)
+    selection_changed = pyqtSignal(list)
+    selection_deleted = pyqtSignal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -88,6 +100,8 @@ class MapPreviewPanel(AbstractPreviewPanel):
         self.bridge.serviceAddRequested.connect(self.service_add_requested.emit)
         self.bridge.activeLayerRequested.connect(self.active_layer_requested.emit)
         self.bridge.viewportChanged.connect(self.viewport_changed.emit)
+        self.bridge.selectionChanged.connect(self._on_bridge_selection_changed)
+        self.bridge.selectionDeleted.connect(self._on_bridge_selection_deleted)
 
         self.channel = QWebChannel()
         self.channel.registerObject("mapBridge", self.bridge)
@@ -527,16 +541,50 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     font-weight: bold;
                     border: 1px solid #00a2ff;
                 }}
+                .hud-selection {{
+                    background: rgba(30, 30, 30, 0.94);
+                    border: 1px solid rgba(245, 158, 11, 0.7);
+                    color: #fbbf24;
+                    display: none;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 4px 8px;
+                    font-weight: 600;
+                    border-radius: 6px;
+                    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+                }}
+                .hud-selection-btn {{
+                    background: rgba(255, 255, 255, 0.12);
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                    color: #f1f5f9;
+                    border-radius: 3px;
+                    padding: 2px 6px;
+                    font-size: 10px;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+                }}
+                .hud-selection-btn:hover {{
+                    background: #0078d4;
+                    border-color: #4cc2ff;
+                    color: #ffffff;
+                }}
             </style>
         </head>
         <body>
             <div id="map"></div>
 
-            <div class="hud-panel hud-stats" id="statsPill">Mekansal Katman</div>
+            <div style="position: absolute; top: 12px; left: 54px; display: flex; gap: 8px; z-index: 1000; align-items: center;">
+                <div class="hud-panel hud-stats" id="statsPill" style="position: static;">Mekansal Katman</div>
+                <div class="hud-panel hud-selection" id="selectionPill" style="position: static;">
+                    <span id="selectionPillText">0 seçili</span>
+                    <button class="hud-selection-btn" onclick="zoomToSelected()" title="Seçilenlere Yakınlaş">🔍 Odaklan</button>
+                    <button class="hud-selection-btn" onclick="clearSelection()" title="Seçimi Temizle">✕ Temizle</button>
+                </div>
+            </div>
 
             <div class="hud-banner" id="drawBanner">
                 <span id="drawBannerText">Haritaya tıklayarak nokta ekleyin</span>
-                <button class="hud-banner-cancel" onclick="cancelDrawMode()">İptal (Esc)</button>
+                <button class="hud-banner-cancel" onclick="cancelBanner()">İptal (Esc)</button>
             </div>
 
             <!-- Vertical Action Toolbar on the Far Right -->
@@ -546,10 +594,17 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 
                 <div class="hud-vdivider"></div>
                 
+                <button class="hud-vbtn active" id="btnSelectClick" onclick="setSelectTool('click')" data-tip="Nesne Seç (Tıkla / Ctrl+Çoklu)" title="Nesne Seç">👆</button>
+                <button class="hud-vbtn" id="btnSelectBox" onclick="setSelectTool('box')" data-tip="Kutu ile Seç (Kare Çizerek Seç)" title="Kutu ile Seç">⬚</button>
+                <button class="hud-vbtn disabled" id="btnZoomSel" onclick="zoomToSelected()" data-tip="Seçilenlere Yakınlaş" title="Seçilenlere Yakınlaş">🔍</button>
+                <button class="hud-vbtn disabled" id="btnClearSel" onclick="clearSelection()" data-tip="Seçimi Temizle (Esc)" title="Seçimi Temizle">✖</button>
+                
+                <div class="hud-vdivider"></div>
+                
                 <button class="hud-vbtn" id="btnAddPoint" onclick="toggleDrawMode('point')" data-tip="Nokta Ekle (Haritaya Tıkla)" title="Nokta Ekle">📍+</button>
                 <button class="hud-vbtn" id="btnAddLine" onclick="toggleDrawMode('line')" data-tip="Çizgi Ekle (Çiz & Çift Tıkla)" title="Çizgi Ekle">〰️+</button>
                 <button class="hud-vbtn" id="btnAddPolygon" onclick="toggleDrawMode('polygon')" data-tip="Çokgen Ekle (Çiz & Çift Tıkla)" title="Çokgen Ekle">📐+</button>
-                <button class="hud-vbtn hud-vbtn-del" id="btnDelete" onclick="deleteSelectedFeature()" data-tip="Seçili Geometriyi Sil" title="Seçili Geometriyi Sil">🗑️</button>
+                <button class="hud-vbtn hud-vbtn-del" id="btnDelete" onclick="deleteSelectedFeatures()" data-tip="Seçili Geometrileri Sil (Del)" title="Seçili Geometrileri Sil">🗑️</button>
                 
                 <div class="hud-vdivider"></div>
                 
@@ -693,6 +748,13 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 var activeLayerId = null;
                 var selectedFeatureLayerId = null;
                 var wmsRegistry = {{}}; // layerId -> {{ id, title, url, layerName, visible }}
+
+                // --- QGIS Selection State ---
+                var selectMode = 'click'; // 'click' | 'box'
+                var selectedIndices = new Set();
+                var isBoxSelecting = false;
+                var boxStartLatLng = null;
+                var boxRectLayer = null;
 
                 var LAYER_PALETTE = [
                     '#0078d4', // Blue
@@ -907,6 +969,10 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         '<span>Lat: ' + e.latlng.lat.toFixed(4) + '°</span>' +
                         '<span>Lng: ' + e.latlng.lng.toFixed(4) + '°</span>' +
                         '<span>Zoom: ' + map.getZoom() + '</span>';
+
+                    if (isBoxSelecting && boxRectLayer && boxStartLatLng) {{
+                        boxRectLayer.setBounds(L.latLngBounds(boxStartLatLng, e.latlng));
+                    }}
                 }});
 
                 var viewportDebounceTimer = null;
@@ -1052,6 +1118,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }}
 
                     cancelDrawMode();
+                    if (selectMode === 'box') setSelectTool('click');
                     if (measureActive) toggleMeasure();
                     closeAllFlyouts();
                     drawMode = mode;
@@ -1094,7 +1161,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     if (bPoly) bPoly.classList.remove('active');
 
                     var banner = document.getElementById('drawBanner');
-                    if (banner) banner.classList.remove('active', 'hud-banner-warn');
+                    if (banner && selectMode !== 'box') banner.classList.remove('active', 'hud-banner-warn');
 
                     clearPolyDraw();
                 }}
@@ -1109,34 +1176,208 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     polyDrawPoly = null;
                 }}
 
-                // --- Geometry Deletion ---
-                function deleteFeature(idx) {{
-                    if (map.closePopup) map.closePopup();
-                    selectedFeatureIndex = -1;
-                    updateDeleteButtonState();
-                    if (pyBridge && pyBridge.onFeatureDeleted) {{
-                        pyBridge.onFeatureDeleted(idx);
+                // --- QGIS Selection State & Tools ---
+                function setSelectTool(mode) {{
+                    if (drawMode) cancelDrawMode();
+                    if (measureActive) toggleMeasure();
+                    closeAllFlyouts();
+
+                    selectMode = mode;
+                    var bClick = document.getElementById('btnSelectClick');
+                    var bBox = document.getElementById('btnSelectBox');
+                    if (bClick) bClick.classList.toggle('active', mode === 'click');
+                    if (bBox) bBox.classList.toggle('active', mode === 'box');
+
+                    var banner = document.getElementById('drawBanner');
+                    var bannerText = document.getElementById('drawBannerText');
+
+                    if (mode === 'box') {{
+                        map.dragging.disable();
+                        map.getContainer().style.cursor = 'crosshair';
+                        if (banner && bannerText) {{
+                            bannerText.textContent = '⬚ Kutu ile Seçim: Dikdörtgen çizerek nesneleri seçin (Ctrl/Shift: Mevcut seçime ekler)';
+                            banner.classList.add('active');
+                            banner.classList.remove('hud-banner-warn');
+                        }}
+                    }} else {{
+                        map.dragging.enable();
+                        map.getContainer().style.cursor = '';
+                        if (banner && !drawMode) {{
+                            banner.classList.remove('active');
+                        }}
                     }}
+                }}
+
+                function cancelBanner() {{
+                    if (drawMode) cancelDrawMode();
+                    if (selectMode === 'box') setSelectTool('click');
+                }}
+
+                function updateSelectionUI() {{
+                    var count = selectedIndices.size;
+                    var pill = document.getElementById('selectionPill');
+                    var pillText = document.getElementById('selectionPillText');
+                    var btnZoom = document.getElementById('btnZoomSel');
+                    var btnClear = document.getElementById('btnClearSel');
+                    var btnDel = document.getElementById('btnDelete');
+
+                    if (count > 0) {{
+                        if (pill) {{
+                            pill.style.display = 'flex';
+                            if (pillText) pillText.textContent = count + ' seçili';
+                        }}
+                        if (btnZoom) btnZoom.classList.remove('disabled');
+                        if (btnClear) btnClear.classList.remove('disabled');
+                        if (btnDel) {{
+                            btnDel.classList.add('has-selection');
+                            btnDel.setAttribute('data-tip', 'Seçili ' + count + ' Geometriyi Sil (Del)');
+                        }}
+                    }} else {{
+                        if (pill) pill.style.display = 'none';
+                        if (btnZoom) btnZoom.classList.add('disabled');
+                        if (btnClear) btnClear.classList.add('disabled');
+                        if (btnDel) {{
+                            btnDel.classList.remove('has-selection');
+                            btnDel.setAttribute('data-tip', 'Seçili Geometrileri Sil (Önce Geometri Seçin)');
+                        }}
+                    }}
+                }}
+
+                function notifySelectionChanged() {{
+                    updateSelectionUI();
+                    if (pyBridge && pyBridge.onSelectionChanged) {{
+                        pyBridge.onSelectionChanged(JSON.stringify(Array.from(selectedIndices)));
+                    }}
+                }}
+
+                function applyStyleToLayerItem(l, idx, lObj) {{
+                    var isSelected = selectedIndices.has(idx);
+                    var baseColor = lObj.color;
+                    if (l.setStyle) {{
+                        var gtype = (l.feature && l.feature.geometry && l.feature.geometry.type) || 'Polygon';
+                        var isLine = gtype.indexOf('Line') !== -1;
+                        if (isSelected) {{
+                            l.setStyle({{
+                                color: isLine ? '#eab308' : '#b45309',
+                                weight: isLine ? 4.5 : 3,
+                                opacity: 1.0,
+                                fillColor: '#ffff00',
+                                fillOpacity: isLine ? 0 : 0.65
+                            }});
+                        }} else {{
+                            l.setStyle({{
+                                color: baseColor,
+                                weight: isLine ? 2.5 : 2,
+                                opacity: currentOpacity,
+                                fillColor: baseColor,
+                                fillOpacity: isLine ? 0 : currentOpacity * 0.35
+                            }});
+                        }}
+                    }}
+                    if (l.setRadius) {{
+                        l.setRadius(isSelected ? 7.5 : 5);
+                        l.setStyle({{
+                            fillColor: isSelected ? '#ffff00' : baseColor,
+                            color: isSelected ? '#b45309' : '#ffffff',
+                            weight: isSelected ? 2.5 : 1.2,
+                            opacity: 1.0,
+                            fillOpacity: isSelected ? 0.95 : currentOpacity * 0.9
+                        }});
+                    }}
+                }}
+
+                function refreshLayerStyles(layerId) {{
+                    var lId = layerId || activeLayerId;
+                    if (!lId || !vectorLayers[lId]) return;
+                    var lObj = vectorLayers[lId];
+                    if (!lObj.leafletLayer) return;
+
+                    lObj.leafletLayer.eachLayer(function(l) {{
+                        var idx = l._featureIdx;
+                        if (idx === undefined && l.eachLayer) {{
+                            l.eachLayer(function(child) {{
+                                if (child._featureIdx !== undefined) {{
+                                    applyStyleToLayerItem(child, child._featureIdx, lObj);
+                                }}
+                            }});
+                        }} else if (idx !== undefined) {{
+                            applyStyleToLayerItem(l, idx, lObj);
+                        }}
+                    }});
+                    updateSelectionUI();
+                }}
+
+                function setSelectedFeatures(indices, layerId) {{
+                    var lId = layerId || activeLayerId;
+                    if (!lId || !vectorLayers[lId]) return;
+                    selectedIndices.clear();
+                    if (Array.isArray(indices)) {{
+                        indices.forEach(function(i) {{
+                            selectedIndices.add(i);
+                        }});
+                    }}
+                    selectedFeatureIndex = selectedIndices.size === 1 ? indices[0] : -1;
+                    selectedFeatureLayerId = lId;
+                    refreshLayerStyles(lId);
+                }}
+
+                function clearSelection() {{
+                    if (selectedIndices.size === 0) return;
+                    selectedIndices.clear();
+                    selectedFeatureIndex = -1;
+                    refreshLayerStyles(activeLayerId);
+                    if (map.closePopup) map.closePopup();
+                    notifySelectionChanged();
+                }}
+
+                function zoomToSelected() {{
+                    if (selectedIndices.size === 0) return;
+                    var lObj = vectorLayers[activeLayerId];
+                    if (!lObj) return;
+
+                    var b = L.latLngBounds();
+                    var hasAny = false;
+                    selectedIndices.forEach(function(idx) {{
+                        var l = lObj.indexMap[idx];
+                        if (l) {{
+                            if (l.getBounds && l.getBounds().isValid()) {{
+                                b.extend(l.getBounds());
+                                hasAny = true;
+                            }} else if (l.getLatLng) {{
+                                b.extend(l.getLatLng());
+                                hasAny = true;
+                            }}
+                        }}
+                    }});
+
+                    if (hasAny && b.isValid()) {{
+                        map.fitBounds(b, {{ maxZoom: 16, padding: [40, 40] }});
+                    }}
+                }}
+
+                function deleteSelectedFeatures() {{
+                    if (selectedIndices.size === 0) {{
+                        showWarningBanner("Silinecek seçili nesne yok!");
+                        return;
+                    }}
+                    var arr = Array.from(selectedIndices);
+                    if (map.closePopup) map.closePopup();
+                    if (pyBridge && pyBridge.onSelectionDeleted) {{
+                        pyBridge.onSelectionDeleted(JSON.stringify(arr));
+                    }}
+                    selectedIndices.clear();
+                    selectedFeatureIndex = -1;
+                    refreshLayerStyles(activeLayerId);
+                }}
+
+                function deleteFeature(idx) {{
+                    selectedIndices.clear();
+                    selectedIndices.add(idx);
+                    deleteSelectedFeatures();
                 }}
 
                 function deleteSelectedFeature() {{
-                    if (selectedFeatureIndex >= 0) {{
-                        deleteFeature(selectedFeatureIndex);
-                    }} else {{
-                        alert("Lütfen önce haritadan silmek istediğiniz geometriyi seçin.");
-                    }}
-                }}
-
-                function updateDeleteButtonState() {{
-                    var btn = document.getElementById('btnDelete');
-                    if (!btn) return;
-                    if (selectedFeatureIndex >= 0) {{
-                        btn.classList.add('has-selection');
-                        btn.setAttribute('data-tip', 'Seçili Geometriyi Sil (#' + selectedFeatureIndex + ')');
-                    }} else {{
-                        btn.classList.remove('has-selection');
-                        btn.setAttribute('data-tip', 'Seçili Geometriyi Sil (Önce Geometri Seçin)');
-                    }}
+                    deleteSelectedFeatures();
                 }}
 
                 // --- Measurement Ruler Tool ---
@@ -1155,6 +1396,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         clearMeasure();
                     }} else {{
                         cancelDrawMode();
+                        if (selectMode === 'box') setSelectTool('click');
                         closeAllFlyouts();
                     }}
                 }}
@@ -1170,6 +1412,65 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     measurePolygon = null;
                     measureTooltip = null;
                 }}
+
+                // --- Box Drag Selection Mouse Handlers ---
+                map.on('mousedown', function(e) {{
+                    if (selectMode !== 'box' || drawMode || measureActive) return;
+                    if (e.originalEvent.button !== 0) return;
+                    isBoxSelecting = true;
+                    boxStartLatLng = e.latlng;
+                    if (boxRectLayer) {{
+                        map.removeLayer(boxRectLayer);
+                        boxRectLayer = null;
+                    }}
+                    boxRectLayer = L.rectangle([boxStartLatLng, boxStartLatLng], {{
+                        color: '#f59e0b',
+                        weight: 2,
+                        dashArray: '5, 5',
+                        fillColor: '#ffff00',
+                        fillOpacity: 0.18
+                    }}).addTo(map);
+                }});
+
+                map.on('mouseup', function(e) {{
+                    if (!isBoxSelecting) return;
+                    isBoxSelecting = false;
+                    if (!boxRectLayer || !boxStartLatLng) return;
+
+                    var boxBounds = boxRectLayer.getBounds();
+                    map.removeLayer(boxRectLayer);
+                    boxRectLayer = null;
+
+                    var p1 = map.latLngToContainerPoint(boxStartLatLng);
+                    var p2 = map.latLngToContainerPoint(e.latlng);
+                    var dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+                    if (dist < 4) return;
+
+                    var lObj = vectorLayers[activeLayerId];
+                    if (!lObj || !lObj.leafletLayer) return;
+
+                    var isMulti = e.originalEvent && (e.originalEvent.ctrlKey || e.originalEvent.shiftKey);
+                    if (!isMulti) {{
+                        selectedIndices.clear();
+                    }}
+
+                    lObj.leafletLayer.eachLayer(function(l) {{
+                        var idx = l._featureIdx;
+                        if (idx === undefined) return;
+                        var hit = false;
+                        if (l.getBounds && l.getBounds().isValid()) {{
+                            hit = boxBounds.intersects(l.getBounds());
+                        }} else if (l.getLatLng) {{
+                            hit = boxBounds.contains(l.getLatLng());
+                        }}
+                        if (hit) {{
+                            selectedIndices.add(idx);
+                        }}
+                    }});
+
+                    refreshLayerStyles(activeLayerId);
+                    notifySelectionChanged();
+                }});
 
                 // --- Map Click Handler ---
                 map.on('click', function(e) {{
@@ -1269,6 +1570,13 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         }}
                         return;
                     }}
+
+                    // Empty map click in click select mode -> clear selection
+                    if (!e.originalEvent._layerClicked && selectMode === 'click') {{
+                        if (selectedIndices.size > 0) {{
+                            clearSelection();
+                        }}
+                    }}
                 }});
 
                 // --- Double Click Handler for Finish Drawing ---
@@ -1296,7 +1604,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     if (drawMode === 'polygon') {{
                         if (polyDrawPoints.length >= 3) {{
                             var coords = polyDrawPoints.map(function(p) {{ return [p.lng, p.lat]; }});
-                            coords.push([coords[0][0], coords[0][1]]); // close polygon ring
+                            coords.push([coords[0][0], coords[0][1]]);
                             var feat = {{
                                 type: "Feature",
                                 geometry: {{
@@ -1319,18 +1627,82 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 // --- Keyboard Handlers ---
                 document.addEventListener('keydown', function(e) {{
                     if (e.key === 'Escape') {{
+                        if (isBoxSelecting && boxRectLayer) {{
+                            map.removeLayer(boxRectLayer);
+                            boxRectLayer = null;
+                            isBoxSelecting = false;
+                        }}
+                        if (selectMode === 'box') setSelectTool('click');
                         if (drawMode) cancelDrawMode();
                         if (measureActive) toggleMeasure();
                         closeAllFlyouts();
                     }} else if (e.key === 'Delete' || e.key === 'Backspace') {{
-                        if (selectedFeatureIndex >= 0 && !drawMode && !measureActive) {{
-                            deleteSelectedFeature();
+                        if (selectedIndices.size > 0 && !drawMode && !measureActive) {{
+                            deleteSelectedFeatures();
                         }}
                     }}
                 }});
 
-                var lastGeojsonData = null;
+                function handleFeatureClick(currentIdx, layerId, feature, layer, e) {{
+                    if (drawMode || measureActive || selectMode === 'box') return;
 
+                    var isMulti = e.originalEvent && (e.originalEvent.ctrlKey || e.originalEvent.shiftKey);
+
+                    if (isMulti) {{
+                        if (selectedIndices.has(currentIdx)) {{
+                            selectedIndices.delete(currentIdx);
+                        }} else {{
+                            selectedIndices.add(currentIdx);
+                        }}
+                    }} else {{
+                        selectedIndices.clear();
+                        selectedIndices.add(currentIdx);
+                    }}
+
+                    selectedFeatureIndex = selectedIndices.size === 1 ? currentIdx : -1;
+                    selectedFeatureLayerId = layerId;
+                    refreshLayerStyles(layerId);
+                    notifySelectionChanged();
+
+                    if (selectedIndices.size === 1) {{
+                        showFeaturePopup(currentIdx, layerId, feature, layer);
+                    }} else {{
+                        if (map.closePopup) map.closePopup();
+                    }}
+
+                    if (pyBridge && layerId === activeLayerId && selectedIndices.size === 1) {{
+                        pyBridge.onFeatureClicked(currentIdx);
+                    }}
+                }}
+
+                function showFeaturePopup(currentIdx, layerId, feature, layer) {{
+                    var props = (feature && feature.properties) || {{}};
+                    var gType = (feature && feature.geometry && feature.geometry.type) || 'Unknown';
+                    var lName = (vectorLayers[layerId] && vectorLayers[layerId].name) || 'Katman';
+                    var html = '<div class="prop-title"><span>[' + lName + '] #' + currentIdx + '</span><span>[' + gType + ']</span></div>';
+                    html += '<table class="prop-table">';
+                    var keys = Object.keys(props);
+                    if (keys.length === 0) {{
+                        html += '<tr><td colspan="2"><i>Öznitelik yok</i></td></tr>';
+                    }} else {{
+                        keys.forEach(function(k) {{
+                            var val = props[k];
+                            if (val === null || val === undefined) val = '<i>null</i>';
+                            html += '<tr><th>' + k + '</th><td>' + val + '</td></tr>';
+                        }});
+                    }}
+                    html += '</table>';
+                    html += '<div style="margin-top: 8px; display: flex; justify-content: flex-end; gap: 6px; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 6px;">';
+                    if (layerId === activeLayerId) {{
+                        html += '<button class="hud-popup-del-btn" onclick="deleteSelectedFeatures()">🗑️ Sil</button>';
+                    }} else {{
+                        html += '<button class="hud-popup-switch-btn" onclick="requestSetActiveLayer(\\x27' + layerId + '\\x27)">✏️ Bu Katmana Geç</button>';
+                    }}
+                    html += '</div>';
+                    layer.bindPopup(html, {{ maxWidth: 350, maxHeight: 300 }}).openPopup();
+                }}
+
+                var lastGeojsonData = null;
                 var hasFittedInitially = false;
 
                 function createLeafletLayer(layerId, name, geojsonData, color) {{
@@ -1366,6 +1738,19 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         onEachFeature: function(feature, layer) {{
                             var currentIdx = featureIdx++;
                             indexMap[currentIdx] = layer;
+                            layer._featureIdx = currentIdx;
+                            layer._layerId = layerId;
+
+                            if (layer.eachLayer) {{
+                                layer.eachLayer(function(child) {{
+                                    child._featureIdx = currentIdx;
+                                    child._layerId = layerId;
+                                    child.on('click', function(e) {{
+                                        e.originalEvent._layerClicked = true;
+                                        handleFeatureClick(currentIdx, layerId, feature, child, e);
+                                    }});
+                                }});
+                            }}
 
                             var title = (feature.properties && (feature.properties.city || feature.properties.name || feature.properties.NAME || feature.properties.title || feature.properties.id)) || ('Özellik #' + currentIdx);
                             if (featureCount <= 1000) {{
@@ -1373,38 +1758,8 @@ class MapPreviewPanel(AbstractPreviewPanel):
                             }}
 
                             layer.on('click', function(e) {{
-                                if (drawMode || measureActive) return;
-                                selectedFeatureIndex = currentIdx;
-                                selectedFeatureLayerId = layerId;
-                                updateDeleteButtonState();
-
-                                var props = feature.properties || {{}};
-                                var gType = (feature.geometry && feature.geometry.type) || 'Unknown';
-                                var html = '<div class="prop-title"><span>[' + name + '] #' + currentIdx + '</span><span>[' + gType + ']</span></div>';
-                                html += '<table class="prop-table">';
-                                var keys = Object.keys(props);
-                                if (keys.length === 0) {{
-                                    html += '<tr><td colspan="2"><i>Öznitelik yok</i></td></tr>';
-                                }} else {{
-                                    keys.forEach(function(k) {{
-                                        var val = props[k];
-                                        if (val === null || val === undefined) val = '<i>null</i>';
-                                        html += '<tr><th>' + k + '</th><td>' + val + '</td></tr>';
-                                    }});
-                                }}
-                                html += '</table>';
-                                html += '<div style="margin-top: 8px; display: flex; justify-content: flex-end; gap: 6px; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 6px;">';
-                                if (layerId === activeLayerId) {{
-                                    html += '<button class="hud-popup-del-btn" onclick="deleteFeature(' + currentIdx + ', \\x27' + layerId + '\\x27)">🗑️ Bu Geometriyi Sil</button>';
-                                }} else {{
-                                    html += '<button class="hud-popup-switch-btn" onclick="requestSetActiveLayer(\\x27' + layerId + '\\x27)">✏️ Bu Katmana Geç</button>';
-                                }}
-                                html += '</div>';
-                                layer.bindPopup(html, {{ maxWidth: 350, maxHeight: 300 }}).openPopup();
-
-                                if (pyBridge && layerId === activeLayerId) {{
-                                    pyBridge.onFeatureClicked(currentIdx);
-                                }}
+                                e.originalEvent._layerClicked = true;
+                                handleFeatureClick(currentIdx, layerId, feature, layer, e);
                             }});
                         }}
                     }});
@@ -1532,7 +1887,8 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }}
 
                     selectedFeatureIndex = -1;
-                    updateDeleteButtonState();
+                    selectedIndices.clear();
+                    updateSelectionUI();
                     renderLayersPanel();
                 }}
 
@@ -1654,9 +2010,12 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     var lId = layerId || activeLayerId;
                     if (!lId || !vectorLayers[lId]) return;
                     var layerObj = vectorLayers[lId];
+                    selectedIndices.clear();
+                    selectedIndices.add(idx);
                     selectedFeatureIndex = idx;
                     selectedFeatureLayerId = lId;
-                    updateDeleteButtonState();
+                    refreshLayerStyles(lId);
+                    updateSelectionUI();
                     var l = layerObj.indexMap[idx];
                     if (l) {{
                         if (l.getBounds && l.getBounds().isValid()) {{
@@ -1797,10 +2156,42 @@ class MapPreviewPanel(AbstractPreviewPanel):
         except Exception:
             pass
 
+    def _on_bridge_selection_changed(self, indices_json: str):
+        try:
+            indices = json.loads(indices_json)
+            if isinstance(indices, list):
+                self.selection_changed.emit(indices)
+        except Exception:
+            pass
+
+    def _on_bridge_selection_deleted(self, indices_json: str):
+        try:
+            indices = json.loads(indices_json)
+            if isinstance(indices, list):
+                self.selection_deleted.emit(indices)
+        except Exception:
+            pass
+
     def highlight_feature(self, index: int, layer_id: str = None):
         if self._is_loaded:
             esc_id = json.dumps(layer_id) if layer_id else "null"
             self.web_view.page().runJavaScript(f"highlightFeature({index}, {esc_id});")
+
+    def set_selected_features(self, indices: list, layer_id: str = None):
+        if self._is_loaded:
+            esc_indices = json.dumps(indices)
+            esc_id = json.dumps(layer_id) if layer_id else "null"
+            self.web_view.page().runJavaScript(f"setSelectedFeatures({esc_indices}, {esc_id});")
+
+    def clear_selection(self, layer_id: str = None):
+        if self._is_loaded:
+            esc_id = json.dumps(layer_id) if layer_id else "null"
+            self.web_view.page().runJavaScript(f"clearSelection({esc_id});")
+
+    def zoom_to_selected(self, layer_id: str = None):
+        if self._is_loaded:
+            esc_id = json.dumps(layer_id) if layer_id else "null"
+            self.web_view.page().runJavaScript(f"zoomToSelected({esc_id});")
 
     def fit_bounds(self, layer_id: str = None):
         if self._is_loaded:
