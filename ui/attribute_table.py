@@ -1,12 +1,118 @@
 import csv
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableView,
-    QLineEdit, QPushButton, QLabel, QHeaderView, QFileDialog, QMessageBox
+    QLineEdit, QPushButton, QLabel, QHeaderView, QFileDialog, QMessageBox,
+    QDialog, QComboBox, QFrame
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QItemSelection
 import geopandas as gpd
 import pandas as pd
 from core.spatial_ops import SpatialOps
+
+
+class AttributeTableProxyModel(QSortFilterProxyModel):
+    """
+    High-performance proxy model that handles fast text search filtering
+    and optional 'Show only selected features' mode like QGIS.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._only_selected = False
+        self._selected_source_rows = set()
+
+    def set_only_selected(self, enabled: bool, selected_rows: set):
+        self._only_selected = enabled
+        self._selected_source_rows = set(selected_rows)
+        self.invalidateFilter()
+
+    def is_only_selected(self) -> bool:
+        return self._only_selected
+
+    def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex):
+        if self._only_selected and source_row not in self._selected_source_rows:
+            return False
+        return super().filterAcceptsRow(source_row, source_parent)
+
+
+class AddFieldDialog(QDialog):
+    """QGIS-style dialog for adding a new attribute field/column to the layer."""
+
+    def __init__(self, existing_columns: list, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Yeni Alan / Sütun Ekle")
+        self.setFixedSize(320, 220)
+        self.existing_columns = [str(c).lower() for c in existing_columns]
+        self.field_name = ""
+        self.field_type = "str"
+        self.default_val = None
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        layout.addWidget(QLabel("<b>Sütun Adı:</b>"))
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("örn: mahalle_adi, nufus, durum")
+        layout.addWidget(self.name_edit)
+
+        layout.addWidget(QLabel("<b>Veri Türü:</b>"))
+        self.type_combo = QComboBox()
+        self.type_combo.addItem("Metin (String / Yazı)", "str")
+        self.type_combo.addItem("Tamsayı (Integer)", "int")
+        self.type_combo.addItem("Ondalık Sayı (Float / Double)", "float")
+        layout.addWidget(self.type_combo)
+
+        layout.addWidget(QLabel("<b>Varsayılan Değer (İsteğe bağlı):</b>"))
+        self.default_edit = QLineEdit()
+        self.default_edit.setPlaceholderText("Boş bırakılabilir")
+        layout.addWidget(self.default_edit)
+
+        btn_box = QHBoxLayout()
+        btn_cancel = QPushButton("İptal")
+        btn_cancel.clicked.connect(self.reject)
+        btn_ok = QPushButton("Ekle")
+        btn_ok.setStyleSheet("background-color: #007acc; color: white; font-weight: bold; border-radius: 4px; padding: 4px 14px;")
+        btn_ok.clicked.connect(self._on_accept)
+        btn_box.addStretch()
+        btn_box.addWidget(btn_cancel)
+        btn_box.addWidget(btn_ok)
+        layout.addLayout(btn_box)
+
+    def _on_accept(self):
+        name = self.name_edit.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Geçersiz Ad", "Lütfen bir sütun adı girin.")
+            return
+        if name.lower() in self.existing_columns:
+            QMessageBox.warning(self, "Mevcut Sütun", f"'{name}' isimli bir sütun zaten mevcut.")
+            return
+
+        self.field_name = name
+        self.field_type = self.type_combo.currentData()
+        raw_val = self.default_edit.text().strip()
+
+        if raw_val:
+            try:
+                if self.field_type == "int":
+                    self.default_val = int(raw_val)
+                elif self.field_type == "float":
+                    self.default_val = float(raw_val.replace(",", "."))
+                else:
+                    self.default_val = raw_val
+            except ValueError:
+                QMessageBox.warning(self, "Tür Uyuşmazlığı", "Varsayılan değer seçilen türe dönüştürülemedi.")
+                return
+        else:
+            if self.field_type == "int":
+                self.default_val = 0
+            elif self.field_type == "float":
+                self.default_val = 0.0
+            else:
+                self.default_val = ""
+
+        self.accept()
 
 
 class GeoDataFrameTableModel(QAbstractTableModel):
@@ -102,65 +208,151 @@ class AttributeTableWidget(QWidget):
     features_selected = pyqtSignal(list)
     delete_requested = pyqtSignal(list)
     data_modified = pyqtSignal(object)
+    zoom_to_selected_requested = pyqtSignal()
     close_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._current_gdf = None
         self._block_selection_signals = False
+        self._cached_selected_rows = set()
         self._init_ui()
+
+    def _create_vsep(self) -> QFrame:
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.VLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        sep.setStyleSheet("color: #3e3e42; background-color: #3e3e42; width: 1px; margin: 3px 2px;")
+        return sep
+
+    def _create_tool_btn(self, icon: str, tooltip: str, callback=None, checkable: bool = False, obj_name: str = "") -> QPushButton:
+        btn = QPushButton(icon)
+        btn.setToolTip(tooltip)
+        btn.setFixedSize(28, 28)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        if obj_name:
+            btn.setObjectName(obj_name)
+        if checkable:
+            btn.setCheckable(True)
+        if callback:
+            if checkable:
+                btn.toggled.connect(callback)
+            else:
+                btn.clicked.connect(callback)
+        return btn
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(6)
 
-        # Toolbar
-        toolbar = QHBoxLayout()
-        toolbar.setSpacing(6)
+        # Toolbar Container
+        toolbar_container = QWidget()
+        toolbar_container.setObjectName("AttributeTableToolbar")
+        toolbar_container.setStyleSheet(
+            "#AttributeTableToolbar QPushButton {"
+            "  border: 1px solid #3c3c3c;"
+            "  background-color: #252526;"
+            "  color: #e0e0e0;"
+            "  border-radius: 4px;"
+            "  font-size: 13px;"
+            "  padding: 0px;"
+            "}"
+            "#AttributeTableToolbar QPushButton:hover {"
+            "  background-color: #37373d;"
+            "  border-color: #007acc;"
+            "  color: #ffffff;"
+            "}"
+            "#AttributeTableToolbar QPushButton:checked {"
+            "  background-color: #094771;"
+            "  border-color: #007acc;"
+            "  color: #ffffff;"
+            "}"
+            "#AttributeTableToolbar QPushButton:disabled {"
+            "  background-color: #1e1e1e;"
+            "  border-color: #2d2d2d;"
+            "  color: #555555;"
+            "}"
+            "#AttributeTableToolbar QPushButton#btn_del:hover:enabled {"
+            "  background-color: rgba(239, 68, 68, 0.25);"
+            "  border-color: #ef4444;"
+            "  color: #ef4444;"
+            "}"
+            "#AttributeTableToolbar QPushButton#btn_close {"
+            "  border: 1px solid transparent;"
+            "  font-weight: bold;"
+            "  font-size: 13px;"
+            "  color: #858585;"
+            "}"
+            "#AttributeTableToolbar QPushButton#btn_close:hover {"
+            "  background-color: rgba(239, 68, 68, 0.2);"
+            "  color: #ef4444;"
+            "  border: 1px solid rgba(239, 68, 68, 0.4);"
+            "}"
+        )
+        toolbar = QHBoxLayout(toolbar_container)
+        toolbar.setContentsMargins(0, 0, 0, 0)
+        toolbar.setSpacing(4)
 
+        # Quick Search Box
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("🔍 Hızlı filtreleme...")
+        self.search_input.setPlaceholderText("🔍 Filtrele...")
+        self.search_input.setMaximumWidth(200)
+        self.search_input.setClearButtonEnabled(True)
         self.search_input.textChanged.connect(self._filter_table)
-        toolbar.addWidget(self.search_input, stretch=2)
+        toolbar.addWidget(self.search_input)
 
         self.stats_label = QLabel("0 özellik")
         self.stats_label.setStyleSheet("color: #858585; font-size: 11px; padding: 0 4px;")
         toolbar.addWidget(self.stats_label)
 
-        self.btn_stats = QPushButton("Σ İstatistik")
-        self.btn_stats.setToolTip("Sütun İstatistikleri (Toplam, Ortalama, Min, Max)")
-        self.btn_stats.clicked.connect(self._show_column_statistics)
-        toolbar.addWidget(self.btn_stats)
+        toolbar.addWidget(self._create_vsep())
 
-        self.btn_calc_geom = QPushButton("📐 Geometri")
-        self.btn_calc_geom.setToolTip("Alan (km²), Uzunluk (km) ve Koordinatları hesapla")
-        self.btn_calc_geom.clicked.connect(self._calculate_geometry)
+        # QGIS Selection Tools
+        self.btn_zoom_selected = self._create_tool_btn("🔍", "Haritada Seçilenlere Yakınlaş", self._zoom_to_selected)
+        self.btn_zoom_selected.setEnabled(False)
+        toolbar.addWidget(self.btn_zoom_selected)
+
+        self.btn_select_all = self._create_tool_btn("🔲", "Tümünü Seç (Ctrl+A)", self._select_all)
+        toolbar.addWidget(self.btn_select_all)
+
+        self.btn_invert_sel = self._create_tool_btn("🔄", "Seçimi Tersine Çevir", self._invert_selection)
+        toolbar.addWidget(self.btn_invert_sel)
+
+        self.btn_clear_sel = self._create_tool_btn("✖", "Seçimi Temizle", self._clear_selection)
+        toolbar.addWidget(self.btn_clear_sel)
+
+        self.btn_show_selected = self._create_tool_btn("🎯", "Yalnızca Seçilenleri Göster / Tümünü Göster", self._toggle_show_selected, checkable=True)
+        toolbar.addWidget(self.btn_show_selected)
+
+        toolbar.addWidget(self._create_vsep())
+
+        # QGIS Data / Calculation Tools
+        self.btn_add_col = self._create_tool_btn("➕", "Yeni Sütun / Alan Ekle", self._add_field)
+        toolbar.addWidget(self.btn_add_col)
+
+        self.btn_calc_geom = self._create_tool_btn("📐", "Geometri Hesapla (Alan, Uzunluk, Koordinatlar)", self._calculate_geometry)
         toolbar.addWidget(self.btn_calc_geom)
 
-        self.btn_del_selected = QPushButton("🗑️ Sil")
-        self.btn_del_selected.setToolTip("Seçili kayıtları sil (Del)")
+        self.btn_stats = self._create_tool_btn("📊", "Sütun İstatistikleri (Toplam, Ortalama, Min, Max)", self._show_column_statistics)
+        toolbar.addWidget(self.btn_stats)
+
+        self.btn_del_selected = self._create_tool_btn("🗑️", "Seçili Kayıtları Sil (Del)", self._delete_selected_rows, obj_name="btn_del")
         self.btn_del_selected.setEnabled(False)
-        self.btn_del_selected.clicked.connect(self._delete_selected_rows)
         toolbar.addWidget(self.btn_del_selected)
 
-        self.btn_export_csv = QPushButton("CSV")
-        self.btn_export_csv.setToolTip("Öznitelik tablosunu CSV olarak kaydet")
-        self.btn_export_csv.clicked.connect(self._export_csv)
+        toolbar.addWidget(self._create_vsep())
+
+        # Export & Close
+        self.btn_export_csv = self._create_tool_btn("💾", "Öznitelik Tablosunu CSV Olarak Dışa Aktar", self._export_csv)
         toolbar.addWidget(self.btn_export_csv)
 
-        self.btn_close = QPushButton("✕")
-        self.btn_close.setToolTip("Öznitelik Tablosunu Kapat (F6)")
-        self.btn_close.setFixedSize(24, 24)
-        self.btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_close.setStyleSheet(
-            "QPushButton { border: 1px solid transparent; font-weight: bold; font-size: 13px; border-radius: 4px; padding: 0px; } "
-            "QPushButton:hover { background-color: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); }"
-        )
-        self.btn_close.clicked.connect(self.close_requested.emit)
+        toolbar.addStretch()
+
+        self.btn_close = self._create_tool_btn("✕", "Öznitelik Tablosunu Kapat (F6)", self.close_requested.emit, obj_name="btn_close")
         toolbar.addWidget(self.btn_close)
 
-        layout.addLayout(toolbar)
+        layout.addWidget(toolbar_container)
 
         # Table View with Virtual Model
         self.table_view = QTableView()
@@ -173,7 +365,7 @@ class AttributeTableWidget(QWidget):
         self.table_view.verticalHeader().setDefaultSectionSize(25)
 
         self.source_model = GeoDataFrameTableModel()
-        self.proxy_model = QSortFilterProxyModel(self)
+        self.proxy_model = AttributeTableProxyModel(self)
         self.proxy_model.setSourceModel(self.source_model)
         self.proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.proxy_model.setFilterKeyColumn(-1)
@@ -192,12 +384,20 @@ class AttributeTableWidget(QWidget):
 
     def load_data(self, gdf: gpd.GeoDataFrame):
         self._current_gdf = gdf
+        self.btn_show_selected.blockSignals(True)
+        self.btn_show_selected.setChecked(False)
+        self.btn_show_selected.blockSignals(False)
+        self.proxy_model.set_only_selected(False, set())
+
         self.source_model.set_data(gdf)
 
         count = len(gdf) if gdf is not None and not gdf.empty else 0
         self.stats_label.setText(f"{count:,} özellik")
         self.btn_del_selected.setEnabled(False)
-        self.btn_del_selected.setText("🗑️ Sil")
+        self.btn_del_selected.setToolTip("Seçili Kayıtları Sil (Del)")
+        self.btn_zoom_selected.setEnabled(False)
+        self.btn_zoom_selected.setToolTip("Haritada Seçilenlere Yakınlaş")
+
         header = self.table_view.horizontalHeader()
         header.setDefaultSectionSize(120)
         for col in range(min(5, self.source_model.columnCount())):
@@ -205,22 +405,93 @@ class AttributeTableWidget(QWidget):
 
     def _filter_table(self, text: str):
         self.proxy_model.setFilterFixedString(text)
+        self._update_stats_label()
+
+    def _update_stats_label(self):
         visible = self.proxy_model.rowCount()
         total = self.source_model.rowCount()
-        if text.strip():
+        if self.proxy_model.is_only_selected() or bool(self.search_input.text().strip()):
             self.stats_label.setText(f"{visible:,} / {total:,} özellik")
         else:
             self.stats_label.setText(f"{total:,} özellik")
 
+    def _zoom_to_selected(self):
+        self.zoom_to_selected_requested.emit()
+
+    def _select_all(self):
+        self.table_view.selectAll()
+
+    def _invert_selection(self):
+        sel_model = self.table_view.selectionModel()
+        total_rows = self.proxy_model.rowCount()
+        col_count = self.proxy_model.columnCount()
+        if total_rows == 0 or col_count == 0:
+            return
+        selection = QItemSelection(
+            self.proxy_model.index(0, 0),
+            self.proxy_model.index(total_rows - 1, col_count - 1)
+        )
+        sel_model.select(selection, QItemSelectionModel.SelectionFlag.Toggle | QItemSelectionModel.SelectionFlag.Rows)
+
+    def _clear_selection(self):
+        self.table_view.selectionModel().clearSelection()
+
+    def _toggle_show_selected(self, checked: bool):
+        if checked:
+            indexes = self.table_view.selectionModel().selectedRows()
+            src_rows = set()
+            for p_idx in indexes:
+                s_idx = self.proxy_model.mapToSource(p_idx)
+                if s_idx.isValid():
+                    src_rows.add(s_idx.row())
+            if not src_rows:
+                self.btn_show_selected.blockSignals(True)
+                self.btn_show_selected.setChecked(False)
+                self.btn_show_selected.blockSignals(False)
+                QMessageBox.information(
+                    self, "Seçim Yok",
+                    "Yalnızca seçilenleri göstermek için önce tablodan veya haritadan en az bir özellik seçmelisiniz."
+                )
+                return
+            self._cached_selected_rows = src_rows
+            self.proxy_model.set_only_selected(True, src_rows)
+            self.table_view.selectAll()
+        else:
+            self.proxy_model.set_only_selected(False, set())
+            if self._cached_selected_rows:
+                self.select_features(list(self._cached_selected_rows))
+        self._update_stats_label()
+
+    def _add_field(self):
+        if self._current_gdf is None or self._current_gdf.empty:
+            QMessageBox.information(self, "Veri Yok", "Yüklü mekansal katman bulunamadı.")
+            return
+
+        dlg = AddFieldDialog(list(self._current_gdf.columns), parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            name = dlg.field_name
+            val = dlg.default_val
+            try:
+                self._current_gdf[name] = val
+                self.load_data(self._current_gdf)
+                self.data_modified.emit(self._current_gdf)
+                QMessageBox.information(self, "Alan Eklendi", f"'{name}' sütunu başarıyla eklendi!")
+            except Exception as e:
+                QMessageBox.critical(self, "Hata", f"Sütun eklenirken hata oluştu: {e}")
+
     def _on_selection_changed(self, selected, deselected):
         indexes = self.table_view.selectionModel().selectedRows()
         count = len(indexes)
-        if count > 0:
-            self.btn_del_selected.setEnabled(True)
-            self.btn_del_selected.setText(f"🗑️ Sil ({count})")
+        has_sel = count > 0
+
+        self.btn_del_selected.setEnabled(has_sel)
+        self.btn_zoom_selected.setEnabled(has_sel)
+        if has_sel:
+            self.btn_del_selected.setToolTip(f"Seçili {count:,} Kaydı Sil (Del)")
+            self.btn_zoom_selected.setToolTip(f"Haritada Seçili {count:,} Geometriye Yakınlaş")
         else:
-            self.btn_del_selected.setEnabled(False)
-            self.btn_del_selected.setText("🗑️ Sil")
+            self.btn_del_selected.setToolTip("Seçili Kayıtları Sil (Del)")
+            self.btn_zoom_selected.setToolTip("Haritada Seçilenlere Yakınlaş")
 
         if self._block_selection_signals:
             return
@@ -269,7 +540,9 @@ class AttributeTableWidget(QWidget):
             sel_model.clearSelection()
             if not indices or self.source_model.rowCount() == 0:
                 self.btn_del_selected.setEnabled(False)
-                self.btn_del_selected.setText("🗑️ Sil")
+                self.btn_del_selected.setToolTip("Seçili Kayıtları Sil (Del)")
+                self.btn_zoom_selected.setEnabled(False)
+                self.btn_zoom_selected.setToolTip("Haritada Seçilenlere Yakınlaş")
                 return
 
             selection = QItemSelection()
@@ -293,7 +566,13 @@ class AttributeTableWidget(QWidget):
 
             count = len(indices)
             self.btn_del_selected.setEnabled(count > 0)
-            self.btn_del_selected.setText(f"🗑️ Sil ({count})" if count > 0 else "🗑️ Sil")
+            self.btn_zoom_selected.setEnabled(count > 0)
+            if count > 0:
+                self.btn_del_selected.setToolTip(f"Seçili {count:,} Kaydı Sil (Del)")
+                self.btn_zoom_selected.setToolTip(f"Haritada Seçili {count:,} Geometriye Yakınlaş")
+            else:
+                self.btn_del_selected.setToolTip("Seçili Kayıtları Sil (Del)")
+                self.btn_zoom_selected.setToolTip("Haritada Seçilenlere Yakınlaş")
         finally:
             self._block_selection_signals = False
 
@@ -342,3 +621,4 @@ class AttributeTableWidget(QWidget):
             QMessageBox.information(self, "Başarılı", f"Öznitelik tablosu kaydedildi:\n{path}")
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"CSV kaydedilemedi: {str(e)}")
+

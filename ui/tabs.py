@@ -74,6 +74,7 @@ class EditorTab(QWidget):
         self.table_panel.delete_requested.connect(self._on_features_deleted)
         self.table_panel.close_requested.connect(self.toggle_table)
         self.table_panel.data_modified.connect(self._on_table_data_modified)
+        self.table_panel.zoom_to_selected_requested.connect(self._on_table_zoom_to_selected)
 
         if self._custom_map_panel is None:
             self.map_panel.feature_clicked.connect(self.table_panel.select_feature)
@@ -260,6 +261,10 @@ class EditorTab(QWidget):
     def _on_table_features_selected(self, indices: list):
         if self.map_panel:
             self.map_panel.set_selected_features(indices, self.layer_id)
+
+    def _on_table_zoom_to_selected(self):
+        if self.map_panel and self.layer_id:
+            self.map_panel.zoom_to_selected(self.layer_id)
 
     def _on_feature_added(self, feature_json_str: str):
         try:
