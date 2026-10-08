@@ -450,24 +450,28 @@ class EditorTab(QWidget):
                 return 1 if self._tab.is_table_visible() else 0
         return _CompatStack(self)
 
-    def configure_for_file_type(self, file_type: str, is_spatial: bool, content: str = "", gdf: object = None):
+    def configure_for_file_type(self, file_type: str, is_spatial: bool, content: object = "", gdf: object = None):
         self.file_type = file_type
         self.is_spatial = is_spatial
 
         if file_type == "Spreadsheet":
             self.set_view_mode("spreadsheet")
-            if self.current_file and os.path.exists(self.current_file):
+            if isinstance(content, dict) and content:
+                self.spreadsheet_editor.load_data(content, self.current_file)
+            elif self.current_file and os.path.exists(self.current_file):
                 self.spreadsheet_editor.load_file(self.current_file)
         elif file_type == "Word":
             self.set_view_mode("word")
-            if self.current_file and os.path.exists(self.current_file):
+            if isinstance(content, dict) and content:
+                self.document_editor.load_data(content, self.current_file)
+            elif self.current_file and os.path.exists(self.current_file):
                 self.document_editor.load_file(self.current_file)
         elif file_type == "PDF":
             self.set_view_mode("pdf")
             if self.current_file and os.path.exists(self.current_file):
                 self.pdf_viewer.load_file(self.current_file)
         elif is_spatial:
-            if gdf is None and content.strip():
+            if gdf is None and isinstance(content, str) and content.strip():
                 try:
                     gdf = SpatialOps.parse_geojson_str(content)
                 except Exception:
@@ -475,11 +479,13 @@ class EditorTab(QWidget):
             self.set_spatial_data(gdf)
         elif file_type == "Markdown":
             self.set_view_mode("markdown")
-            self.markdown_panel.render_content(content)
-            self.text_editor.setPlainText(content)
+            text = content if isinstance(content, str) else ""
+            self.markdown_panel.render_content(text)
+            self.text_editor.setPlainText(text)
         else:
             self.set_view_mode("code")
-            self.text_editor.setPlainText(content)
+            text = content if isinstance(content, str) else ""
+            self.text_editor.setPlainText(text)
             self.text_editor.setLanguage(file_type)
 
     def _on_text_changed(self):

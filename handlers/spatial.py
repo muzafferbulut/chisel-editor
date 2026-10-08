@@ -70,9 +70,17 @@ class SpatialHandler(BaseHandler):
         clean_gdf = SpatialOps.sanitize_gdf_for_json(gdf)
         return clean_gdf.to_json()
 
-    def write(self, file_path: str, content: str) -> bool:
+    def write(self, file_path: str, content: object) -> bool:
         try:
-            gdf = gpd.read_file(io.StringIO(content))
+            if isinstance(content, gpd.GeoDataFrame):
+                gdf = content
+            elif isinstance(content, str):
+                gdf = gpd.read_file(io.StringIO(content))
+            elif isinstance(content, dict):
+                import json
+                gdf = gpd.read_file(io.StringIO(json.dumps(content)))
+            else:
+                gdf = gpd.GeoDataFrame(content)
             return SpatialOps.export_file(gdf, file_path)
         except Exception as e:
             raise RuntimeError(f"Failed to write spatial data: {str(e)}")

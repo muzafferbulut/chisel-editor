@@ -9,7 +9,7 @@ import geopandas as gpd
 
 
 class FileLoadWorker(QThread):
-    finished = pyqtSignal(str, str, bool, object, str)  # (file_path, content, is_spatial, gdf, error)
+    finished = pyqtSignal(str, object, bool, object, str)  # (file_path, content, is_spatial, gdf, error)
     multiple_layers_detected = pyqtSignal(str, list)
 
     def __init__(self, file_path: str, **kwargs):

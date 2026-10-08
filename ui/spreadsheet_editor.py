@@ -139,14 +139,12 @@ class SpreadsheetEditorWidget(QWidget):
             col_idx = col_idx // 26 - 1
         return name
 
-    def load_file(self, file_path: str):
-        self.current_file = file_path
+    def load_data(self, sheets: dict, file_path: str = None):
+        if file_path:
+            self.current_file = file_path
         self._is_loading = True
         try:
-            handler = ExcelHandler()
-            self._sheets = handler.read(file_path)
-            if not self._sheets:
-                self._sheets = {"Sayfa1": pd.DataFrame()}
+            self._sheets = sheets if sheets else {"Sayfa1": pd.DataFrame()}
 
             self.tab_bar.blockSignals(True)
             while self.tab_bar.count() > 0:
@@ -162,6 +160,12 @@ class SpreadsheetEditorWidget(QWidget):
             self._is_dirty = False
         finally:
             self._is_loading = False
+
+    def load_file(self, file_path: str):
+        self.current_file = file_path
+        handler = ExcelHandler()
+        sheets = handler.read(file_path)
+        self.load_data(sheets, file_path)
 
     def _load_sheet_data(self, sheet_name: str):
         df = self._sheets.get(sheet_name, pd.DataFrame())
@@ -424,3 +428,4 @@ class SpreadsheetEditorWidget(QWidget):
         menu.addAction("Sütun Ekle", self._add_column)
         menu.addAction("Sütun Sil", self._del_column)
         menu.exec(self.table.viewport().mapToGlobal(pos))
+

@@ -166,3 +166,4 @@ class PdfViewerWidget(QWidget):
                 self.pdf_view.setZoomFactor(pct / 100.0)
             except ValueError:
                 pass
+

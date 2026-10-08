@@ -165,12 +165,11 @@ class WordDocumentEditorWidget(QWidget):
         )
         return btn
 
-    def load_file(self, file_path: str):
-        self.current_file = file_path
+    def load_data(self, data: dict, file_path: str = None):
+        if file_path:
+            self.current_file = file_path
         self._is_loading = True
         try:
-            handler = DocxHandler()
-            data = handler.read(file_path)
             self.editor.clear()
             cursor = self.editor.textCursor()
 
@@ -240,6 +239,12 @@ class WordDocumentEditorWidget(QWidget):
             self._is_dirty = False
         finally:
             self._is_loading = False
+
+    def load_file(self, file_path: str):
+        self.current_file = file_path
+        handler = DocxHandler()
+        data = handler.read(file_path)
+        self.load_data(data, file_path)
 
     def save_to_file(self, file_path: str = None):
         target = file_path or self.current_file
@@ -402,3 +407,4 @@ class WordDocumentEditorWidget(QWidget):
             cursor.select(QTextCursor.SelectionType.WordUnderCursor)
         cursor.mergeCharFormat(format)
         self.editor.mergeCurrentCharFormat(format)
+
