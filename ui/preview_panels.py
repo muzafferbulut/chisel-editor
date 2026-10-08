@@ -810,6 +810,9 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 var viewportDebounceTimer = null;
                 map.on('moveend', function() {{
+                    if (selectedIndices.size > 0 && activeLayerId) {{
+                        refreshLayerStyles(activeLayerId);
+                    }}
                     if (viewportDebounceTimer) clearTimeout(viewportDebounceTimer);
                     viewportDebounceTimer = setTimeout(function() {{
                         if (pyBridge && pyBridge.onViewportChanged) {{
@@ -1059,6 +1062,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                                 fillColor: '#ffff00',
                                 fillOpacity: isLine ? 0 : 0.65
                             }});
+                            if (l.bringToFront) l.bringToFront();
                         }} else {{
                             l.setStyle({{
                                 color: baseColor,
@@ -1078,6 +1082,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                             opacity: 1.0,
                             fillOpacity: isSelected ? 0.95 : currentOpacity * 0.9
                         }});
+                        if (isSelected && l.bringToFront) l.bringToFront();
                     }}
                 }}
 
@@ -1209,7 +1214,9 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
 
                 // --- Box Drag Selection Mouse Handlers ---
+                var mapMouseDownPos = null;
                 map.on('mousedown', function(e) {{
+                    if (e.containerPoint) mapMouseDownPos = e.containerPoint;
                     if (selectMode !== 'box' || drawMode || measureActive) return;
                     if (e.originalEvent.button !== 0) return;
                     isBoxSelecting = true;
@@ -1366,8 +1373,15 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         return;
                     }}
 
-                    // Empty map click in click select mode -> clear selection
-                    if (!e.originalEvent._layerClicked && selectMode === 'click') {{
+                    // Empty map click in click select mode -> clear selection (only if not dragged/panned)
+                    var wasDragged = false;
+                    if (mapMouseDownPos && e.containerPoint) {{
+                        var dist = Math.hypot(e.containerPoint.x - mapMouseDownPos.x, e.containerPoint.y - mapMouseDownPos.y);
+                        if (dist > 4) wasDragged = true;
+                    }}
+                    mapMouseDownPos = null;
+
+                    if (!wasDragged && !e.originalEvent._layerClicked && selectMode === 'click') {{
                         if (selectedIndices.size > 0) {{
                             clearSelection();
                         }}
@@ -1498,7 +1512,9 @@ class MapPreviewPanel(AbstractPreviewPanel):
                             }};
                         }},
                         onEachFeature: function(feature, layer) {{
-                            var currentIdx = featureIdx++;
+                            var currentIdx = (feature && feature.id !== undefined && !isNaN(parseInt(feature.id, 10)))
+                                ? parseInt(feature.id, 10)
+                                : featureIdx++;
                             indexMap[currentIdx] = layer;
                             layer._featureIdx = currentIdx;
                             layer._layerId = layerId;
@@ -1621,6 +1637,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                             layerObj.leafletLayer.bringToFront();
                         }}
                     }}
+                    refreshLayerStyles(layerId);
                 }}
 
                 function setActiveVectorLayer(layerId, geomType) {{
