@@ -467,21 +467,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
                 .hud-banner-cancel:hover {{
                     background: rgba(255, 255, 255, 0.35);
-                }}
-                .hud-popup-del-btn {{
-                    background: #e74c3c;
-                    color: #fff;
-                    border: none;
-                    border-radius: 4px;
-                    padding: 4px 10px;
-                    font-size: 11px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: background 0.15s ease;
-                }}
-                .hud-popup-del-btn:hover {{
-                    background: #c0392b;
-                }}
                 .hud-stats {{
                     top: 12px;
                     left: 54px;
@@ -491,46 +476,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     width: 70px;
                     cursor: pointer;
                     vertical-align: middle;
-                }}
-                .leaflet-popup-content-wrapper {{
-                    background: #252526 !important;
-                    color: #cccccc !important;
-                    border-radius: 6px;
-                    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
-                    border: 1px solid #3c3c3c;
-                    padding: 4px;
-                }}
-                .leaflet-popup-tip {{
-                    background: #252526 !important;
-                }}
-                .prop-table {{
-                    width: 100%;
-                    border-collapse: collapse;
-                    font-size: 11px;
-                    max-height: 220px;
-                    overflow-y: auto;
-                    display: block;
-                }}
-                .prop-table th, .prop-table td {{
-                    padding: 3px 6px;
-                    text-align: left;
-                    border-bottom: 1px solid #333;
-                }}
-                .prop-table th {{
-                    color: #858585;
-                    font-weight: 600;
-                }}
-                .prop-table td {{
-                    color: #e0e0e0;
-                    word-break: break-all;
-                }}
-                .prop-title {{
-                    font-weight: bold;
-                    color: #00a2ff;
-                    margin-bottom: 6px;
-                    font-size: 12px;
-                    display: flex;
-                    justify-content: space-between;
                 }}
                 .measure-tooltip {{
                     background: rgba(0,0,0,0.85);
@@ -1664,42 +1609,9 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     refreshLayerStyles(layerId);
                     notifySelectionChanged();
 
-                    if (selectedIndices.size === 1) {{
-                        showFeaturePopup(currentIdx, layerId, feature, layer);
-                    }} else {{
-                        if (map.closePopup) map.closePopup();
-                    }}
-
                     if (pyBridge && layerId === activeLayerId && selectedIndices.size === 1) {{
                         pyBridge.onFeatureClicked(currentIdx);
                     }}
-                }}
-
-                function showFeaturePopup(currentIdx, layerId, feature, layer) {{
-                    var props = (feature && feature.properties) || {{}};
-                    var gType = (feature && feature.geometry && feature.geometry.type) || 'Unknown';
-                    var lName = (vectorLayers[layerId] && vectorLayers[layerId].name) || 'Katman';
-                    var html = '<div class="prop-title"><span>[' + lName + '] #' + currentIdx + '</span><span>[' + gType + ']</span></div>';
-                    html += '<table class="prop-table">';
-                    var keys = Object.keys(props);
-                    if (keys.length === 0) {{
-                        html += '<tr><td colspan="2"><i>Öznitelik yok</i></td></tr>';
-                    }} else {{
-                        keys.forEach(function(k) {{
-                            var val = props[k];
-                            if (val === null || val === undefined) val = '<i>null</i>';
-                            html += '<tr><th>' + k + '</th><td>' + val + '</td></tr>';
-                        }});
-                    }}
-                    html += '</table>';
-                    html += '<div style="margin-top: 8px; display: flex; justify-content: flex-end; gap: 6px; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 6px;">';
-                    if (layerId === activeLayerId) {{
-                        html += '<button class="hud-popup-del-btn" onclick="deleteSelectedFeatures()">🗑️ Sil</button>';
-                    }} else {{
-                        html += '<button class="hud-popup-switch-btn" onclick="requestSetActiveLayer(\\x27' + layerId + '\\x27)">✏️ Bu Katmana Geç</button>';
-                    }}
-                    html += '</div>';
-                    layer.bindPopup(html, {{ maxWidth: 350, maxHeight: 300 }}).openPopup();
                 }}
 
                 var lastGeojsonData = null;
@@ -1708,10 +1620,10 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 function createLeafletLayer(layerId, name, geojsonData, color) {{
                     var featureIdx = 0;
                     var indexMap = {{}};
-                    var featureCount = (geojsonData && geojsonData.features) ? geojsonData.features.length : 1;
 
                     var lLayer = L.geoJSON(geojsonData, {{
                         renderer: sharedCanvas,
+                        smoothFactor: 1.0,
                         pointToLayer: function(feature, latlng) {{
                             return L.circleMarker(latlng, {{
                                 renderer: sharedCanvas,
@@ -1750,11 +1662,6 @@ class MapPreviewPanel(AbstractPreviewPanel):
                                         handleFeatureClick(currentIdx, layerId, feature, child, e);
                                     }});
                                 }});
-                            }}
-
-                            var title = (feature.properties && (feature.properties.city || feature.properties.name || feature.properties.NAME || feature.properties.title || feature.properties.id)) || ('Özellik #' + currentIdx);
-                            if (featureCount <= 1000) {{
-                                layer.bindTooltip('[' + name + '] ' + String(title), {{ sticky: true }});
                             }}
 
                             layer.on('click', function(e) {{
