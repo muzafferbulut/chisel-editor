@@ -54,6 +54,8 @@ class WordDocumentEditorWidget(QWidget):
 
         # Heading / Style Selector
         self.style_combo = QComboBox()
+        self.style_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.style_combo.setMinimumContentsLength(8)
         self.style_combo.addItems(["Normal Metin", "Başlık 1", "Başlık 2", "Başlık 3", "Başlık 4"])
         self.style_combo.setToolTip("Stil / Başlık Düzeyi")
         self.style_combo.activated.connect(self._apply_heading_style)
@@ -61,6 +63,8 @@ class WordDocumentEditorWidget(QWidget):
 
         # Font Family
         self.font_combo = QComboBox()
+        self.font_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.font_combo.setMinimumContentsLength(10)
         self.font_combo.addItems(["Calibri", "Segoe UI", "Arial", "Times New Roman", "Verdana", "Courier New"])
         self.font_combo.setToolTip("Yazı Tipi (Font)")
         self.font_combo.currentTextChanged.connect(self._apply_font_family)
@@ -138,7 +142,15 @@ class WordDocumentEditorWidget(QWidget):
         self.lbl_stats.setStyleSheet("color: #858585; font-size: 11px; padding: 0 8px;")
         toolbar_layout.addWidget(self.lbl_stats)
 
-        main_layout.addWidget(self.toolbar_container)
+        self.toolbar_scroll = QScrollArea()
+        self.toolbar_scroll.setObjectName("WordToolbarScroll")
+        self.toolbar_scroll.setWidgetResizable(True)
+        self.toolbar_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.toolbar_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.toolbar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.toolbar_scroll.setFixedHeight(38)
+        self.toolbar_scroll.setWidget(self.toolbar_container)
+        main_layout.addWidget(self.toolbar_scroll)
 
         # 2. Document Canvas Container (A4 Paper Look)
         self.scroll_area = QScrollArea()
@@ -151,9 +163,9 @@ class WordDocumentEditorWidget(QWidget):
         canvas_layout.setContentsMargins(20, 20, 20, 20)
 
         self.editor = QTextEdit()
-        self.editor.setMinimumWidth(720)
+        self.editor.setMinimumWidth(320)
         self.editor.setMaximumWidth(850)
-        self.editor.setMinimumHeight(960)
+        self.editor.setMinimumHeight(450)
         self.editor.cursorPositionChanged.connect(self._on_cursor_changed)
         self.editor.textChanged.connect(self._on_text_changed)
 

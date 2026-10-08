@@ -61,6 +61,7 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self):
         self.setWindowTitle("Chisel Editor")
+        self.setMinimumSize(720, 480)
         self._center_on_screen()
 
         # Main Central Container
@@ -72,6 +73,7 @@ class MainWindow(QMainWindow):
         # Main Horizontal Splitter (SideBar + Work Area)
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.setHandleWidth(2)
+        self.main_splitter.setChildrenCollapsible(True)
 
         # Left: Explorer SideBar
         self.side_bar = ExplorerPanel(self._current_folder, self)
@@ -150,8 +152,10 @@ class MainWindow(QMainWindow):
         screen = QApplication.primaryScreen()
         if screen:
             avail = screen.availableGeometry()
-            w = min(1200, max(800, int(avail.width() * 0.88)))
-            h = min(750, max(550, int(avail.height() * 0.82)))
+            w = min(1200, max(720, int(avail.width() * 0.88)))
+            h = min(750, max(480, int(avail.height() * 0.82)))
+            w = min(w, avail.width())
+            h = min(h, avail.height())
             self.resize(w, h)
             self.move(avail.x() + (avail.width() - w) // 2, avail.y() + (avail.height() - h) // 2)
         else:

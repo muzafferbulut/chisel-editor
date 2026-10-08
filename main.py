@@ -18,6 +18,8 @@ from core.theme import ThemeManager
 def _qt_message_filter(msg_type, context, message):
     if "Compositor returned null texture" in message or "null texture" in message:
         return
+    if "QWindowsWindow::setGeometry" in message:
+        return
     if message:
         sys.stderr.write(f"{message}\n")
 
