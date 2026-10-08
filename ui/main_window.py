@@ -584,7 +584,9 @@ class MainWindow(QMainWindow):
         tab.is_dirty = False
 
         ext = os.path.splitext(file_path)[1].lower()
-        if ext in {".xlsx", ".xls"}:
+        if is_spatial:
+            file_type = "Mekansal Katman"
+        elif ext in {".xlsx", ".xls", ".csv"}:
             file_type = "Spreadsheet"
         elif ext in {".docx", ".doc"}:
             file_type = "Word"
@@ -594,7 +596,7 @@ class MainWindow(QMainWindow):
             type_names = {
                 ".geojson": "GeoJSON", ".shp": "ESRI Shapefile", ".kml": "KML",
                 ".gpkg": "GeoPackage", ".fgb": "FlatGeobuf", ".md": "Markdown",
-                ".json": "JSON", ".py": "Python", ".csv": "CSV"
+                ".json": "JSON", ".py": "Python"
             }
             file_type = type_names.get(ext, "Plain Text")
 
@@ -631,11 +633,17 @@ class MainWindow(QMainWindow):
         if not tab:
             return
         if tab.file_type == "Spreadsheet":
-            filt = "Excel Çalışma Kitabı (*.xlsx);;Tüm Dosyalar (*)"
+            if tab.current_file and tab.current_file.lower().endswith(".csv"):
+                filt = "CSV Dosyası (*.csv);;Excel Çalışma Kitabı (*.xlsx);;Tüm Dosyalar (*)"
+            else:
+                filt = "Excel Çalışma Kitabı (*.xlsx);;CSV Dosyası (*.csv);;Tüm Dosyalar (*)"
         elif tab.file_type == "Word":
             filt = "Word Belgesi (*.docx);;Tüm Dosyalar (*)"
         elif tab.is_spatial:
-            filt = "GeoJSON (*.geojson);;Tüm Dosyalar (*)"
+            if tab.current_file and tab.current_file.lower().endswith(".csv"):
+                filt = "CSV Dosyası (*.csv);;GeoJSON (*.geojson);;Tüm Dosyalar (*)"
+            else:
+                filt = "GeoJSON (*.geojson);;Shapefile (*.shp);;GeoPackage (*.gpkg);;Tüm Dosyalar (*)"
         else:
             filt = "Tüm Dosyalar (*)"
         file_path, _ = QFileDialog.getSaveFileName(self, "Farklı Kaydet", tab.current_file or self._current_folder, filt)

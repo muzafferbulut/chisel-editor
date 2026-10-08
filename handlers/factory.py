@@ -37,8 +37,12 @@ class HandlerFactory:
             try:
                 if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
                     with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        first_line = f.readline().lower()
-                        if 'geometry' in first_line or 'wkt' in first_line or ('lat' in first_line and 'lon' in first_line):
+                        header = f.readline().lower()
+                        if any(marker in header for marker in ('geometry', 'wkt', 'geom', 'the_geom', 'shape', 'wkt_geometry')):
+                            return True
+                        has_lat = any(marker in header for marker in ('lat', 'latitude', 'enlem', 'point_y', 'kuzey'))
+                        has_lon = any(marker in header for marker in ('lon', 'lng', 'longitude', 'boylam', 'point_x', 'dogu'))
+                        if has_lat and has_lon:
                             return True
             except Exception:
                 pass
@@ -48,7 +52,7 @@ class HandlerFactory:
     @staticmethod
     def is_excel_file(file_path: str) -> bool:
         ext = os.path.splitext(file_path)[1].lower()
-        return ext in HandlerFactory.EXCEL_EXTENSIONS
+        return ext in HandlerFactory.EXCEL_EXTENSIONS or ext == '.csv'
 
     @staticmethod
     def is_word_file(file_path: str) -> bool:
