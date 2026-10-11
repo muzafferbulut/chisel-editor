@@ -4,7 +4,7 @@ import markdown
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QApplication, QFileDialog
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebChannel import QWebChannel
-from PyQt6.QtCore import pyqtSignal, QObject, pyqtSlot, QUrl
+from PyQt6.QtCore import pyqtSignal, QObject, pyqtSlot, QUrl, QTimer
 from core.theme import ThemeManager
 
 
@@ -443,34 +443,63 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     font-weight: bold;
                     border: 1px solid #00a2ff;
                 }}
-                .hud-coords-pill {{
-                    position: absolute;
-                    bottom: 12px;
-                    left: 105px;
-                    background: rgba(24, 28, 34, 0.90);
-                    backdrop-filter: blur(8px);
-                    border: 1px solid rgba(255, 255, 255, 0.16);
-                    border-radius: 14px;
-                    padding: 3px 10px;
-                    font-size: 11px;
-                    font-family: Consolas, "Segoe UI", monospace;
-                    color: #cbd5e1;
-                    z-index: 1000;
-                    cursor: pointer;
-                    user-select: none;
-                    transition: all 0.15s ease;
-                    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+                .leaflet-bottom.leaflet-left {{
+                    display: flex !important;
+                    flex-direction: row !important;
+                    align-items: flex-end !important;
+                    gap: 6px !important;
+                    margin-left: 10px !important;
+                    margin-bottom: 8px !important;
+                    pointer-events: none;
+                }}
+                .leaflet-bottom.leaflet-left .leaflet-control {{
+                    margin: 0 !important;
+                    pointer-events: auto;
+                }}
+                .leaflet-control-scale-line {{
+                    background: rgba(24, 28, 34, 0.75) !important;
+                    backdrop-filter: blur(4px);
+                    border: 1px solid rgba(255, 255, 255, 0.28) !important;
+                    border-top: none !important;
+                    color: #d1d5db !important;
+                    font-family: Consolas, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+                    font-size: 11px !important;
+                    font-weight: 500 !important;
+                    padding: 2px 6px 1px 6px !important;
+                    box-sizing: border-box;
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+                    text-shadow: none !important;
+                    height: 20px;
                     display: flex;
                     align-items: center;
-                    gap: 7px;
+                    border-radius: 0 0 2px 2px;
                 }}
-                .hud-coords-pill:hover {{
-                    background: rgba(0, 120, 212, 0.88);
-                    border-color: #4cc2ff;
+                .hud-coords-control {{
+                    background: rgba(24, 28, 34, 0.75);
+                    backdrop-filter: blur(4px);
+                    border: 1px solid rgba(255, 255, 255, 0.28);
+                    border-radius: 2px;
+                    padding: 2px 8px 1px 8px;
+                    font-size: 11px;
+                    font-family: Consolas, -apple-system, BlinkMacSystemFont, "Segoe UI", monospace;
+                    font-weight: 500;
+                    color: #d1d5db;
+                    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+                    height: 20px;
+                    box-sizing: border-box;
+                    display: flex;
+                    align-items: center;
+                    cursor: pointer;
+                    user-select: none;
+                    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+                    white-space: nowrap;
+                }}
+                .hud-coords-control:hover {{
+                    background: rgba(0, 120, 212, 0.85);
+                    border-color: #38bdf8;
                     color: #ffffff;
-                    box-shadow: 0 4px 14px rgba(0, 120, 212, 0.4);
                 }}
-                .hud-coords-pill.copied {{
+                .hud-coords-control.copied {{
                     background: rgba(46, 204, 113, 0.9) !important;
                     border-color: #2ecc71 !important;
                     color: #ffffff !important;
@@ -498,25 +527,80 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 .vertex-handle-inner:active {{
                     cursor: grabbing;
                 }}
+                .snapshot-legend {{
+                    display: none;
+                    position: absolute;
+                    top: 14px;
+                    right: 14px;
+                    background: rgba(24, 28, 34, 0.90);
+                    backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255, 255, 255, 0.18);
+                    border-radius: 8px;
+                    padding: 8px 12px;
+                    color: #f1f5f9;
+                    font-size: 11px;
+                    z-index: 1000;
+                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+                    min-width: 140px;
+                    max-width: 280px;
+                    pointer-events: none;
+                }}
+                .snapshot-legend-title {{
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: #9cdcfe;
+                    margin-bottom: 6px;
+                    padding-bottom: 4px;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+                    letter-spacing: 0.3px;
+                }}
+                .snapshot-legend-items {{
+                    display: flex;
+                    flex-direction: column;
+                    gap: 5px;
+                }}
+                .snapshot-legend-item {{
+                    display: flex;
+                    align-items: center;
+                    gap: 7px;
+                    font-size: 11px;
+                    line-height: 1.3;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }}
+                body.snapshot-mode .snapshot-legend {{
+                    display: block !important;
+                }}
+                body.snapshot-mode .hud-toolbar-v {{
+                    display: none !important;
+                }}
+                body.snapshot-mode .leaflet-control-zoom {{
+                    display: none !important;
+                }}
+                body.snapshot-mode .vertex-handle-icon {{
+                    display: none !important;
+                }}
             </style>
         </head>
         <body>
             <div id="map"></div>
 
-            <!-- Bottom Status Pill: Live LatLng, Zoom and Scale -->
-            <div id="hudCoordinates" class="hud-coords-pill" onclick="copyMapCoordinates()" title="Koordinatları kopyalamak için tıklayın">
-                <span>📍 39.0000° K, 35.0000° D</span><span style="opacity:0.35;">|</span><span>Zoom: 5</span>
-            </div>
+            <!-- Clean GIS Legend for Snapshot / Map Output -->
+            <div id="snapshotLegend" class="snapshot-legend"></div>
 
             <!-- Vertical Action Toolbar on the Far Right -->
             <div class="hud-toolbar-v">
                 <!-- 1. Katmanlar & Servisler (QGIS Mantığıyla En Üstte) -->
                 <div style="position: relative;">
-                    <button class="hud-vbtn" id="btnLayers" onclick="toggleLayersFlyout()" data-tip="Katmanlar & Servisler" title="Katmanlar">🗂️</button>
+                    <button class="hud-vbtn" id="btnLayers" onclick="toggleLayersFlyout()" data-tip="Katmanlar & Servisler" title="Katmanlar">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/></svg>
+                    </button>
                     <div class="hud-layers-flyout" id="layersFlyout">
                         <div class="hud-layers-header">
-                            <span style="display:flex; align-items:center; gap:5px;">
-                                <span>🗂️ Katmanlar</span>
+                            <span style="display:flex; align-items:center; gap:6px;">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/></svg>
+                                <span>Katmanlar</span>
                                 <span id="layerTotalCountBadge" class="hud-layer-count-badge">0</span>
                             </span>
                             <button class="hud-layers-add-btn" onclick="requestAddService()" title="WMS / WFS Servisi ve Altlık Harita Ekle">+ WMS & WFS</button>
@@ -530,30 +614,51 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 <div class="hud-vdivider"></div>
 
                 <!-- 2. Navigasyon & Görünüm -->
-                <button class="hud-vbtn" id="btnTable" onclick="toggleTableHud()" data-tip="Öznitelik Tablosu (F6)" title="Öznitelik Tablosu">📊</button>
-                <button class="hud-vbtn" id="btnFullExtent" onclick="zoomFullExtent()" data-tip="Tüm Haritaya Odaklan (Full Extent)" title="Tüm Haritaya Odaklan">🏠</button>
-                <button class="hud-vbtn" id="btnFit" onclick="fitLayerBounds()" data-tip="Seçili Katmana Odaklan" title="Seçili Katmana Odaklan">🎯</button>
+                <button class="hud-vbtn" id="btnTable" onclick="toggleTableHud()" data-tip="Öznitelik Tablosu (F6)" title="Öznitelik Tablosu">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
+                </button>
+                <button class="hud-vbtn" id="btnFullExtent" onclick="zoomFullExtent()" data-tip="Tüm Haritaya Odaklan (Full Extent)" title="Tüm Haritaya Odaklan">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                </button>
+                <button class="hud-vbtn" id="btnFit" onclick="fitLayerBounds()" data-tip="Seçili Katmana Odaklan" title="Seçili Katmana Odaklan">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/></svg>
+                </button>
                 
                 <div class="hud-vdivider"></div>
                 
                 <!-- 3. Akıllı Seçim Aracı -->
-                <button class="hud-vbtn active" id="btnSelectClick" onclick="setSelectTool('click')" data-tip="Nesne Seç (Tıkla / Shift+Kutu)" title="Nesne Seç">👆</button>
+                <button class="hud-vbtn active" id="btnSelectClick" onclick="setSelectTool('click')" data-tip="Nesne Seç (Tıkla / Shift+Kutu)" title="Nesne Seç">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>
+                </button>
                 
                 <div class="hud-vdivider"></div>
                 
                 <!-- 4. Vektör Çizim & Düzenleme -->
-                <button class="hud-vbtn" id="btnAddPoint" onclick="toggleDrawMode('point')" data-tip="Nokta Ekle (Haritaya Tıkla)" title="Nokta Ekle">📍+</button>
-                <button class="hud-vbtn" id="btnAddLine" onclick="toggleDrawMode('line')" data-tip="Çizgi Ekle (Çiz & Çift Tıkla)" title="Çizgi Ekle">〰️+</button>
-                <button class="hud-vbtn" id="btnAddPolygon" onclick="toggleDrawMode('polygon')" data-tip="Çokgen Ekle (Çiz & Çift Tıkla)" title="Çokgen Ekle">📐+</button>
-                <button class="hud-vbtn" id="btnEditGeom" onclick="toggleVertexEditMode()" data-tip="Düğümleri Düzenle (Düğüm Noktaları)" title="Düğüm Düzenle">✏️</button>
-                <button class="hud-vbtn hud-vbtn-del" id="btnDelete" onclick="deleteSelectedFeatures()" data-tip="Seçili Geometrileri Sil (Del)" title="Seçili Geometrileri Sil">🗑️</button>
+                <button class="hud-vbtn" id="btnAddPoint" onclick="toggleDrawMode('point')" data-tip="Nokta Ekle (Haritaya Tıkla)" title="Nokta Ekle">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.914 11.105A7.298 7.298 0 0 0 20 10a8 8 0 0 0-16 0c0 4.993 5.539 10.193 7.399 11.799a1 1 0 0 0 1.202 0 32.4 32.4 0 0 0 .824-.738"/><circle cx="12" cy="10" r="3"/><line x1="19" x2="19" y1="16" y2="22"/><line x1="16" x2="22" y1="19" y2="19"/></svg>
+                </button>
+                <button class="hud-vbtn" id="btnAddLine" onclick="toggleDrawMode('line')" data-tip="Çizgi Ekle (Çiz & Çift Tıkla)" title="Çizgi Ekle">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><path d="M5 17A12 12 0 0 1 17 5"/></svg>
+                </button>
+                <button class="hud-vbtn" id="btnAddPolygon" onclick="toggleDrawMode('polygon')" data-tip="Çokgen Ekle (Çiz & Çift Tıkla)" title="Çokgen Ekle">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.83 2.38a2 2 0 0 1 2.34 0l8 5.74a2 2 0 0 1 .73 2.25l-3.04 9.26a2 2 0 0 1-1.9 1.37H7.04a2 2 0 0 1-1.9-1.37L2.1 10.37a2 2 0 0 1 .73-2.25z"/></svg>
+                </button>
+                <button class="hud-vbtn" id="btnEditGeom" onclick="toggleVertexEditMode()" data-tip="Düğümleri Düzenle (Düğüm Noktaları)" title="Düğüm Düzenle">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>
+                </button>
+                <button class="hud-vbtn hud-vbtn-del" id="btnDelete" onclick="deleteSelectedFeatures()" data-tip="Seçili Geometrileri Sil (Del)" title="Seçili Geometrileri Sil">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                </button>
                 
                 <div class="hud-vdivider"></div>
                 
-                <!-- 5. Ölçüm, Yenileme & Çıktı -->
-                <button class="hud-vbtn" id="btnMeasure" onclick="toggleMeasure()" data-tip="Mesafe / Alan Ölçümü" title="Ölçüm">📏</button>
-                <button class="hud-vbtn" id="btnRefresh" onclick="refreshMap()" data-tip="Haritayı Yenile / Boyutlandır" title="Yenile">🔄</button>
-                <button class="hud-vbtn" id="btnSnapshot" onclick="captureMapSnapshot()" data-tip="Harita Görüntüsünü Kaydet (PNG)" title="Ekranı Yakala">📷</button>
+                <!-- 5. Ölçüm & Çıktı -->
+                <button class="hud-vbtn" id="btnMeasure" onclick="toggleMeasure()" data-tip="Mesafe / Alan Ölçümü" title="Ölçüm">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.3 8.7 8.7 21.3c-1 1-2.5 1-3.4 0l-2.6-2.6c-1-1-1-2.5 0-3.4L15.3 2.7c1-1 2.5-1 3.4 0l2.6 2.6c1 1 1 2.5 0 3.4Z"/><path d="m14.5 3.5 2 2"/><path d="m11.5 6.5 2 2"/><path d="m8.5 9.5 2 2"/><path d="m5.5 12.5 2 2"/></svg>
+                </button>
+                <button class="hud-vbtn" id="btnSnapshot" onclick="captureMapSnapshot()" data-tip="Harita Görüntüsünü Kaydet (PNG)" title="Ekranı Yakala">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                </button>
             </div>
 
             <script>
@@ -565,6 +670,19 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}).setView([39.0, 35.0], 5);
 
                 L.control.scale({{ imperial: false, position: 'bottomleft' }}).addTo(map);
+
+                var coordsControl = L.control({{ position: 'bottomleft' }});
+                coordsControl.onAdd = function() {{
+                    var div = L.DomUtil.create('div', 'hud-coords-control');
+                    div.id = 'hudCoordinates';
+                    div.title = 'Koordinatları kopyalamak için tıklayın';
+                    div.innerText = '39.0000° K, 35.0000° D';
+                    L.DomEvent.disableClickPropagation(div);
+                    div.onclick = copyMapCoordinates;
+                    return div;
+                }};
+                coordsControl.addTo(map);
+
                 var sharedCanvas = L.canvas({{ padding: 0.5 }});
 
                 // STRICTLY FREE BASE TILES (No API key, no watermark)
@@ -882,10 +1000,9 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         var lng = e.latlng.lng;
                         var latH = lat >= 0 ? 'K' : 'G';
                         var lngH = lng >= 0 ? 'D' : 'B';
-                        var z = map.getZoom();
                         coordsEl.setAttribute('data-lat', lat.toFixed(5));
                         coordsEl.setAttribute('data-lng', lng.toFixed(5));
-                        coordsEl.innerHTML = '<span>📍 ' + Math.abs(lat).toFixed(4) + '° ' + latH + ', ' + Math.abs(lng).toFixed(4) + '° ' + lngH + '</span><span style="opacity:0.35;">|</span><span>Zoom: ' + z + '</span>';
+                        coordsEl.innerText = Math.abs(lat).toFixed(4) + '° ' + latH + ', ' + Math.abs(lng).toFixed(4) + '° ' + lngH;
                     }}
                 }});
 
@@ -899,10 +1016,23 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         var lngNum = parseFloat(lng);
                         var latH = latNum >= 0 ? 'K' : 'G';
                         var lngH = lngNum >= 0 ? 'D' : 'B';
-                        var z = map.getZoom();
-                        coordsEl.innerHTML = '<span>📍 ' + Math.abs(latNum).toFixed(4) + '° ' + latH + ', ' + Math.abs(lngNum).toFixed(4) + '° ' + lngH + '</span><span style="opacity:0.35;">|</span><span>Zoom: ' + z + '</span>';
+                        coordsEl.innerText = Math.abs(latNum).toFixed(4) + '° ' + latH + ', ' + Math.abs(lngNum).toFixed(4) + '° ' + lngH;
                     }}
                 }});
+
+                function updateCoordinatesToMapCenter() {{
+                    var coordsEl = document.getElementById('hudCoordinates');
+                    if (coordsEl && map) {{
+                        var c = map.getCenter();
+                        var lat = c.lat;
+                        var lng = c.lng;
+                        var latH = lat >= 0 ? 'K' : 'G';
+                        var lngH = lng >= 0 ? 'D' : 'B';
+                        coordsEl.setAttribute('data-lat', lat.toFixed(5));
+                        coordsEl.setAttribute('data-lng', lng.toFixed(5));
+                        coordsEl.innerText = Math.abs(lat).toFixed(4) + '° ' + latH + ', ' + Math.abs(lng).toFixed(4) + '° ' + lngH;
+                    }}
+                }}
 
                 function copyMapCoordinates() {{
                     var coordsEl = document.getElementById('hudCoordinates');
@@ -921,13 +1051,13 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         document.execCommand('copy');
                         document.body.removeChild(ta);
                     }}
-                    var origHtml = coordsEl.innerHTML;
+                    var origText = coordsEl.innerText;
                     coordsEl.classList.add('copied');
-                    coordsEl.innerHTML = '<span>✅ ' + text + ' (Kopyalandı)</span>';
+                    coordsEl.innerText = text + ' (Kopyalandı)';
                     setTimeout(function() {{
                         coordsEl.classList.remove('copied');
-                        coordsEl.innerHTML = origHtml;
-                    }}, 1500);
+                        coordsEl.innerText = origText;
+                    }}, 1200);
                 }}
 
                 var viewportDebounceTimer = null;
@@ -2167,6 +2297,55 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }}
                 }}
 
+                function renderSnapshotLegend() {{
+                    var legendEl = document.getElementById('snapshotLegend');
+                    if (!legendEl) return;
+
+                    var vKeys = Object.keys(vectorLayers).filter(function(k) {{ return vectorLayers[k].visible; }});
+                    var wKeys = Object.keys(wmsRegistry).filter(function(k) {{ return wmsRegistry[k].visible; }});
+
+                    if (vKeys.length === 0 && wKeys.length === 0) {{
+                        legendEl.style.display = 'none';
+                        return;
+                    }}
+
+                    var html = '<div class="snapshot-legend-title">🗂️ Katmanlar</div>';
+                    html += '<div class="snapshot-legend-items">';
+
+                    vKeys.forEach(function(k) {{
+                        var l = vectorLayers[k];
+                        var sym = getLayerSymbolHtml(l.geomType, l.color);
+                        var cnt = l.count > 0 ? ' <span style="opacity:0.6; font-size:10px;">(' + l.count.toLocaleString() + ')</span>' : '';
+                        html += '<div class="snapshot-legend-item">' + sym + '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + l.name + cnt + '</span></div>';
+                    }});
+
+                    wKeys.forEach(function(k) {{
+                        var w = wmsRegistry[k];
+                        var sym = getWmsSymbolHtml();
+                        var title = w.title || w.layerName;
+                        html += '<div class="snapshot-legend-item">' + sym + '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + title + '</span></div>';
+                    }});
+
+                    html += '</div>';
+                    legendEl.innerHTML = html;
+                    legendEl.style.display = 'block';
+                }}
+
+                function prepareSnapshotMode() {{
+                    closeAllFlyouts();
+                    renderSnapshotLegend();
+                    if (typeof updateCoordinatesToMapCenter === 'function') {{
+                        updateCoordinatesToMapCenter();
+                    }}
+                    document.body.classList.add('snapshot-mode');
+                    return true;
+                }}
+
+                function restoreSnapshotMode() {{
+                    document.body.classList.remove('snapshot-mode');
+                    return true;
+                }}
+
                 function captureMapSnapshot() {{
                     if (pyBridge && pyBridge.requestCaptureSnapshot) {{
                         pyBridge.requestCaptureSnapshot();
@@ -2387,8 +2566,23 @@ class MapPreviewPanel(AbstractPreviewPanel):
             self.web_view.page().runJavaScript("refreshMap();")
 
     def capture_snapshot(self):
+        if not self._is_loaded:
+            return
+        # Enter snapshot mode: hide toolbars & zoom buttons, show clean layer legend, update coords
+        self.web_view.page().runJavaScript("prepareSnapshotMode();", self._on_snapshot_ready)
+
+    def _on_snapshot_ready(self, _=None):
+        # Allow WebEngine rendering pipeline to paint the frame with toolbar hidden
+        QTimer.singleShot(75, self._perform_grab_and_prompt)
+
+    def _perform_grab_and_prompt(self):
         try:
             pixmap = self.web_view.grab()
+        finally:
+            # Always restore normal toolbar and UI
+            self.web_view.page().runJavaScript("restoreSnapshotMode();")
+
+        try:
             QApplication.clipboard().setPixmap(pixmap)
             file_path, _ = QFileDialog.getSaveFileName(
                 self, "Harita Görünümünü Kaydet", "harita_gorunumu.png", "PNG Resim (*.png);;JPEG Resim (*.jpg)"
