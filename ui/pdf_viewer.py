@@ -38,15 +38,15 @@ class PdfViewerWidget(QWidget):
         toolbar_layout.setSpacing(4)
 
         # First Page
-        self.btn_first = self._create_tool_btn("page_first", "⇤", "İlk Sayfa (Home)", self._first_page)
+        self.btn_first = self._create_tool_btn("page_first", "⇤", "First Page (Home)", self._first_page)
         toolbar_layout.addWidget(self.btn_first)
 
         # Previous Page
-        self.btn_prev = self._create_tool_btn("page_prev", "◀", "Önceki Sayfa (Sol Ok)", self._prev_page)
+        self.btn_prev = self._create_tool_btn("page_prev", "◀", "Previous Page (Left Arrow)", self._prev_page)
         toolbar_layout.addWidget(self.btn_prev)
 
         # Page Jumper
-        self.lbl_page_text = QLabel("Sayfa:")
+        self.lbl_page_text = QLabel("Page:")
         toolbar_layout.addWidget(self.lbl_page_text)
 
         self.page_spin = QSpinBox()
@@ -60,35 +60,35 @@ class PdfViewerWidget(QWidget):
         toolbar_layout.addWidget(self.lbl_page_count)
 
         # Next Page
-        self.btn_next = self._create_tool_btn("page_next", "▶", "Sonraki Sayfa (Sağ Ok)", self._next_page)
+        self.btn_next = self._create_tool_btn("page_next", "▶", "Next Page (Right Arrow)", self._next_page)
         toolbar_layout.addWidget(self.btn_next)
 
         # Last Page
-        self.btn_last = self._create_tool_btn("page_last", "⇥", "Son Sayfa (End)", self._last_page)
+        self.btn_last = self._create_tool_btn("page_last", "⇥", "Last Page (End)", self._last_page)
         toolbar_layout.addWidget(self.btn_last)
 
         toolbar_layout.addWidget(self._create_sep())
 
         # Zoom Out
-        self.btn_zoom_out = self._create_tool_btn("zoom_out", "-", "Uzaklaştır (Ctrl+-)", self._zoom_out)
+        self.btn_zoom_out = self._create_tool_btn("zoom_out", "-", "Zoom Out (Ctrl+-)", self._zoom_out)
         toolbar_layout.addWidget(self.btn_zoom_out)
 
         # Zoom Mode / Percentage Combo
         self.zoom_combo = QComboBox()
-        self.zoom_combo.addItems(["%50", "%75", "%100", "%125", "%150", "%200", "Genişliğe Sığdır", "Sayfaya Sığdır"])
-        self.zoom_combo.setCurrentText("Genişliğe Sığdır")
-        self.zoom_combo.setToolTip("Yakınlaştırma Düzeyi")
+        self.zoom_combo.addItems(["50%", "75%", "100%", "125%", "150%", "200%", "Fit to Width", "Fit to Page"])
+        self.zoom_combo.setCurrentText("Fit to Width")
+        self.zoom_combo.setToolTip("Zoom Level")
         self.zoom_combo.currentTextChanged.connect(self._on_zoom_changed)
         toolbar_layout.addWidget(self.zoom_combo)
 
         # Zoom In
-        self.btn_zoom_in = self._create_tool_btn("zoom_in", "+", "Yakınlaştır (Ctrl++)", self._zoom_in)
+        self.btn_zoom_in = self._create_tool_btn("zoom_in", "+", "Zoom In (Ctrl++)", self._zoom_in)
         toolbar_layout.addWidget(self.btn_zoom_in)
 
         toolbar_layout.addWidget(self._create_sep())
 
         # Rotate Page
-        self.btn_rotate = self._create_tool_btn("rotate", "↻", "90° Saat Yönünde Döndür", self._rotate_page)
+        self.btn_rotate = self._create_tool_btn("rotate", "↻", "Rotate 90° Clockwise", self._rotate_page)
         toolbar_layout.addWidget(self.btn_rotate)
 
         toolbar_layout.addStretch()
@@ -195,7 +195,7 @@ class PdfViewerWidget(QWidget):
 
     def load_file(self, file_path: str):
         if not os.path.isfile(file_path):
-            QMessageBox.critical(self, "Hata", f"PDF dosyası bulunamadı: {file_path}")
+            QMessageBox.critical(self, "Error", f"PDF file not found: {file_path}")
             return
 
         self.current_file = file_path
@@ -212,7 +212,7 @@ class PdfViewerWidget(QWidget):
         self.lbl_doc_info.setText(f"{os.path.basename(file_path)} ({size_kb:,.1f} KB)")
 
         self.pdf_view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
-        self.zoom_combo.setCurrentText("Genişliğe Sığdır")
+        self.zoom_combo.setCurrentText("Fit to Width")
 
     def _first_page(self):
         if self.doc.pageCount() > 0:
@@ -247,13 +247,13 @@ class PdfViewerWidget(QWidget):
         factor = self.pdf_view.zoomFactor() * 1.2
         self.pdf_view.setZoomMode(QPdfView.ZoomMode.Custom)
         self.pdf_view.setZoomFactor(min(5.0, factor))
-        self.zoom_combo.setCurrentText(f"%{int(self.pdf_view.zoomFactor() * 100)}")
+        self.zoom_combo.setCurrentText(f"{int(self.pdf_view.zoomFactor() * 100)}%")
 
     def _zoom_out(self):
         factor = self.pdf_view.zoomFactor() / 1.2
         self.pdf_view.setZoomMode(QPdfView.ZoomMode.Custom)
         self.pdf_view.setZoomFactor(max(0.2, factor))
-        self.zoom_combo.setCurrentText(f"%{int(self.pdf_view.zoomFactor() * 100)}")
+        self.zoom_combo.setCurrentText(f"{int(self.pdf_view.zoomFactor() * 100)}%")
 
     def _rotate_page(self):
         # QPdfDocument doesn't directly expose rotate, but we can cycle zoom or notify
@@ -261,9 +261,9 @@ class PdfViewerWidget(QWidget):
         self._rotation_angle = (self._rotation_angle + 90) % 360
 
     def _on_zoom_changed(self, text: str):
-        if text == "Genişliğe Sığdır":
+        if text == "Fit to Width":
             self.pdf_view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
-        elif text == "Sayfaya Sığdır":
+        elif text == "Fit to Page":
             self.pdf_view.setZoomMode(QPdfView.ZoomMode.FitInView)
         else:
             try:

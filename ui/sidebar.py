@@ -32,7 +32,7 @@ class ExplorerPanel(QWidget):
         header.setContentsMargins(4, 4, 4, 2)
         header.setSpacing(6)
 
-        folder_name = os.path.basename(self._root_path) or self._root_path or "PROJE"
+        folder_name = os.path.basename(self._root_path) or self._root_path or "PROJECT"
         self.lbl_title = QLabel(f"📁 {folder_name.upper()}")
         self.lbl_title.setStyleSheet("font-weight: 700; font-size: 11px; letter-spacing: 0.5px; color: #858585;")
         self.lbl_title.setToolTip(self._root_path)
@@ -43,7 +43,7 @@ class ExplorerPanel(QWidget):
         self.btn_open_folder.setObjectName("sidebarHeaderBtn")
         self.btn_open_folder.setFixedSize(22, 22)
         self.btn_open_folder.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_open_folder.setToolTip("Klasör Aç / Değiştir (Ctrl+K, Ctrl+O)")
+        self.btn_open_folder.setToolTip("Open / Change Folder (Ctrl+K, Ctrl+O)")
         self.btn_open_folder.setStyleSheet(
             "QPushButton#sidebarHeaderBtn {"
             " border: none;"
@@ -96,7 +96,7 @@ class ExplorerPanel(QWidget):
             self._root_path = path
             self.fs_model.setRootPath(path)
             self.tree.setRootIndex(self.fs_model.index(path))
-            folder_name = os.path.basename(path) or path or "PROJE"
+            folder_name = os.path.basename(path) or path or "PROJECT"
             self.lbl_title.setText(f"📁 {folder_name.upper()}")
             self.lbl_title.setToolTip(path)
 
@@ -119,15 +119,15 @@ class ExplorerPanel(QWidget):
         menu = QMenu(self)
 
         if os.path.isfile(file_path):
-            act_open = QAction("📄 Dosyayı Aç", self)
+            act_open = QAction("📄 Open File", self)
             act_open.triggered.connect(lambda: self.file_open_requested.emit(file_path))
             menu.addAction(act_open)
 
-        act_copy_path = QAction("📋 Dosya Yolunu Kopyala", self)
+        act_copy_path = QAction("📋 Copy File Path", self)
         act_copy_path.triggered.connect(lambda: QApplication.clipboard().setText(file_path))
         menu.addAction(act_copy_path)
 
-        act_reveal = QAction("📂 Dosya Gezgininde Göster", self)
+        act_reveal = QAction("📂 Reveal in File Explorer", self)
         def _reveal():
             target = file_path if os.path.isdir(file_path) else os.path.dirname(file_path)
             if os.name == 'nt':

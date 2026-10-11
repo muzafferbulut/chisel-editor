@@ -14,7 +14,7 @@ class PdfHandler(BaseHandler):
         Validates PDF path and returns metadata.
         """
         if not os.path.isfile(file_path):
-            raise FileNotFoundError(f"PDF dosyası bulunamadı: {file_path}")
+            raise FileNotFoundError(f"PDF file not found: {file_path}")
 
         return {
             "file_path": file_path,

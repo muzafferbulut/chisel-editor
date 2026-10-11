@@ -69,7 +69,7 @@ class EditorTab(QWidget):
         self._current_file = val
         if self.is_spatial and self.active_layer_id and self.active_layer_id in self.spatial_layers:
             self.spatial_layers[self.active_layer_id]["file_path"] = val
-            self.spatial_layers[self.active_layer_id]["name"] = os.path.basename(val) if val else "Katman"
+            self.spatial_layers[self.active_layer_id]["name"] = os.path.basename(val) if val else "Layer"
 
     def _init_ui(self):
         self.layout = QVBoxLayout(self)
@@ -196,7 +196,7 @@ class EditorTab(QWidget):
 
     def add_spatial_layer(self, file_path: str, gdf: gpd.GeoDataFrame, raw_geojson: str = None, custom_name: str = None, is_wfs: bool = False) -> str:
         self.is_spatial = True
-        self.file_type = "Mekansal Katman"
+        self.file_type = "Spatial Layer"
 
         if file_path:
             norm = os.path.abspath(file_path).lower()
@@ -205,7 +205,7 @@ class EditorTab(QWidget):
                     self.set_active_layer(lid)
                     return lid
 
-        layer_name = custom_name or (os.path.basename(file_path) if file_path else f"Katman {len(self.spatial_layers) + 1}")
+        layer_name = custom_name or (os.path.basename(file_path) if file_path else f"Layer {len(self.spatial_layers) + 1}")
         layer_id = f"layer_{uuid.uuid4().hex[:8]}"
 
         feat_count = len(gdf) if gdf is not None else 0
@@ -304,7 +304,7 @@ class EditorTab(QWidget):
             except Exception:
                 pass
 
-        layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
+        layer_name = os.path.basename(self.current_file) if self.current_file else "Spatial Layer"
         geom_type = SpatialOps.get_layer_geometry_type(self._current_gdf)
 
         from core.workers import ViewportQueryWorker
@@ -331,7 +331,7 @@ class EditorTab(QWidget):
             layer_name = self.spatial_layers[self.active_layer_id]["name"]
         else:
             self._fallback_gdf = gdf
-            layer_name = os.path.basename(self.current_file) if self.current_file else "Mekansal Katman"
+            layer_name = os.path.basename(self.current_file) if self.current_file else "Spatial Layer"
 
         self._is_large_dataset = (len(gdf) > 3000) if gdf is not None else False
         self._is_loading = True
@@ -373,8 +373,8 @@ class EditorTab(QWidget):
             if len(valid_indices) > 10:
                 from PyQt6.QtWidgets import QMessageBox
                 reply = QMessageBox.question(
-                    self, "Geometrileri Sil",
-                    f"{len(valid_indices):,} adet seçili geometriyi silmek istediğinize emin misiniz?",
+                    self, "Delete Geometries",
+                    f"Are you sure you want to delete {len(valid_indices):,} selected geometries?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No
                 )
@@ -388,7 +388,7 @@ class EditorTab(QWidget):
                 self.map_panel.clear_selection(self.layer_id)
             from ui.toast import ToastNotification
             count = len(drop_indices)
-            msg = f"🗑️ {count:,} adet geometri silindi. (Kalan: {len(new_gdf):,})" if count > 1 else f"🗑️ Geometri silindi. (Kalan: {len(new_gdf):,})"
+            msg = f"🗑️ {count:,} geometries deleted. (Remaining: {len(new_gdf):,})" if count > 1 else f"🗑️ Geometry deleted. (Remaining: {len(new_gdf):,})"
             ToastNotification.show_toast(self.window(), msg, "info")
         except Exception as e:
             print(f"Error deleting features: {e}")
@@ -429,9 +429,9 @@ class EditorTab(QWidget):
                     is_compat = False
 
                 if not is_compat:
-                    type_tr = {"point": "Nokta", "line": "Çizgi", "polygon": "Çokgen"}.get(layer_type, layer_type)
-                    new_tr = "Nokta" if "point" in new_type else ("Çizgi" if "line" in new_type else ("Çokgen" if "poly" in new_type else shapely_geom.geom_type))
-                    ToastNotification.show_toast(self.window(), f"⚠️ Uyumsuz geometri! Katman [{type_tr}] tipindedir, [{new_tr}] eklenemez.", "warning")
+                    type_str = {"point": "Point", "line": "Line", "polygon": "Polygon"}.get(layer_type, layer_type)
+                    new_str = "Point" if "point" in new_type else ("Line" if "line" in new_type else ("Polygon" if "poly" in new_type else shapely_geom.geom_type))
+                    ToastNotification.show_toast(self.window(), f"⚠️ Incompatible geometry! Layer is of type [{type_str}], cannot add [{new_str}].", "warning")
                     return
 
             if self._current_gdf is None or self._current_gdf.empty:
@@ -454,12 +454,12 @@ class EditorTab(QWidget):
                 new_gdf = pd.concat([self._current_gdf, row_gdf], ignore_index=True)
 
             self.update_spatial_gdf(new_gdf)
-            geom_name = "Nokta" if "point" in shapely_geom.geom_type.lower() else ("Çizgi" if "line" in shapely_geom.geom_type.lower() else ("Çokgen" if "poly" in shapely_geom.geom_type.lower() else shapely_geom.geom_type))
-            ToastNotification.show_toast(self.window(), f"➕ Yeni {geom_name} eklendi! (Toplam: {len(new_gdf)})", "success")
+            geom_name = "Point" if "point" in shapely_geom.geom_type.lower() else ("Line" if "line" in shapely_geom.geom_type.lower() else ("Polygon" if "poly" in shapely_geom.geom_type.lower() else shapely_geom.geom_type))
+            ToastNotification.show_toast(self.window(), f"➕ New {geom_name} added! (Total: {len(new_gdf)})", "success")
         except Exception as e:
             print(f"Error adding feature: {e}")
             from ui.toast import ToastNotification
-            ToastNotification.show_toast(self.window(), f"Geometri ekleme hatası: {e}", "error")
+            ToastNotification.show_toast(self.window(), f"Geometry addition error: {e}", "error")
 
     def _on_feature_updated(self, index: int, geometry_json_str: str, from_map: bool = False):
         if self._current_gdf is None or self._current_gdf.empty:
@@ -506,16 +506,16 @@ class EditorTab(QWidget):
                 render_str = SpatialOps.to_geojson_str(self._current_gdf, indent=0)
                 self.map_panel.update_vector_layer_data(
                     layer_id=self.layer_id,
-                    name=self.spatial_layers.get(self.active_layer_id, {}).get("name", "Mekansal Katman"),
+                    name=self.spatial_layers.get(self.active_layer_id, {}).get("name", "Spatial Layer"),
                     geojson_str=render_str,
                     geom_type=SpatialOps.get_layer_geometry_type(self._current_gdf)
                 )
 
-            ToastNotification.show_toast(self.window(), f"✏️ Geometri güncellendi (Kayıt #{index + 1})", "info")
+            ToastNotification.show_toast(self.window(), f"✏️ Geometry updated (Record #{index + 1})", "info")
         except Exception as e:
             print(f"Error in _on_feature_updated: {e}")
             from ui.toast import ToastNotification
-            ToastNotification.show_toast(self.window(), f"Geometri güncelleme hatası: {e}", "error")
+            ToastNotification.show_toast(self.window(), f"Geometry update error: {e}", "error")
 
     def _on_quick_fit(self):
         if self.map_panel:
@@ -703,25 +703,25 @@ class EditorTab(QWidget):
         if self.is_spatial:
             return "🗺️ GIS"
         elif self.file_type == "Spreadsheet":
-            return "📊 Tablo"
+            return "📊 Spreadsheet"
         elif self.file_type == "Word":
             return "📄 Word"
         elif self.file_type == "PDF":
             return "📑 PDF"
         elif self.file_type == "Markdown":
             return "📖 Markdown"
-        return "📝 Kod"
+        return "📝 Code"
 
     def get_title(self):
         if self.is_spatial:
             count = len(self.spatial_layers)
             if count == 0:
-                title = "🗺️ Harita"
+                title = "🗺️ Map"
             elif count == 1:
                 single = next(iter(self.spatial_layers.values()))
                 title = f"🗺️ {single['name']}"
             else:
-                title = f"🗺️ Harita ({count} Katman)"
+                title = f"🗺️ Map ({count} Layers)"
             if any(l.get("is_dirty", False) for l in self.spatial_layers.values()) or self.is_dirty:
                 title += " *"
             return title

@@ -52,7 +52,7 @@ def main():
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
     else:
-        print(f"Uyarı: İkon dosyası bulunamadı -> {icon_path}")
+        print(f"Warning: Icon file not found -> {icon_path}")
         
     settings = QSettings("ChiselEditor", "ChiselEditor")
     saved_theme = settings.value("current_theme", "light")

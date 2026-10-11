@@ -397,59 +397,59 @@ class SpatialOps:
         """
         features = [
             {
-                "city": "İstanbul",
+                "city": "Istanbul",
                 "region": "Marmara",
                 "population": 15907951,
-                "category": "Metropol",
+                "category": "Metropolis",
                 "geometry": Polygon([(28.7, 40.9), (29.2, 40.9), (29.2, 41.2), (28.7, 41.2), (28.7, 40.9)])
             },
             {
                 "city": "Ankara",
-                "region": "İç Anadolu",
+                "region": "Central Anatolia",
                 "population": 5803482,
-                "category": "Başkent",
+                "category": "Capital",
                 "geometry": Polygon([(32.6, 39.8), (33.0, 39.8), (33.0, 40.1), (32.6, 40.1), (32.6, 39.8)])
             },
             {
-                "city": "İzmir",
-                "region": "Ege",
+                "city": "Izmir",
+                "region": "Aegean",
                 "population": 4462056,
-                "category": "Metropol",
+                "category": "Metropolis",
                 "geometry": Polygon([(26.9, 38.3), (27.3, 38.3), (27.3, 38.6), (26.9, 38.6), (26.9, 38.3)])
             },
             {
                 "city": "Bursa",
                 "region": "Marmara",
                 "population": 3194720,
-                "category": "Sanayi",
+                "category": "Industrial",
                 "geometry": Polygon([(28.9, 40.1), (29.3, 40.1), (29.3, 40.35), (28.9, 40.35), (28.9, 40.1)])
             },
             {
                 "city": "Antalya",
-                "region": "Akdeniz",
+                "region": "Mediterranean",
                 "population": 2688004,
-                "category": "Turizm",
+                "category": "Tourism",
                 "geometry": Polygon([(30.5, 36.8), (30.9, 36.8), (30.9, 37.1), (30.5, 37.1), (30.5, 36.8)])
             },
             {
                 "city": "Konya",
-                "region": "İç Anadolu",
+                "region": "Central Anatolia",
                 "population": 2296347,
-                "category": "Tarım",
+                "category": "Agriculture",
                 "geometry": Polygon([(32.3, 37.7), (32.7, 37.7), (32.7, 38.1), (32.3, 38.1), (32.3, 37.7)])
             },
             {
                 "city": "Gaziantep",
-                "region": "Güneydoğu Anadolu",
+                "region": "Southeastern Anatolia",
                 "population": 2154051,
-                "category": "Sanayi",
+                "category": "Industrial",
                 "geometry": Polygon([(37.2, 36.9), (37.6, 36.9), (37.6, 37.2), (37.2, 37.2), (37.2, 36.9)])
             },
             {
                 "city": "Trabzon",
-                "region": "Karadeniz",
+                "region": "Black Sea",
                 "population": 818023,
-                "category": "Liman",
+                "category": "Port",
                 "geometry": Polygon([(39.6, 40.9), (39.9, 40.9), (39.9, 41.1), (39.6, 41.1), (39.6, 40.9)])
             }
         ]

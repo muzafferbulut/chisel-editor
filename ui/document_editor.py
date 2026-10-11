@@ -44,10 +44,10 @@ class WordDocumentEditorWidget(QWidget):
         toolbar_layout.setSpacing(4)
 
         # Undo / Redo
-        self.btn_undo = self._create_tool_btn("undo", "↶", "Geri Al (Ctrl+Z)", lambda: self.editor.undo())
+        self.btn_undo = self._create_tool_btn("undo", "↶", "Undo (Ctrl+Z)", lambda: self.editor.undo())
         toolbar_layout.addWidget(self.btn_undo)
 
-        self.btn_redo = self._create_tool_btn("redo", "↷", "Yinele (Ctrl+Y)", lambda: self.editor.redo())
+        self.btn_redo = self._create_tool_btn("redo", "↷", "Redo (Ctrl+Y)", lambda: self.editor.redo())
         toolbar_layout.addWidget(self.btn_redo)
 
         toolbar_layout.addWidget(self._create_sep())
@@ -56,8 +56,8 @@ class WordDocumentEditorWidget(QWidget):
         self.style_combo = QComboBox()
         self.style_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.style_combo.setMinimumContentsLength(8)
-        self.style_combo.addItems(["Normal Metin", "Başlık 1", "Başlık 2", "Başlık 3", "Başlık 4"])
-        self.style_combo.setToolTip("Stil / Başlık Düzeyi")
+        self.style_combo.addItems(["Normal Text", "Heading 1", "Heading 2", "Heading 3", "Heading 4"])
+        self.style_combo.setToolTip("Style / Heading Level")
         self.style_combo.activated.connect(self._apply_heading_style)
         toolbar_layout.addWidget(self.style_combo)
 
@@ -66,7 +66,7 @@ class WordDocumentEditorWidget(QWidget):
         self.font_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.font_combo.setMinimumContentsLength(10)
         self.font_combo.addItems(["Calibri", "Segoe UI", "Arial", "Times New Roman", "Verdana", "Courier New"])
-        self.font_combo.setToolTip("Yazı Tipi (Font)")
+        self.font_combo.setToolTip("Font Family")
         self.font_combo.currentTextChanged.connect(self._apply_font_family)
         toolbar_layout.addWidget(self.font_combo)
 
@@ -74,71 +74,71 @@ class WordDocumentEditorWidget(QWidget):
         self.size_combo = QComboBox()
         self.size_combo.addItems(["9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "32", "48"])
         self.size_combo.setCurrentText("11")
-        self.size_combo.setToolTip("Yazı Boyutu")
+        self.size_combo.setToolTip("Font Size")
         self.size_combo.currentTextChanged.connect(self._apply_font_size)
         toolbar_layout.addWidget(self.size_combo)
 
         toolbar_layout.addWidget(self._create_sep())
 
         # Bold, Italic, Underline, Strikethrough
-        self.btn_bold = self._create_tool_btn("bold", "B", "Kalın (Ctrl+B)", self._toggle_bold, checkable=True)
+        self.btn_bold = self._create_tool_btn("bold", "B", "Bold (Ctrl+B)", self._toggle_bold, checkable=True)
         toolbar_layout.addWidget(self.btn_bold)
 
-        self.btn_italic = self._create_tool_btn("italic", "I", "İtalik (Ctrl+I)", self._toggle_italic, checkable=True)
+        self.btn_italic = self._create_tool_btn("italic", "I", "Italic (Ctrl+I)", self._toggle_italic, checkable=True)
         toolbar_layout.addWidget(self.btn_italic)
 
-        self.btn_underline = self._create_tool_btn("underline", "U", "Altı Çizili (Ctrl+U)", self._toggle_underline, checkable=True)
+        self.btn_underline = self._create_tool_btn("underline", "U", "Underline (Ctrl+U)", self._toggle_underline, checkable=True)
         toolbar_layout.addWidget(self.btn_underline)
 
-        self.btn_strike = self._create_tool_btn("strike", "S", "Üstü Çizili", self._toggle_strike, checkable=True)
+        self.btn_strike = self._create_tool_btn("strike", "S", "Strikethrough", self._toggle_strike, checkable=True)
         toolbar_layout.addWidget(self.btn_strike)
 
         toolbar_layout.addWidget(self._create_sep())
 
         # Colors
-        self.btn_text_color = self._create_tool_btn("text_color", "A", "Metin Rengi", self._pick_text_color)
+        self.btn_text_color = self._create_tool_btn("text_color", "A", "Text Color", self._pick_text_color)
         toolbar_layout.addWidget(self.btn_text_color)
 
-        self.btn_bg_color = self._create_tool_btn("bg_color", "🖍", "Vurgu Rengi", self._pick_bg_color)
+        self.btn_bg_color = self._create_tool_btn("bg_color", "🖍", "Highlight Color", self._pick_bg_color)
         toolbar_layout.addWidget(self.btn_bg_color)
 
         toolbar_layout.addWidget(self._create_sep())
 
         # Alignment
-        self.btn_align_left = self._create_tool_btn("align_left", "⇤", "Sola Hizala", lambda: self._set_alignment(Qt.AlignmentFlag.AlignLeft))
+        self.btn_align_left = self._create_tool_btn("align_left", "⇤", "Align Left", lambda: self._set_alignment(Qt.AlignmentFlag.AlignLeft))
         toolbar_layout.addWidget(self.btn_align_left)
 
-        self.btn_align_center = self._create_tool_btn("align_center", "⬌", "Ortala", lambda: self._set_alignment(Qt.AlignmentFlag.AlignCenter))
+        self.btn_align_center = self._create_tool_btn("align_center", "⬌", "Align Center", lambda: self._set_alignment(Qt.AlignmentFlag.AlignCenter))
         toolbar_layout.addWidget(self.btn_align_center)
 
-        self.btn_align_right = self._create_tool_btn("align_right", "⇥", "Sağa Hizala", lambda: self._set_alignment(Qt.AlignmentFlag.AlignRight))
+        self.btn_align_right = self._create_tool_btn("align_right", "⇥", "Align Right", lambda: self._set_alignment(Qt.AlignmentFlag.AlignRight))
         toolbar_layout.addWidget(self.btn_align_right)
 
-        self.btn_align_justify = self._create_tool_btn("align_justify", "☰", "İki Yana Yasla", lambda: self._set_alignment(Qt.AlignmentFlag.AlignJustify))
+        self.btn_align_justify = self._create_tool_btn("align_justify", "☰", "Justify", lambda: self._set_alignment(Qt.AlignmentFlag.AlignJustify))
         toolbar_layout.addWidget(self.btn_align_justify)
 
         toolbar_layout.addWidget(self._create_sep())
 
         # Lists & Tables
-        self.btn_bullet_list = self._create_tool_btn("list_bullet", "•=", "Madde İşaretli Liste", self._insert_bullet_list)
+        self.btn_bullet_list = self._create_tool_btn("list_bullet", "•=", "Bullet List", self._insert_bullet_list)
         toolbar_layout.addWidget(self.btn_bullet_list)
 
-        self.btn_num_list = self._create_tool_btn("list_num", "1=", "Numaralı Liste", self._insert_numbered_list)
+        self.btn_num_list = self._create_tool_btn("list_num", "1=", "Numbered List", self._insert_numbered_list)
         toolbar_layout.addWidget(self.btn_num_list)
 
-        self.btn_table = self._create_tool_btn("table", "▦", "Tablo Ekle", self._insert_table)
+        self.btn_table = self._create_tool_btn("table", "▦", "Insert Table", self._insert_table)
         toolbar_layout.addWidget(self.btn_table)
 
         toolbar_layout.addWidget(self._create_sep())
 
         # Paper Mode Toggle (Dark Paper / White Paper)
-        self.btn_paper_mode = self._create_tool_btn("paper_mode", "◐", "Sayfa Görünüm Modu (Koyu Kağıt / Beyaz Kağıt)", self._toggle_paper_mode, checkable=True)
+        self.btn_paper_mode = self._create_tool_btn("paper_mode", "◐", "Page View Mode (Dark Paper / White Paper)", self._toggle_paper_mode, checkable=True)
         toolbar_layout.addWidget(self.btn_paper_mode)
 
         toolbar_layout.addStretch()
 
         # Word count & statistics
-        self.lbl_stats = QLabel("0 kelime | 0 karakter")
+        self.lbl_stats = QLabel("0 words | 0 characters")
         self.lbl_stats.setStyleSheet("color: #858585; font-size: 11px; padding: 0 8px;")
         toolbar_layout.addWidget(self.lbl_stats)
 
@@ -428,7 +428,7 @@ class WordDocumentEditorWidget(QWidget):
         text = self.editor.toPlainText()
         words = len(text.split()) if text.strip() else 0
         chars = len(text)
-        self.lbl_stats.setText(f"{words:,} kelime | {chars:,} karakter")
+        self.lbl_stats.setText(f"{words:,} words | {chars:,} characters")
 
     def _on_text_changed(self):
         if self._is_loading:
@@ -498,14 +498,14 @@ class WordDocumentEditorWidget(QWidget):
         self._merge_format(fmt)
 
     def _pick_text_color(self):
-        col = QColorDialog.getColor(Qt.GlobalColor.black, self, "Metin Rengi Seç")
+        col = QColorDialog.getColor(Qt.GlobalColor.black, self, "Select Text Color")
         if col.isValid():
             fmt = QTextCharFormat()
             fmt.setForeground(col)
             self._merge_format(fmt)
 
     def _pick_bg_color(self):
-        col = QColorDialog.getColor(Qt.GlobalColor.yellow, self, "Vurgu Rengi Seç")
+        col = QColorDialog.getColor(Qt.GlobalColor.yellow, self, "Select Highlight Color")
         if col.isValid():
             fmt = QTextCharFormat()
             fmt.setBackground(col)
@@ -523,10 +523,10 @@ class WordDocumentEditorWidget(QWidget):
         cursor.insertList(QTextListFormat.Style.ListDecimal)
 
     def _insert_table(self):
-        rows, ok1 = QInputDialog.getInt(self, "Tablo Ekle", "Satır Sayısı:", value=3, min=1, max=50)
+        rows, ok1 = QInputDialog.getInt(self, "Insert Table", "Number of Rows:", value=3, min=1, max=50)
         if not ok1:
             return
-        cols, ok2 = QInputDialog.getInt(self, "Tablo Ekle", "Sütun Sayısı:", value=3, min=1, max=20)
+        cols, ok2 = QInputDialog.getInt(self, "Insert Table", "Number of Columns:", value=3, min=1, max=20)
         if not ok2:
             return
 

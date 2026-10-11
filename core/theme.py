@@ -7,13 +7,13 @@ class ThemeManager:
     _current_theme = "light"
 
     AVAILABLE_THEMES = {
-        "light": "Açık (Light)",
-        "dark": "Koyu (Dark)",
-        "midnight": "Gece (Midnight)",
-        "forest": "Orman (Forest)",
-        "oceanic": "Okyanus (Oceanic)",
-        "solar": "Solar (Solarized)",
-        "high_contrast": "Yüksek Kontrast (High Contrast)",
+        "light": "Light",
+        "dark": "Dark",
+        "midnight": "Midnight",
+        "forest": "Forest",
+        "oceanic": "Oceanic",
+        "solar": "Solarized",
+        "high_contrast": "High Contrast",
     }
 
     PALETTE = {

@@ -327,41 +327,41 @@ class MainWindow(QMainWindow):
         # --- GIS / Spatial Menu ---
         gis_menu: QMenu = menu_bar.addMenu("GIS")
 
-        # Servis & Altlık Harita Submenu
-        service_menu = gis_menu.addMenu("🌐 Servis & Altlık Harita")
+        # Services & Basemaps Submenu
+        service_menu = gis_menu.addMenu("🌐 Services & Basemaps")
         
-        basemap_submenu = service_menu.addMenu("🗺️ Altlık Servisi Ekle")
-        act_b_osm = basemap_submenu.addAction("🗺️ OpenStreetMap (Varsayılan OSM)")
+        basemap_submenu = service_menu.addMenu("🗺️ Add Basemap Service")
+        act_b_osm = basemap_submenu.addAction("🗺️ OpenStreetMap (Default)")
         act_b_osm.triggered.connect(lambda: self._add_preset_service("osm"))
-        act_b_sat = basemap_submenu.addAction("🛰️ Esri Dünya Uydu (Satellite)")
+        act_b_sat = basemap_submenu.addAction("🛰️ Esri World Imagery (Satellite)")
         act_b_sat.triggered.connect(lambda: self._add_preset_service("sat"))
-        act_b_topo = basemap_submenu.addAction("🏔️ OpenTopoMap Topoğrafik")
+        act_b_topo = basemap_submenu.addAction("🏔️ OpenTopoMap (Topographic)")
         act_b_topo.triggered.connect(lambda: self._add_preset_service("topo"))
-        act_b_dark = basemap_submenu.addAction("🌙 CartoDB / Koyu Mod")
+        act_b_dark = basemap_submenu.addAction("🌙 CartoDB (Dark Mode)")
         act_b_dark.triggered.connect(lambda: self._add_preset_service("dark"))
-        act_b_none = basemap_submenu.addAction("🚫 Altlık Yok (Boş Zemin)")
+        act_b_none = basemap_submenu.addAction("🚫 No Basemap (Blank Canvas)")
         act_b_none.triggered.connect(self._clear_all_basemaps)
 
         service_menu.addSeparator()
-        act_wms = QAction("🌐 WMS Katmanı Ekle...", self)
+        act_wms = QAction("🌐 Add WMS Layer...", self)
         act_wms.triggered.connect(self._show_wms_dialog)
-        act_wfs = QAction("📡 WFS Katmanı İndir...", self)
+        act_wfs = QAction("📡 Download WFS Layer...", self)
         act_wfs.triggered.connect(self._show_wfs_dialog)
         service_menu.addAction(act_wms)
         service_menu.addAction(act_wfs)
 
-        act_full_extent = QAction("🏠 Tüm Haritaya Odaklan (Full Extent)", self)
+        act_full_extent = QAction("🏠 Zoom to Full Extent", self)
         act_full_extent.setShortcut(QKeySequence("Ctrl+Shift+F"))
         act_full_extent.triggered.connect(self._zoom_full_extent)
 
-        act_fit = QAction("🎯 Seçili Katmana Odaklan (Zoom to Layer)", self)
+        act_fit = QAction("🎯 Zoom to Layer", self)
         act_fit.triggered.connect(self._fit_bounds)
 
-        act_refresh_map = QAction("🔄 Haritayı Yenile (Refresh)", self)
+        act_refresh_map = QAction("🔄 Refresh Map", self)
         act_refresh_map.setShortcut(QKeySequence("F5"))
         act_refresh_map.triggered.connect(self._refresh_map)
 
-        act_snapshot = QAction("📷 Harita Görüntüsünü PNG Olarak Kaydet...", self)
+        act_snapshot = QAction("📷 Save Map View as PNG...", self)
         act_snapshot.triggered.connect(self._capture_map_snapshot)
 
         act_info = QAction("ℹ️ Layer Info & Statistics...", self)
@@ -411,7 +411,7 @@ class MainWindow(QMainWindow):
         # --- Help Menu ---
         help_menu: QMenu = menu_bar.addMenu("Help")
 
-        act_sample = QAction("🧪 Load Sample GIS Data (Türkiye)", self)
+        act_sample = QAction("🧪 Load Sample GIS Data (Turkey)", self)
         act_sample.triggered.connect(self._load_sample_spatial_data)
 
         act_shortcuts = QAction("⌨️ Keyboard Shortcuts", self)
@@ -468,7 +468,7 @@ class MainWindow(QMainWindow):
         if idx != -1:
             self.tab_widget.setTabText(idx, tab.get_title())
             if tab.is_spatial:
-                layer_name = os.path.basename(tab.current_file) if tab.current_file else "Mekansal Katman"
+                layer_name = os.path.basename(tab.current_file) if tab.current_file else "Spatial Layer"
                 self.shared_map_panel.update_layer_name(tab.layer_id, layer_name)
 
     def _on_tab_state_changed(self, tab: EditorTab):
@@ -554,7 +554,7 @@ class MainWindow(QMainWindow):
             idx = self.tab_widget.indexOf(spatial_tab)
             if idx != -1:
                 self._on_tab_changed(idx)
-            ToastNotification.show_toast(self, "Katman haritadan kaldırıldı", "info")
+            ToastNotification.show_toast(self, "Layer removed from map", "info")
 
     def _on_map_viewport_changed(self, minx: float, miny: float, maxx: float, maxy: float, zoom: int):
         tab = self._get_current_tab()
@@ -598,25 +598,25 @@ class MainWindow(QMainWindow):
             self.shared_map_panel.capture_snapshot()
 
     def _open_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Klasör Seç", self._current_folder)
+        folder = QFileDialog.getExistingDirectory(self, "Select Folder", self._current_folder)
         if folder:
             self._current_folder = folder
             self.side_bar.set_root_path(folder)
             self._save_session_state()
-            ToastNotification.show_toast(self, f"Açıldı: {os.path.basename(folder)}", "info")
+            ToastNotification.show_toast(self, f"Opened: {os.path.basename(folder)}", "info")
 
     def _open_file(self):
         filter_str = (
-            "Tüm Desteklenen Dosyalar (*.geojson *.shp *.kml *.gpkg *.fgb *.xlsx *.xls *.docx *.pdf *.csv *.txt *.md *.py *.json);;"
-            "Mekansal Katmanlar (*.geojson *.shp *.kml *.gpkg *.fgb);;"
-            "Elektronik Tablolar (*.xlsx *.xls *.csv);;"
-            "Word Belgeleri (*.docx);;"
-            "PDF Belgeleri (*.pdf);;"
-            "Kod ve Metin (*.txt *.md *.py *.json *.js *.html *.css);;"
-            "Tüm Dosyalar (*)"
+            "All Supported Files (*.geojson *.shp *.kml *.gpkg *.fgb *.xlsx *.xls *.docx *.pdf *.csv *.txt *.md *.py *.json);;"
+            "Spatial Layers (*.geojson *.shp *.kml *.gpkg *.fgb);;"
+            "Spreadsheets (*.xlsx *.xls *.csv);;"
+            "Word Documents (*.docx);;"
+            "PDF Documents (*.pdf);;"
+            "Code & Text (*.txt *.md *.py *.json *.js *.html *.css);;"
+            "All Files (*)"
         )
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Dosya Aç", self._current_folder, filter_str
+            self, "Open File", self._current_folder, filter_str
         )
         if file_path:
             self._load_file(file_path)
@@ -629,11 +629,11 @@ class MainWindow(QMainWindow):
                 if tab.is_spatial:
                     tab.set_active_layer_by_file(file_path)
                     self._on_tab_changed(i)
-                ToastNotification.show_toast(self, f"Zaten açık: {os.path.basename(file_path)}", "info")
+                ToastNotification.show_toast(self, f"Already open: {os.path.basename(file_path)}", "info")
                 return
             elif tab and tab.current_file == file_path:
                 self.tab_widget.setCurrentIndex(i)
-                ToastNotification.show_toast(self, f"Zaten açık: {os.path.basename(file_path)}", "info")
+                ToastNotification.show_toast(self, f"Already open: {os.path.basename(file_path)}", "info")
                 return
 
         self.progress_bar.show()
@@ -658,7 +658,7 @@ class MainWindow(QMainWindow):
             self._is_loading = False
 
         if error:
-            ToastNotification.show_toast(self, f"Hata: {error}", "error")
+            ToastNotification.show_toast(self, f"Error: {error}", "error")
             return
 
         if is_spatial:
@@ -672,7 +672,7 @@ class MainWindow(QMainWindow):
                 self._on_tab_changed(idx)
                 self._save_session_state()
                 QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(spatial_tab.layer_id))
-                ToastNotification.show_toast(self, f"Haritaya Eklendi: {os.path.basename(file_path)}", "info")
+                ToastNotification.show_toast(self, f"Added to map: {os.path.basename(file_path)}", "info")
                 return
             else:
                 curr = self._get_current_tab()
@@ -683,12 +683,12 @@ class MainWindow(QMainWindow):
 
                 tab.current_file = file_path
                 tab.is_dirty = False
-                tab.configure_for_file_type("Mekansal Katman", True, content, gdf=gdf)
+                tab.configure_for_file_type("Spatial Layer", True, content, gdf=gdf)
                 self._update_tab_title(tab)
                 self._on_tab_changed(self.tab_widget.currentIndex())
                 self._save_session_state()
                 QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(tab.layer_id))
-                ToastNotification.show_toast(self, f"Açıldı: {os.path.basename(file_path)}", "info")
+                ToastNotification.show_toast(self, f"Opened: {os.path.basename(file_path)}", "info")
                 return
 
         # Non-spatial documents / code
@@ -717,7 +717,7 @@ class MainWindow(QMainWindow):
         self._on_tab_changed(self.tab_widget.currentIndex())
         self._save_session_state()
 
-        ToastNotification.show_toast(self, f"Açıldı: {os.path.basename(file_path)}", "info")
+        ToastNotification.show_toast(self, f"Opened: {os.path.basename(file_path)}", "info")
 
     def _on_multiple_layers(self, file_path: str, layers: list):
         self.progress_bar.hide()
@@ -743,19 +743,19 @@ class MainWindow(QMainWindow):
             return
         if tab.file_type == "Spreadsheet":
             if tab.current_file and tab.current_file.lower().endswith(".csv"):
-                filt = "CSV Dosyası (*.csv);;Excel Çalışma Kitabı (*.xlsx);;Tüm Dosyalar (*)"
+                filt = "CSV File (*.csv);;Excel Workbook (*.xlsx);;All Files (*)"
             else:
-                filt = "Excel Çalışma Kitabı (*.xlsx);;CSV Dosyası (*.csv);;Tüm Dosyalar (*)"
+                filt = "Excel Workbook (*.xlsx);;CSV File (*.csv);;All Files (*)"
         elif tab.file_type == "Word":
-            filt = "Word Belgesi (*.docx);;Tüm Dosyalar (*)"
+            filt = "Word Document (*.docx);;All Files (*)"
         elif tab.is_spatial:
             if tab.current_file and tab.current_file.lower().endswith(".csv"):
-                filt = "CSV Dosyası (*.csv);;GeoJSON (*.geojson);;Tüm Dosyalar (*)"
+                filt = "CSV File (*.csv);;GeoJSON (*.geojson);;All Files (*)"
             else:
-                filt = "GeoJSON (*.geojson);;Shapefile (*.shp);;GeoPackage (*.gpkg);;Tüm Dosyalar (*)"
+                filt = "GeoJSON (*.geojson);;Shapefile (*.shp);;GeoPackage (*.gpkg);;All Files (*)"
         else:
-            filt = "Tüm Dosyalar (*)"
-        file_path, _ = QFileDialog.getSaveFileName(self, "Farklı Kaydet", tab.current_file or self._current_folder, filt)
+            filt = "All Files (*)"
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save As", tab.current_file or self._current_folder, filt)
         if file_path:
             self._write_file(file_path)
 
@@ -769,7 +769,7 @@ class MainWindow(QMainWindow):
             elif tab.file_type == "Word":
                 tab.document_editor.save_to_file(file_path)
             elif tab.file_type == "PDF":
-                ToastNotification.show_toast(self, "PDF dosyaları salt okunurdur.", "info")
+                ToastNotification.show_toast(self, "PDF files are read-only.", "info")
                 return
             elif tab.is_spatial:
                 handler = HandlerFactory.get_handler(file_path)
@@ -782,16 +782,16 @@ class MainWindow(QMainWindow):
             tab.current_file = file_path
             tab.is_dirty = False
             self._update_tab_title(tab)
-            ToastNotification.show_toast(self, f"Kaydedildi: {os.path.basename(file_path)}", "info")
+            ToastNotification.show_toast(self, f"Saved: {os.path.basename(file_path)}", "info")
         except Exception as e:
-            ToastNotification.show_toast(self, f"Kaydetme hatası: {str(e)}", "error")
+            ToastNotification.show_toast(self, f"Save error: {str(e)}", "error")
 
     # --- WMS, WFS & Basemap Service Integrations ---
     PRESET_BASEMAP_URLS = {
-        "sat": ("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", "esri_satellite", "🛰️ Esri Dünya Uydu (Satellite)"),
-        "topo": ("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", "opentopomap", "🏔️ OpenTopoMap Topoğrafik"),
-        "dark": ("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", "cartodb_dark", "🌙 CartoDB Koyu Mod"),
-        "osm": ("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", "osm", "🗺️ OpenStreetMap (Varsayılan OSM)"),
+        "sat": ("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", "esri_satellite", "🛰️ Esri World Imagery (Satellite)"),
+        "topo": ("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", "opentopomap", "🏔️ OpenTopoMap (Topographic)"),
+        "dark": ("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", "cartodb_dark", "🌙 CartoDB (Dark Mode)"),
+        "osm": ("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", "osm", "🗺️ OpenStreetMap (Default)"),
     }
 
     def _ensure_spatial_tab(self):
@@ -810,7 +810,7 @@ class MainWindow(QMainWindow):
             tab = self._add_new_tab()
 
         tab.is_spatial = True
-        tab.file_type = "Mekansal Katman"
+        tab.file_type = "Spatial Layer"
         tab.set_view_mode("map")
         self._update_tab_title(tab)
         self.tab_widget.setCurrentWidget(tab)
@@ -823,42 +823,42 @@ class MainWindow(QMainWindow):
         layer_id = f"service_{key}"
         self._ensure_spatial_tab()
         self.shared_map_panel.add_wms_layer(layer_id, url, layer_name, title=title)
-        ToastNotification.show_toast(self, f"Servis Eklendi: {title}", "info")
+        ToastNotification.show_toast(self, f"Service Added: {title}", "info")
 
     def _clear_all_basemaps(self):
         for key in self.PRESET_BASEMAP_URLS:
             self.shared_map_panel.remove_wms_layer(f"service_{key}")
         self.shared_map_panel.set_basemap("none")
-        ToastNotification.show_toast(self, "Altlıklar Temizlendi", "info")
+        ToastNotification.show_toast(self, "Basemaps cleared", "info")
 
     def _show_service_menu(self):
         self._ensure_spatial_tab()
         menu = QMenu(self)
 
-        # Altlık & Servis Seçenekleri
-        menu.addSection("🗺️ Altlık & Harita Servisleri")
-        act_osm = menu.addAction("🗺️ OpenStreetMap (Varsayılan OSM)")
+        # Basemap & Map Services Options
+        menu.addSection("🗺️ Basemap & Map Services")
+        act_osm = menu.addAction("🗺️ OpenStreetMap (Default)")
         act_osm.triggered.connect(lambda: self._add_preset_service("osm"))
 
-        act_sat = menu.addAction("🛰️ Esri Dünya Uydu (Satellite)")
+        act_sat = menu.addAction("🛰️ Esri World Imagery (Satellite)")
         act_sat.triggered.connect(lambda: self._add_preset_service("sat"))
 
-        act_topo = menu.addAction("🏔️ OpenTopoMap Topoğrafik (Topo)")
+        act_topo = menu.addAction("🏔️ OpenTopoMap (Topographic)")
         act_topo.triggered.connect(lambda: self._add_preset_service("topo"))
 
-        act_dark = menu.addAction("🌙 CartoDB / Koyu Mod (Dark)")
+        act_dark = menu.addAction("🌙 CartoDB (Dark Mode)")
         act_dark.triggered.connect(lambda: self._add_preset_service("dark"))
 
         menu.addSeparator()
-        menu.addSection("🌐 Web Servisleri (OGC)")
-        act_wms = menu.addAction("🗺️ Özel WMS Katmanı Ekle...")
+        menu.addSection("🌐 Web Services (OGC)")
+        act_wms = menu.addAction("🗺️ Add Custom WMS Layer...")
         act_wms.triggered.connect(self._show_wms_dialog)
 
-        act_wfs = menu.addAction("📡 WFS Vektör Katmanı İndir...")
+        act_wfs = menu.addAction("📡 Download WFS Vector Layer...")
         act_wfs.triggered.connect(self._show_wfs_dialog)
 
         menu.addSeparator()
-        act_none = menu.addAction("🚫 Altlık Haritayı Kaldır (Boş Zemin)")
+        act_none = menu.addAction("🚫 Remove Basemap (Blank Canvas)")
         act_none.triggered.connect(self._clear_all_basemaps)
 
         menu.exec(QCursor.pos())
@@ -870,7 +870,7 @@ class MainWindow(QMainWindow):
             layer_id = f"wms_{self._wms_counter}"
             self._wms_counter += 1
             self.shared_map_panel.add_wms_layer(layer_id, dlg.wms_url, dlg.layer_name, dlg.format, dlg.transparent, title=dlg.title)
-            ToastNotification.show_toast(self, f"WMS Katmanı Eklendi: {dlg.title}", "info")
+            ToastNotification.show_toast(self, f"WMS Layer Added: {dlg.title}", "info")
 
     def _show_wfs_dialog(self):
         self._ensure_spatial_tab()
@@ -884,7 +884,7 @@ class MainWindow(QMainWindow):
     def _on_wfs_download_finished(self, layer_name: str, gdf: object, error: str):
         self.progress_bar.hide()
         if error:
-            ToastNotification.show_toast(self, f"WFS Hatası: {error}", "error")
+            ToastNotification.show_toast(self, f"WFS Error: {error}", "error")
             return
 
         if gdf is not None and not gdf.empty:
@@ -893,16 +893,16 @@ class MainWindow(QMainWindow):
             spatial_tab.add_spatial_layer(file_path=None, gdf=gdf, custom_name=wfs_title, is_wfs=True)
             self._update_tab_title(spatial_tab)
             QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(spatial_tab.layer_id))
-            ToastNotification.show_toast(self, f"WFS Katmanı Eklendi: {wfs_title} ({len(gdf):,} özellik)", "info")
+            ToastNotification.show_toast(self, f"WFS Layer Added: {wfs_title} ({len(gdf):,} features)", "info")
 
     def _on_wms_remove_requested(self, layer_id: str):
         self.shared_map_panel.remove_wms_layer(layer_id)
-        ToastNotification.show_toast(self, "WMS Katmanı Kaldırıldı", "info")
+        ToastNotification.show_toast(self, "WMS Layer Removed", "info")
 
     # --- Geoprocessing Operations via Background Worker ---
     def _run_spatial_worker(self, op_name: str, gdf: gpd.GeoDataFrame, **params):
         if gdf is None or gdf.empty:
-            ToastNotification.show_toast(self, "İşlem yapılacak mekansal veri bulunamadı", "warning")
+            ToastNotification.show_toast(self, "No spatial data found to process", "warning")
             return
 
         self.progress_bar.show()
@@ -913,7 +913,7 @@ class MainWindow(QMainWindow):
     def _on_spatial_op_finished(self, op_name: str, result: object, error: str):
         self.progress_bar.hide()
         if error:
-            ToastNotification.show_toast(self, f"İşlem hatası: {error}", "error")
+            ToastNotification.show_toast(self, f"Processing error: {error}", "error")
             return
 
         tab = self._get_current_tab()
@@ -922,27 +922,27 @@ class MainWindow(QMainWindow):
 
         if op_name in ("buffer", "dissolve", "calc_geometry", "reproject", "set_crs", "centroids", "bounding_boxes", "convex_hull"):
             tab.update_spatial_gdf(result)
-            ToastNotification.show_toast(self, f"✅ {op_name.title()} işlemi tamamlandı!", "info")
+            ToastNotification.show_toast(self, f"✅ {op_name.title()} operation completed!", "info")
 
         elif op_name == "validate_repair":
             repaired_gdf, fixed_count = result
             tab.update_spatial_gdf(repaired_gdf)
-            msg = f"{fixed_count} geçersiz geometri onarıldı." if fixed_count > 0 else "Tüm geometriler geçerli!"
+            msg = f"{fixed_count} invalid geometries repaired." if fixed_count > 0 else "All geometries are valid!"
             ToastNotification.show_toast(self, msg, "info")
 
         elif op_name == "simplify":
             simplified_gdf, orig_v, simp_v = result
             tab.update_spatial_gdf(simplified_gdf)
             pct = ((orig_v - simp_v) / orig_v * 100) if orig_v > 0 else 0
-            ToastNotification.show_toast(self, f"Basitleştirildi: {orig_v:,} -> {simp_v:,} köşe noktası (%{pct:.1f})", "info")
+            ToastNotification.show_toast(self, f"Simplified: {orig_v:,} -> {simp_v:,} vertices ({pct:.1f}%)", "info")
 
         elif op_name == "export":
-            ToastNotification.show_toast(self, "Veri başarıyla dışa aktarıldı!", "info")
+            ToastNotification.show_toast(self, "Data exported successfully!", "info")
 
     def _buffer_geometries(self):
         tab = self._get_current_tab()
         if not tab or not tab.is_spatial or tab._current_gdf is None or tab._current_gdf.empty:
-            ToastNotification.show_toast(self, "Aktif mekansal katman yok", "warning")
+            ToastNotification.show_toast(self, "No active spatial layer", "warning")
             return
         crs_str = str(tab._current_gdf.crs) if tab._current_gdf.crs else None
         dlg = BufferDialog(crs=crs_str, parent=self)
@@ -952,7 +952,7 @@ class MainWindow(QMainWindow):
     def _dissolve_geometries(self):
         tab = self._get_current_tab()
         if not tab or not tab.is_spatial or tab._current_gdf is None or tab._current_gdf.empty:
-            ToastNotification.show_toast(self, "Aktif mekansal katman yok", "warning")
+            ToastNotification.show_toast(self, "No active spatial layer", "warning")
             return
         cols = [c for c in tab._current_gdf.columns if c != tab._current_gdf.geometry.name]
         dlg = DissolveDialog(cols, parent=self)
@@ -962,14 +962,14 @@ class MainWindow(QMainWindow):
     def _calc_geometry_attributes(self):
         tab = self._get_current_tab()
         if not tab or not tab.is_spatial or tab._current_gdf is None or tab._current_gdf.empty:
-            ToastNotification.show_toast(self, "Aktif mekansal katman yok", "warning")
+            ToastNotification.show_toast(self, "No active spatial layer", "warning")
             return
         self._run_spatial_worker("calc_geometry", tab._current_gdf)
 
     def _simplify_geometries(self):
         tab = self._get_current_tab()
         if not tab or not tab.is_spatial or tab._current_gdf is None or tab._current_gdf.empty:
-            ToastNotification.show_toast(self, "Aktif mekansal katman yok", "warning")
+            ToastNotification.show_toast(self, "No active spatial layer", "warning")
             return
         v_count = SpatialOps.count_vertices(tab._current_gdf)
         crs_str = str(tab._current_gdf.crs) if tab._current_gdf.crs else None
@@ -1004,7 +1004,7 @@ class MainWindow(QMainWindow):
     def _export_spatial_data(self):
         tab = self._get_current_tab()
         if not tab or not tab.is_spatial or tab._current_gdf is None or tab._current_gdf.empty:
-            ToastNotification.show_toast(self, "Dışa aktarılacak mekansal veri yok", "warning")
+            ToastNotification.show_toast(self, "No spatial data to export", "warning")
             return
         dlg = ExportSpatialDialog(tab.current_file, self)
         if dlg.exec() and dlg.target_path:
@@ -1013,7 +1013,7 @@ class MainWindow(QMainWindow):
     def _show_layer_info(self):
         tab = self._get_current_tab()
         if not tab or not tab.is_spatial or tab._current_gdf is None or tab._current_gdf.empty:
-            ToastNotification.show_toast(self, "Mekansal katman bulunamadı", "warning")
+            ToastNotification.show_toast(self, "No spatial layer found", "warning")
             return
         summary = SpatialOps.get_summary(tab._current_gdf)
         dlg = SpatialInfoDialog(summary, tab.current_file, self)
@@ -1022,7 +1022,7 @@ class MainWindow(QMainWindow):
     def _load_sample_spatial_data(self):
         sample_gdf = SpatialOps.create_sample_spatial_data()
         self._on_file_loaded("turkey_sample_zones.geojson", "", True, sample_gdf, None)
-        ToastNotification.show_toast(self, "🧪 Örnek Mekansal Veri Yüklendi!", "info")
+        ToastNotification.show_toast(self, "🧪 Sample Spatial Data Loaded!", "info")
 
     def _show_find(self):
         tab = self._get_current_tab()
@@ -1061,26 +1061,26 @@ class MainWindow(QMainWindow):
 
     def _show_shortcuts(self):
         QMessageBox.information(
-            self, "Klavye Kısayolları",
-            "<b>Klavye Kısayolları:</b><br><br>"
-            "• <b>Ctrl+N</b>: Yeni Dosya<br>"
-            "• <b>Ctrl+O</b>: Dosya Aç<br>"
-            "• <b>Ctrl+K, Ctrl+O</b>: Klasör Aç (Çalışma Alanı)<br>"
-            "• <b>Ctrl+S</b>: Kaydet<br>"
-            "• <b>Ctrl+B</b>: Yan Paneli Aç / Kapat<br>"
-            "• <b>F6</b>: Öznitelik Tablosunu Aç / Kapat<br>"
-            "• <b>Ctrl+F</b>: Bul (Monaco Find)<br>"
-            "• <b>Ctrl+H</b>: Değiştir (Monaco Replace)<br>"
-            "• <b>Alt+1...5</b>: Görünüm Modları (Kod, Kod+Harita, Tablo+Harita, Harita, Tablo)"
+            self, "Keyboard Shortcuts",
+            "<b>Keyboard Shortcuts:</b><br><br>"
+            "• <b>Ctrl+N</b>: New File<br>"
+            "• <b>Ctrl+O</b>: Open File<br>"
+            "• <b>Ctrl+K, Ctrl+O</b>: Open Folder (Workspace)<br>"
+            "• <b>Ctrl+S</b>: Save<br>"
+            "• <b>Ctrl+B</b>: Toggle Side Bar<br>"
+            "• <b>F6</b>: Toggle Attribute Table<br>"
+            "• <b>Ctrl+F</b>: Find (Monaco Find)<br>"
+            "• <b>Ctrl+H</b>: Replace (Monaco Replace)<br>"
+            "• <b>Alt+1...5</b>: View Modes (Code, Code+Map, Table+Map, Map, Table)"
         )
 
     def _show_about(self):
         QMessageBox.about(
-            self, "Chisel Editor Hakkında",
+            self, "About Chisel Editor",
             "<b>Chisel Editor</b><br>"
-            "Modern, Hızlı ve Hafif CBS (GIS) Destekli Kod Editörü.<br><br>"
-            "Vektör CBS dosyalarını (GeoJSON, SHP, GPKG, KML, CSV), WMS harita servislerini "
-            "ve WFS özelliklerini hızla görüntüleyin, düzenleyin ve jeo-işleme araçlarıyla analiz edin."
+            "Modern, fast, and lightweight GIS-enabled code editor.<br><br>"
+            "Quickly view, edit, and analyze vector GIS files (GeoJSON, SHP, GPKG, KML, CSV), WMS map services, "
+            "and WFS features with built-in geoprocessing tools."
         )
 
     def dragEnterEvent(self, event: QDragEnterEvent):

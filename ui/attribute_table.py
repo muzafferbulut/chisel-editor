@@ -40,7 +40,7 @@ class AddFieldDialog(QDialog):
 
     def __init__(self, existing_columns: list, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Yeni Alan / Sütun Ekle")
+        self.setWindowTitle("Add New Field / Column")
         self.setFixedSize(320, 220)
         self.existing_columns = [str(c).lower() for c in existing_columns]
         self.field_name = ""
@@ -53,27 +53,27 @@ class AddFieldDialog(QDialog):
         layout.setSpacing(10)
         layout.setContentsMargins(16, 16, 16, 16)
 
-        layout.addWidget(QLabel("<b>Sütun Adı:</b>"))
+        layout.addWidget(QLabel("<b>Column Name:</b>"))
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("örn: mahalle_adi, nufus, durum")
+        self.name_edit.setPlaceholderText("e.g. name, population, status")
         layout.addWidget(self.name_edit)
 
-        layout.addWidget(QLabel("<b>Veri Türü:</b>"))
+        layout.addWidget(QLabel("<b>Data Type:</b>"))
         self.type_combo = QComboBox()
-        self.type_combo.addItem("Metin (String / Yazı)", "str")
-        self.type_combo.addItem("Tamsayı (Integer)", "int")
-        self.type_combo.addItem("Ondalık Sayı (Float / Double)", "float")
+        self.type_combo.addItem("Text (String)", "str")
+        self.type_combo.addItem("Integer", "int")
+        self.type_combo.addItem("Decimal (Float / Double)", "float")
         layout.addWidget(self.type_combo)
 
-        layout.addWidget(QLabel("<b>Varsayılan Değer (İsteğe bağlı):</b>"))
+        layout.addWidget(QLabel("<b>Default Value (Optional):</b>"))
         self.default_edit = QLineEdit()
-        self.default_edit.setPlaceholderText("Boş bırakılabilir")
+        self.default_edit.setPlaceholderText("Can be left blank")
         layout.addWidget(self.default_edit)
 
         btn_box = QHBoxLayout()
-        btn_cancel = QPushButton("İptal")
+        btn_cancel = QPushButton("Cancel")
         btn_cancel.clicked.connect(self.reject)
-        btn_ok = QPushButton("Ekle")
+        btn_ok = QPushButton("Add")
         btn_ok.setStyleSheet("background-color: #007acc; color: white; font-weight: bold; border-radius: 4px; padding: 4px 14px;")
         btn_ok.clicked.connect(self._on_accept)
         btn_box.addStretch()
@@ -84,10 +84,10 @@ class AddFieldDialog(QDialog):
     def _on_accept(self):
         name = self.name_edit.text().strip()
         if not name:
-            QMessageBox.warning(self, "Geçersiz Ad", "Lütfen bir sütun adı girin.")
+            QMessageBox.warning(self, "Invalid Name", "Please enter a column name.")
             return
         if name.lower() in self.existing_columns:
-            QMessageBox.warning(self, "Mevcut Sütun", f"'{name}' isimli bir sütun zaten mevcut.")
+            QMessageBox.warning(self, "Existing Column", f"A column named '{name}' already exists.")
             return
 
         self.field_name = name
@@ -103,7 +103,7 @@ class AddFieldDialog(QDialog):
                 else:
                     self.default_val = raw_val
             except ValueError:
-                QMessageBox.warning(self, "Tür Uyuşmazlığı", "Varsayılan değer seçilen türe dönüştürülemedi.")
+                QMessageBox.warning(self, "Type Mismatch", "Default value could not be converted to the selected type.")
                 return
         else:
             if self.field_type == "int":
@@ -120,7 +120,7 @@ class EditGeometryDialog(QDialog):
     """QGIS-style dialog to view and update feature geometry via WKT and coordinates."""
     def __init__(self, geometry, geom_type: str, crs_str: str = "EPSG:4326", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Geometriyi Düzenle (WKT & Koordinatlar)")
+        self.setWindowTitle("Edit Geometry (WKT & Coordinates)")
         self.setMinimumSize(480, 360)
         self.original_geom = geometry
         self.geom_type = geom_type
@@ -133,23 +133,23 @@ class EditGeometryDialog(QDialog):
         layout.setSpacing(10)
         layout.setContentsMargins(16, 16, 16, 16)
 
-        info_lbl = QLabel(f"<b>Geometri Türü:</b> {self.geom_type.capitalize()} &nbsp;|&nbsp; <b>Projeksiyon:</b> {self.crs_str}")
+        info_lbl = QLabel(f"<b>Geometry Type:</b> {self.geom_type.capitalize()} &nbsp;|&nbsp; <b>Projection:</b> {self.crs_str}")
         layout.addWidget(info_lbl)
 
-        layout.addWidget(QLabel("<b>WKT (Well-Known Text) Formatında Geometri:</b>"))
+        layout.addWidget(QLabel("<b>Geometry in WKT (Well-Known Text) Format:</b>"))
         self.wkt_edit = QTextEdit()
         self.wkt_edit.setStyleSheet("font-family: Consolas, monospace; font-size: 12px;")
         if self.original_geom is not None and hasattr(self.original_geom, 'wkt'):
             self.wkt_edit.setPlainText(self.original_geom.wkt)
         layout.addWidget(self.wkt_edit)
 
-        tip_lbl = QLabel("<small style='color:#858585;'>💡 Örnekler: POINT(29.0 41.0) | LINESTRING(29 41, 30 41) | POLYGON((29 41, 30 41, 30 42, 29 41))</small>")
+        tip_lbl = QLabel("<small style='color:#858585;'>💡 Examples: POINT(29.0 41.0) | LINESTRING(29 41, 30 41) | POLYGON((29 41, 30 41, 30 42, 29 41))</small>")
         layout.addWidget(tip_lbl)
 
         btn_box = QHBoxLayout()
-        btn_cancel = QPushButton("İptal")
+        btn_cancel = QPushButton("Cancel")
         btn_cancel.clicked.connect(self.reject)
-        btn_ok = QPushButton("Kaydet ve Güncelle")
+        btn_ok = QPushButton("Save & Update")
         btn_ok.setStyleSheet("background-color: #007acc; color: white; font-weight: bold; border-radius: 4px; padding: 5px 14px;")
         btn_ok.clicked.connect(self._on_save)
         btn_box.addStretch()
@@ -160,7 +160,7 @@ class EditGeometryDialog(QDialog):
     def _on_save(self):
         text = self.wkt_edit.toPlainText().strip()
         if not text:
-            QMessageBox.warning(self, "Hata", "Lütfen geçerli bir WKT geometrisi girin.")
+            QMessageBox.warning(self, "Error", "Please enter a valid WKT geometry.")
             return
         try:
             import shapely.wkt
@@ -171,7 +171,7 @@ class EditGeometryDialog(QDialog):
             self.updated_geom = geom
             self.accept()
         except Exception as e:
-            QMessageBox.warning(self, "Geçersiz WKT", f"WKT biçimi ayrıştırılamadı:\n{e}")
+            QMessageBox.warning(self, "Invalid WKT", f"Could not parse WKT format:\n{e}")
 
 
 class GeoDataFrameTableModel(QAbstractTableModel):
@@ -291,7 +291,7 @@ class GeoDataFrameTableModel(QAbstractTableModel):
                 elif pd.api.types.is_float_dtype(curr_dtype):
                     converted = float(str_val.replace(',', '.'))
                 elif pd.api.types.is_bool_dtype(curr_dtype):
-                    converted = str_val.lower() in ('true', '1', 't', 'evet', 'doğru', 'yes')
+                    converted = str_val.lower() in ('true', '1', 't', 'yes', 'y')
                 else:
                     converted = str_val
 
@@ -448,7 +448,7 @@ class AttributeTableWidget(QWidget):
         # Active Layer Selector Dropdown
         self.layer_combo = QComboBox()
         self.layer_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self.layer_combo.setToolTip("Aktif Katmanı Değiştir")
+        self.layer_combo.setToolTip("Change Active Layer")
         self.layer_combo.currentIndexChanged.connect(self._on_layer_combo_changed)
         toolbar.addWidget(self.layer_combo)
 
@@ -456,7 +456,7 @@ class AttributeTableWidget(QWidget):
 
         # Quick Search Box
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Tabloda filtrele...")
+        self.search_input.setPlaceholderText("Filter in table...")
         self.search_input.setMaximumWidth(200)
         self.search_input.setClearButtonEnabled(True)
         self.search_action = self.search_input.addAction(
@@ -465,61 +465,61 @@ class AttributeTableWidget(QWidget):
         self.search_input.textChanged.connect(self._filter_table)
         toolbar.addWidget(self.search_input)
 
-        self.stats_label = QLabel("0 özellik")
+        self.stats_label = QLabel("0 features")
         self.stats_label.setStyleSheet("color: #858585; font-size: 11px; padding: 0 4px;")
         toolbar.addWidget(self.stats_label)
 
         toolbar.addWidget(self._create_vsep())
 
         # QGIS Selection Tools
-        self.btn_zoom_selected = self._create_tool_btn("zoom_to_selected", "🔍", "Haritada Seçilenlere Yakınlaş", self._zoom_to_selected)
+        self.btn_zoom_selected = self._create_tool_btn("zoom_to_selected", "🔍", "Zoom to Selected Features on Map", self._zoom_to_selected)
         self.btn_zoom_selected.setEnabled(False)
         toolbar.addWidget(self.btn_zoom_selected)
 
-        self.btn_select_all = self._create_tool_btn("select_all", "🔲", "Tümünü Seç (Ctrl+A)", self._select_all)
+        self.btn_select_all = self._create_tool_btn("select_all", "🔲", "Select All (Ctrl+A)", self._select_all)
         toolbar.addWidget(self.btn_select_all)
 
-        self.btn_invert_sel = self._create_tool_btn("invert_selection", "🔄", "Seçimi Tersine Çevir", self._invert_selection)
+        self.btn_invert_sel = self._create_tool_btn("invert_selection", "🔄", "Invert Selection", self._invert_selection)
         toolbar.addWidget(self.btn_invert_sel)
 
-        self.btn_clear_sel = self._create_tool_btn("clear_selection", "✖", "Seçimi Temizle", self._clear_selection)
+        self.btn_clear_sel = self._create_tool_btn("clear_selection", "✖", "Clear Selection", self._clear_selection)
         toolbar.addWidget(self.btn_clear_sel)
 
-        self.btn_show_selected = self._create_tool_btn("show_selected", "🎯", "Yalnızca Seçilenleri Göster / Tümünü Göster", self._toggle_show_selected, checkable=True)
+        self.btn_show_selected = self._create_tool_btn("show_selected", "🎯", "Show Only Selected / Show All", self._toggle_show_selected, checkable=True)
         toolbar.addWidget(self.btn_show_selected)
 
         toolbar.addWidget(self._create_vsep())
 
         # QGIS Data / Calculation Tools
-        self.btn_add_row = self._create_tool_btn("add_row", "+R", "Yeni Kayıt / Satır Ekle", self._add_row)
+        self.btn_add_row = self._create_tool_btn("add_row", "+R", "Add New Record / Row", self._add_row)
         toolbar.addWidget(self.btn_add_row)
 
-        self.btn_add_col = self._create_tool_btn("add_field", "+A", "Yeni Sütun / Alan Ekle", self._add_field)
+        self.btn_add_col = self._create_tool_btn("add_field", "+A", "Add New Column / Field", self._add_field)
         toolbar.addWidget(self.btn_add_col)
 
-        self.btn_edit_geom = self._create_tool_btn("edit_geometry", "✏️", "Seçili Geometriyi Düzenle (WKT & Koordinatlar)", self._edit_selected_geometry)
+        self.btn_edit_geom = self._create_tool_btn("edit_geometry", "✏️", "Edit Selected Geometry (WKT & Coordinates)", self._edit_selected_geometry)
         self.btn_edit_geom.setEnabled(False)
         toolbar.addWidget(self.btn_edit_geom)
 
-        self.btn_calc_geom = self._create_tool_btn("calc_geom", "📐", "Geometri Hesapla (Alan, Uzunluk, Koordinatlar)", self._calculate_geometry)
+        self.btn_calc_geom = self._create_tool_btn("calc_geom", "📐", "Calculate Geometry (Area, Length, Coordinates)", self._calculate_geometry)
         toolbar.addWidget(self.btn_calc_geom)
 
-        self.btn_stats = self._create_tool_btn("statistics", "📊", "Sütun İstatistikleri (Tüm katman için)", self._show_column_statistics)
+        self.btn_stats = self._create_tool_btn("statistics", "📊", "Column Statistics (Entire Layer)", self._show_column_statistics)
         toolbar.addWidget(self.btn_stats)
 
-        self.btn_del_selected = self._create_tool_btn("delete_selected", "🗑️", "Seçili Kayıtları Sil (Del)", self._delete_selected_rows, obj_name="btn_del")
+        self.btn_del_selected = self._create_tool_btn("delete_selected", "🗑️", "Delete Selected Records (Del)", self._delete_selected_rows, obj_name="btn_del")
         self.btn_del_selected.setEnabled(False)
         toolbar.addWidget(self.btn_del_selected)
 
         toolbar.addWidget(self._create_vsep())
 
         # Export & Close
-        self.btn_export_csv = self._create_tool_btn("export_csv", "💾", "Öznitelik Tablosunu CSV Olarak Dışa Aktar", self._export_csv)
+        self.btn_export_csv = self._create_tool_btn("export_csv", "💾", "Export Attribute Table as CSV", self._export_csv)
         toolbar.addWidget(self.btn_export_csv)
 
         toolbar.addStretch()
 
-        self.btn_close = self._create_tool_btn("close", "✕", "Öznitelik Tablosunu Kapat (F6)", self.close_requested.emit, obj_name="btn_close")
+        self.btn_close = self._create_tool_btn("close", "✕", "Close Attribute Table (F6)", self.close_requested.emit, obj_name="btn_close")
         toolbar.addWidget(self.btn_close)
 
         layout.addWidget(toolbar_container)
@@ -660,7 +660,7 @@ class AttributeTableWidget(QWidget):
         self._block_layer_signals = True
         self.layer_combo.clear()
         if not layers:
-            self.layer_combo.addItem("Katman Yok", "")
+            self.layer_combo.addItem("No Layer", "")
             self.layer_combo.setEnabled(False)
         elif len(layers) == 1:
             lid, name, gtype = layers[0]
@@ -702,12 +702,12 @@ class AttributeTableWidget(QWidget):
         self.source_model.set_data(gdf)
 
         count = len(gdf) if gdf is not None and not gdf.empty else 0
-        self.stats_label.setText(f"{count:,} özellik")
+        self.stats_label.setText(f"{count:,} features")
         self.btn_del_selected.setEnabled(False)
-        self.btn_del_selected.setToolTip("Seçili Kayıtları Sil (Del)")
+        self.btn_del_selected.setToolTip("Delete Selected Records (Del)")
         self.btn_zoom_selected.setEnabled(False)
-        self.btn_zoom_selected.setToolTip("Haritada Seçilenlere Yakınlaş")
-        self.btn_stats.setToolTip("Sütun İstatistikleri (Tüm katman için)")
+        self.btn_zoom_selected.setToolTip("Zoom to Selected Features on Map")
+        self.btn_stats.setToolTip("Column Statistics (Entire Layer)")
         self.btn_edit_geom.setEnabled(False)
         self.btn_add_row.setEnabled(gdf is not None)
 
@@ -724,9 +724,9 @@ class AttributeTableWidget(QWidget):
         visible = self.proxy_model.rowCount()
         total = self.source_model.rowCount()
         if self.proxy_model.is_only_selected() or bool(self.search_input.text().strip()):
-            self.stats_label.setText(f"{visible:,} / {total:,} özellik")
+            self.stats_label.setText(f"{visible:,} / {total:,} features")
         else:
-            self.stats_label.setText(f"{total:,} özellik")
+            self.stats_label.setText(f"{total:,} features")
 
     def _zoom_to_selected(self):
         self.zoom_to_selected_requested.emit()
@@ -762,8 +762,8 @@ class AttributeTableWidget(QWidget):
                 self.btn_show_selected.setChecked(False)
                 self.btn_show_selected.blockSignals(False)
                 QMessageBox.information(
-                    self, "Seçim Yok",
-                    "Yalnızca seçilenleri göstermek için önce tablodan veya haritadan en az bir özellik seçmelisiniz."
+                    self, "No Selection",
+                    "Please select at least one feature from the table or map to show only selected."
                 )
                 return
             self._cached_selected_rows = src_rows
@@ -777,7 +777,7 @@ class AttributeTableWidget(QWidget):
 
     def _add_field(self):
         if self._current_gdf is None or self._current_gdf.empty:
-            QMessageBox.information(self, "Veri Yok", "Yüklü mekansal katman bulunamadı.")
+            QMessageBox.information(self, "No Data", "No loaded spatial layer found.")
             return
 
         dlg = AddFieldDialog(list(self._current_gdf.columns), parent=self)
@@ -788,9 +788,9 @@ class AttributeTableWidget(QWidget):
                 self._current_gdf[name] = val
                 self.load_data(self._current_gdf)
                 self.data_modified.emit(self._current_gdf)
-                QMessageBox.information(self, "Alan Eklendi", f"'{name}' sütunu başarıyla eklendi!")
+                QMessageBox.information(self, "Field Added", f"Column '{name}' added successfully!")
             except Exception as e:
-                QMessageBox.critical(self, "Hata", f"Sütun eklenirken hata oluştu: {e}")
+                QMessageBox.critical(self, "Error", f"Error adding column: {e}")
 
     def _on_cell_data_changed(self):
         self.data_modified.emit(self._current_gdf)
@@ -820,7 +820,7 @@ class AttributeTableWidget(QWidget):
             return
 
         geom = self._current_gdf.geometry.iat[row]
-        geom_type = getattr(geom, 'geom_type', 'Nokta') if geom is not None else 'Nokta'
+        geom_type = getattr(geom, 'geom_type', 'Point') if geom is not None else 'Point'
         crs_str = str(self._current_gdf.crs) if self._current_gdf.crs else "EPSG:4326"
 
         dlg = EditGeometryDialog(geom, geom_type, crs_str, parent=self)
@@ -890,18 +890,18 @@ class AttributeTableWidget(QWidget):
         self.btn_zoom_selected.setEnabled(has_sel)
         self.btn_edit_geom.setEnabled(count == 1)
         if has_sel:
-            self.btn_del_selected.setToolTip(f"Seçili {count:,} Kaydı Sil (Del)")
-            self.btn_zoom_selected.setToolTip(f"Haritada Seçili {count:,} Geometriye Yakınlaş")
-            self.btn_stats.setToolTip(f"Sütun İstatistikleri (Seçili {count:,} kayıt için)")
+            self.btn_del_selected.setToolTip(f"Delete Selected {count:,} Records (Del)")
+            self.btn_zoom_selected.setToolTip(f"Zoom to Selected {count:,} Geometries on Map")
+            self.btn_stats.setToolTip(f"Column Statistics (For selected {count:,} records)")
             if count == 1:
-                self.btn_edit_geom.setToolTip("Seçili Geometriyi Düzenle (WKT & Koordinatlar)")
+                self.btn_edit_geom.setToolTip("Edit Selected Geometry (WKT & Coordinates)")
             else:
-                self.btn_edit_geom.setToolTip("Geometri düzenlemek için tek bir kayıt seçin")
+                self.btn_edit_geom.setToolTip("Select a single record to edit geometry")
         else:
-            self.btn_del_selected.setToolTip("Seçili Kayıtları Sil (Del)")
-            self.btn_zoom_selected.setToolTip("Haritada Seçilenlere Yakınlaş")
-            self.btn_stats.setToolTip("Sütun İstatistikleri (Tüm katman için)")
-            self.btn_edit_geom.setToolTip("Seçili Geometriyi Düzenle (WKT & Koordinatlar)")
+            self.btn_del_selected.setToolTip("Delete Selected Records (Del)")
+            self.btn_zoom_selected.setToolTip("Zoom to Selected Features on Map")
+            self.btn_stats.setToolTip("Column Statistics (Entire Layer)")
+            self.btn_edit_geom.setToolTip("Edit Selected Geometry (WKT & Coordinates)")
 
         if self._block_selection_signals:
             return
@@ -931,8 +931,8 @@ class AttributeTableWidget(QWidget):
         count = len(source_rows)
         if count > 10:
             reply = QMessageBox.question(
-                self, "Satırları Sil",
-                f"{count:,} adet seçili öznitelik kaydını ve geometrisini silmek istediğinize emin misiniz?",
+                self, "Delete Rows",
+                f"Are you sure you want to delete {count:,} selected attribute record(s) and geometry?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No
             )
@@ -950,10 +950,10 @@ class AttributeTableWidget(QWidget):
             sel_model.clearSelection()
             if not indices or self.source_model.rowCount() == 0:
                 self.btn_del_selected.setEnabled(False)
-                self.btn_del_selected.setToolTip("Seçili Kayıtları Sil (Del)")
+                self.btn_del_selected.setToolTip("Delete Selected Records (Del)")
                 self.btn_zoom_selected.setEnabled(False)
-                self.btn_zoom_selected.setToolTip("Haritada Seçilenlere Yakınlaş")
-                self.btn_stats.setToolTip("Sütun İstatistikleri (Tüm katman için)")
+                self.btn_zoom_selected.setToolTip("Zoom to Selected Features on Map")
+                self.btn_stats.setToolTip("Column Statistics (Entire Layer)")
                 return
 
             col_count = self.proxy_model.columnCount()
@@ -998,13 +998,13 @@ class AttributeTableWidget(QWidget):
             self.btn_del_selected.setEnabled(count > 0)
             self.btn_zoom_selected.setEnabled(count > 0)
             if count > 0:
-                self.btn_del_selected.setToolTip(f"Seçili {count:,} Kaydı Sil (Del)")
-                self.btn_zoom_selected.setToolTip(f"Haritada Seçili {count:,} Geometriye Yakınlaş")
-                self.btn_stats.setToolTip(f"Sütun İstatistikleri (Seçili {count:,} kayıt için)")
+                self.btn_del_selected.setToolTip(f"Delete Selected {count:,} Records (Del)")
+                self.btn_zoom_selected.setToolTip(f"Zoom to Selected {count:,} Geometries on Map")
+                self.btn_stats.setToolTip(f"Column Statistics (For selected {count:,} records)")
             else:
-                self.btn_del_selected.setToolTip("Seçili Kayıtları Sil (Del)")
-                self.btn_zoom_selected.setToolTip("Haritada Seçilenlere Yakınlaş")
-                self.btn_stats.setToolTip("Sütun İstatistikleri (Tüm katman için)")
+                self.btn_del_selected.setToolTip("Delete Selected Records (Del)")
+                self.btn_zoom_selected.setToolTip("Zoom to Selected Features on Map")
+                self.btn_stats.setToolTip("Column Statistics (Entire Layer)")
         finally:
             self._block_selection_signals = False
 
@@ -1013,12 +1013,12 @@ class AttributeTableWidget(QWidget):
 
     def _show_column_statistics(self):
         if self._current_gdf is None or self._current_gdf.empty:
-            QMessageBox.information(self, "Veri Yok", "Yüklü mekansal katman bulunamadı.")
+            QMessageBox.information(self, "No Data", "No loaded spatial layer found.")
             return
 
         cols = [c for c in self._current_gdf.columns if c != getattr(self._current_gdf, 'geometry', None).name]
         if not cols:
-            QMessageBox.information(self, "Öznitelik Yok", "İstatistik hesaplanacak öznitelik sütunu bulunamadı.")
+            QMessageBox.information(self, "No Attributes", "No attribute columns found to calculate statistics.")
             return
 
         # Check if there are selected rows in the table
@@ -1031,10 +1031,10 @@ class AttributeTableWidget(QWidget):
 
         if selected_source_rows:
             target_gdf = self._current_gdf.iloc[selected_source_rows]
-            scope_desc = f"Seçili {len(selected_source_rows):,} Kayıt"
+            scope_desc = f"Selected {len(selected_source_rows):,} Records"
         else:
             target_gdf = self._current_gdf
-            scope_desc = f"Tüm Katman ({len(self._current_gdf):,} Kayıt)"
+            scope_desc = f"Entire Layer ({len(self._current_gdf):,} Records)"
 
         from ui.dialogs import ColumnStatisticsDialog
         dlg = ColumnStatisticsDialog(target_gdf, cols, scope_desc=scope_desc, parent=self)
@@ -1042,30 +1042,30 @@ class AttributeTableWidget(QWidget):
 
     def _calculate_geometry(self):
         if self._current_gdf is None or self._current_gdf.empty:
-            QMessageBox.information(self, "Veri Yok", "Yüklü mekansal katman bulunamadı.")
+            QMessageBox.information(self, "No Data", "No loaded spatial layer found.")
             return
 
         try:
             updated_gdf = SpatialOps.calculate_geometry_attributes(self._current_gdf)
             self.load_data(updated_gdf)
             self.data_modified.emit(updated_gdf)
-            QMessageBox.information(self, "Geometri Hesaplandı", "Alan (km²), uzunluk (km) ve koordinat sütunları başarıyla eklendi!")
+            QMessageBox.information(self, "Geometry Calculated", "Area (km²), length (km), and coordinate columns added successfully!")
         except Exception as e:
-            QMessageBox.critical(self, "Hata", f"Geometri hesaplanamadı: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to calculate geometry: {e}")
 
     def _export_csv(self):
         if self._current_gdf is None or self._current_gdf.empty:
-            QMessageBox.information(self, "Veri Yok", "Dışa aktarılacak veri yok.")
+            QMessageBox.information(self, "No Data", "No data to export.")
             return
 
-        path, _ = QFileDialog.getSaveFileName(self, "Öznitelik Tablosunu Dışa Aktar", "attributes.csv", "CSV Dosyaları (*.csv)")
+        path, _ = QFileDialog.getSaveFileName(self, "Export Attribute Table", "attributes.csv", "CSV Files (*.csv)")
         if not path:
             return
 
         try:
             clean_df = pd.DataFrame(self._current_gdf.drop(columns=[self._current_gdf.geometry.name], errors='ignore'))
             clean_df.to_csv(path, index=False, encoding='utf-8')
-            QMessageBox.information(self, "Başarılı", f"Öznitelik tablosu kaydedildi:\n{path}")
+            QMessageBox.information(self, "Success", f"Attribute table saved:\n{path}")
         except Exception as e:
-            QMessageBox.critical(self, "Hata", f"CSV kaydedilemedi: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to save CSV: {str(e)}")
 

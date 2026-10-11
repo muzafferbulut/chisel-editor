@@ -42,40 +42,40 @@ class SpreadsheetEditorWidget(QWidget):
         toolbar.setSpacing(4)
 
         # Row and Column Tools
-        self.btn_add_row = self._create_tool_btn("add_row", "+R", "Satır Ekle (Seçili satırın altına yeni satır ekler)", self._add_row)
+        self.btn_add_row = self._create_tool_btn("add_row", "+R", "Insert Row (Inserts new row below selected)", self._add_row)
         toolbar.addWidget(self.btn_add_row)
 
-        self.btn_del_row = self._create_tool_btn("delete_row", "-R", "Satır Sil (Seçili satırı siler)", self._del_row)
+        self.btn_del_row = self._create_tool_btn("delete_row", "-R", "Delete Row (Deletes selected row)", self._del_row)
         toolbar.addWidget(self.btn_del_row)
 
-        self.btn_add_col = self._create_tool_btn("add_col", "+C", "Sütun Ekle (Yeni sütun ekler)", self._add_column)
+        self.btn_add_col = self._create_tool_btn("add_col", "+C", "Insert Column (Inserts new column)", self._add_column)
         toolbar.addWidget(self.btn_add_col)
 
-        self.btn_del_col = self._create_tool_btn("delete_col", "-C", "Sütun Sil (Seçili sütunu siler)", self._del_column)
+        self.btn_del_col = self._create_tool_btn("delete_col", "-C", "Delete Column (Deletes selected column)", self._del_column)
         toolbar.addWidget(self.btn_del_col)
 
         toolbar.addWidget(self._create_vsep())
 
         # Layout and Content Tools
-        self.btn_autofit = self._create_tool_btn("autofit", "↔", "Sütun Genişliklerini Otomatik Sığdır", self._autofit_columns)
+        self.btn_autofit = self._create_tool_btn("autofit", "↔", "Auto-fit Column Widths", self._autofit_columns)
         toolbar.addWidget(self.btn_autofit)
 
-        self.btn_clear = self._create_tool_btn("clear_cells", "✕", "Seçili Hücreleri Temizle (Delete)", self._clear_selected_cells)
+        self.btn_clear = self._create_tool_btn("clear_cells", "✕", "Clear Selected Cells (Delete)", self._clear_selected_cells)
         toolbar.addWidget(self.btn_clear)
 
-        self.btn_stats = self._create_tool_btn("statistics", "📊", "Sütun İstatistikleri (Toplam, Ortalama, Min, Max)", self._show_column_stats)
+        self.btn_stats = self._create_tool_btn("statistics", "📊", "Column Statistics (Sum, Mean, Min, Max)", self._show_column_stats)
         toolbar.addWidget(self.btn_stats)
 
         toolbar.addWidget(self._create_vsep())
 
-        self.btn_export = self._create_tool_btn("export_csv", "💾", "Tabloyu CSV Olarak Dışa Aktar", self._export_to_csv)
+        self.btn_export = self._create_tool_btn("export_csv", "💾", "Export Table as CSV", self._export_to_csv)
         toolbar.addWidget(self.btn_export)
 
         toolbar.addStretch()
 
         # Search / Quick Filter Input
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("🔍 Filtrele...")
+        self.search_edit.setPlaceholderText("🔍 Filter...")
         self.search_edit.setMaximumWidth(180)
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.textChanged.connect(self._search_cells)
@@ -97,7 +97,7 @@ class SpreadsheetEditorWidget(QWidget):
         formula_bar.addWidget(lbl_fx)
 
         self.cell_edit = QLineEdit()
-        self.cell_edit.setPlaceholderText("Hücre değeri veya metin...")
+        self.cell_edit.setPlaceholderText("Cell value or formula...")
         self.cell_edit.returnPressed.connect(self._apply_cell_edit)
         formula_bar.addWidget(self.cell_edit)
 
@@ -128,13 +128,13 @@ class SpreadsheetEditorWidget(QWidget):
 
         self.btn_new_sheet = QPushButton("➕")
         self.btn_new_sheet.setFixedSize(26, 24)
-        self.btn_new_sheet.setToolTip("Yeni Çalışma Sayfası Ekle")
+        self.btn_new_sheet.setToolTip("Add New Worksheet")
         self.btn_new_sheet.clicked.connect(self._add_new_sheet)
         sheet_bar_layout.addWidget(self.btn_new_sheet)
 
         sheet_bar_layout.addStretch()
 
-        self.lbl_status = QLabel("0 satır x 0 sütun")
+        self.lbl_status = QLabel("0 rows x 0 columns")
         sheet_bar_layout.addWidget(self.lbl_status)
 
         layout.addLayout(sheet_bar_layout)
@@ -283,7 +283,7 @@ class SpreadsheetEditorWidget(QWidget):
             self.current_file = file_path
         self._is_loading = True
         try:
-            self._sheets = sheets if sheets else {"Sayfa1": pd.DataFrame()}
+            self._sheets = sheets if sheets else {"Sheet1": pd.DataFrame()}
 
             self.tab_bar.blockSignals(True)
             while self.tab_bar.count() > 0:
@@ -330,7 +330,7 @@ class SpreadsheetEditorWidget(QWidget):
                         item.setTextAlignment(int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
                     self.table.setItem(r, c, item)
 
-            self.lbl_status.setText(f"{rows:,} satır x {cols} sütun")
+            self.lbl_status.setText(f"{rows:,} rows x {cols} columns")
         finally:
             self.table.setUpdatesEnabled(True)
             self.table.blockSignals(False)
@@ -379,11 +379,11 @@ class SpreadsheetEditorWidget(QWidget):
         self._load_sheet_data(sheet_name)
 
     def _add_new_sheet(self):
-        name, ok = QInputDialog.getText(self, "Yeni Çalışma Sayfası", "Sayfa Adı:", text=f"Sayfa{self.tab_bar.count() + 1}")
+        name, ok = QInputDialog.getText(self, "New Worksheet", "Sheet Name:", text=f"Sheet{self.tab_bar.count() + 1}")
         if ok and name.strip():
             sheet_name = name.strip()
             if sheet_name in self._sheets:
-                QMessageBox.warning(self, "Hata", "Bu isimde bir sayfa zaten mevcut.")
+                QMessageBox.warning(self, "Error", "A sheet with this name already exists.")
                 return
             self._sync_current_table_to_df()
             self._sheets[sheet_name] = pd.DataFrame([[""] * 5] * 10)
@@ -433,7 +433,7 @@ class SpreadsheetEditorWidget(QWidget):
         self.table.insertRow(idx)
         self._is_dirty = True
         self.content_changed.emit()
-        self.lbl_status.setText(f"{self.table.rowCount():,} satır x {self.table.columnCount()} sütun")
+        self.lbl_status.setText(f"{self.table.rowCount():,} rows x {self.table.columnCount()} columns")
 
     def _del_row(self):
         r = self.table.currentRow()
@@ -441,17 +441,17 @@ class SpreadsheetEditorWidget(QWidget):
             self.table.removeRow(r)
             self._is_dirty = True
             self.content_changed.emit()
-            self.lbl_status.setText(f"{self.table.rowCount():,} satır x {self.table.columnCount()} sütun")
+            self.lbl_status.setText(f"{self.table.rowCount():,} rows x {self.table.columnCount()} columns")
 
     def _add_column(self):
-        name, ok = QInputDialog.getText(self, "Sütun Ekle", "Sütun Adı:", text=f"Sütun{self.table.columnCount() + 1}")
+        name, ok = QInputDialog.getText(self, "Insert Column", "Column Name:", text=f"Column{self.table.columnCount() + 1}")
         if ok and name.strip():
             col_idx = self.table.columnCount()
             self.table.insertColumn(col_idx)
             self.table.setHorizontalHeaderItem(col_idx, QTableWidgetItem(name.strip()))
             self._is_dirty = True
             self.content_changed.emit()
-            self.lbl_status.setText(f"{self.table.rowCount():,} satır x {self.table.columnCount()} sütun")
+            self.lbl_status.setText(f"{self.table.rowCount():,} rows x {self.table.columnCount()} columns")
 
     def _del_column(self):
         c = self.table.currentColumn()
@@ -459,7 +459,7 @@ class SpreadsheetEditorWidget(QWidget):
             self.table.removeColumn(c)
             self._is_dirty = True
             self.content_changed.emit()
-            self.lbl_status.setText(f"{self.table.rowCount():,} satır x {self.table.columnCount()} sütun")
+            self.lbl_status.setText(f"{self.table.rowCount():,} rows x {self.table.columnCount()} columns")
 
     def _autofit_columns(self):
         self.table.resizeColumnsToContents()
@@ -478,13 +478,13 @@ class SpreadsheetEditorWidget(QWidget):
         self.content_changed.emit()
 
     def _export_to_csv(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Tabloyu CSV Olarak Dışa Aktar", "tablo.csv", "CSV Dosyası (*.csv)")
+        path, _ = QFileDialog.getSaveFileName(self, "Export Table as CSV", "table.csv", "CSV File (*.csv)")
         if path:
             self._sync_current_table_to_df()
             df = self._sheets.get(self._current_sheet_name, pd.DataFrame())
             df.to_csv(path, index=False, encoding="utf-8")
             from ui.toast import ToastNotification
-            ToastNotification.show_toast(self.window(), f"CSV Dışa Aktarıldı: {os.path.basename(path)}", "info")
+            ToastNotification.show_toast(self.window(), f"CSV Exported: {os.path.basename(path)}", "info")
 
     def _search_cells(self, text: str):
         if not text.strip():
@@ -505,7 +505,7 @@ class SpreadsheetEditorWidget(QWidget):
     def _show_column_stats(self):
         c = self.table.currentColumn()
         if c < 0:
-            QMessageBox.information(self, "Seçim Yok", "Lütfen istatistiğini görmek istediğiniz bir sütun seçin.")
+            QMessageBox.information(self, "No Selection", "Please select a column to view statistics.")
             return
 
         header_item = self.table.horizontalHeaderItem(c)
@@ -521,20 +521,20 @@ class SpreadsheetEditorWidget(QWidget):
                     pass
 
         if not values:
-            QMessageBox.information(self, "Veri Yok", f"'{col_name}' sütununda sayısal veri bulunamadı.")
+            QMessageBox.information(self, "No Data", f"No numerical data found in column '{col_name}'.")
             return
 
         s = pd.Series(values)
         info = (
-            f"<b>Sütun:</b> {col_name}<br><br>"
-            f"• <b>Toplam Değer Sayısı:</b> {len(s):,}<br>"
-            f"• <b>Toplam (Sum):</b> {s.sum():,.2f}<br>"
-            f"• <b>Ortalama (Mean):</b> {s.mean():,.2f}<br>"
+            f"<b>Column:</b> {col_name}<br><br>"
+            f"• <b>Total Count:</b> {len(s):,}<br>"
+            f"• <b>Sum:</b> {s.sum():,.2f}<br>"
+            f"• <b>Mean:</b> {s.mean():,.2f}<br>"
             f"• <b>Minimum:</b> {s.min():,.2f}<br>"
-            f"• <b>Maksimum:</b> {s.max():,.2f}<br>"
-            f"• <b>Medyan:</b> {s.median():,.2f}"
+            f"• <b>Maximum:</b> {s.max():,.2f}<br>"
+            f"• <b>Median:</b> {s.median():,.2f}"
         )
-        QMessageBox.information(self, f"Sütun İstatistikleri: {col_name}", info)
+        QMessageBox.information(self, f"Column Statistics: {col_name}", info)
 
     def _copy_selection(self):
         ranges = self.table.selectedRanges()
@@ -582,16 +582,16 @@ class SpreadsheetEditorWidget(QWidget):
 
     def _show_context_menu(self, pos):
         menu = QMenu(self)
-        menu.addAction("Kopyala (Ctrl+C)", self._copy_selection)
-        menu.addAction("Yapıştır (Ctrl+V)", self._paste_selection)
-        menu.addAction("Hücreleri Temizle (Del)", self._clear_selected_cells)
+        menu.addAction("Copy (Ctrl+C)", self._copy_selection)
+        menu.addAction("Paste (Ctrl+V)", self._paste_selection)
+        menu.addAction("Clear Cells (Del)", self._clear_selected_cells)
         menu.addSeparator()
-        menu.addAction("Satır Ekle", self._add_row)
-        menu.addAction("Satır Sil", self._del_row)
+        menu.addAction("Insert Row", self._add_row)
+        menu.addAction("Delete Row", self._del_row)
         menu.addSeparator()
-        menu.addAction("Sütun Ekle", self._add_column)
-        menu.addAction("Sütun Sil", self._del_column)
-        menu.addAction("Sütun Genişliklerini Sığdır", self._autofit_columns)
+        menu.addAction("Insert Column", self._add_column)
+        menu.addAction("Delete Column", self._del_column)
+        menu.addAction("Autofit Column Widths", self._autofit_columns)
         menu.addSeparator()
-        menu.addAction("Sütun İstatistikleri", self._show_column_stats)
+        menu.addAction("Column Statistics", self._show_column_stats)
         menu.exec(self.table.viewport().mapToGlobal(pos))

@@ -21,7 +21,7 @@ class DocxHandler(BaseHandler):
         Reads a .docx file and returns structured content (paragraphs and tables).
         """
         if docx is None:
-            raise ImportError("python-docx kütüphanesi yüklü değil.")
+            raise ImportError("python-docx library is not installed.")
 
         try:
             doc = docx.Document(file_path)
@@ -71,7 +71,7 @@ class DocxHandler(BaseHandler):
                 "full_text": "\n".join(p.text for p in doc.paragraphs)
             }
         except Exception as e:
-            raise RuntimeError(f"Word belgesi okunamadı ({os.path.basename(file_path)}): {e}")
+            raise RuntimeError(f"Failed to read Word document ({os.path.basename(file_path)}): {e}")
 
     def write(self, file_path: str, document_data: object, **kwargs) -> None:
         """
@@ -80,7 +80,7 @@ class DocxHandler(BaseHandler):
         or a list of paragraph items, or plain text.
         """
         if docx is None:
-            raise ImportError("python-docx kütüphanesi yüklü değil.")
+            raise ImportError("python-docx library is not installed.")
 
         try:
             doc = docx.Document()

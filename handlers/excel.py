@@ -40,10 +40,10 @@ class ExcelHandler(BaseHandler):
                     sep = ","
 
                 df = pd.read_csv(file_path, sep=sep, encoding=encoding)
-                sheet_name = os.path.splitext(os.path.basename(file_path))[0] or "CSV_Veri"
+                sheet_name = os.path.splitext(os.path.basename(file_path))[0] or "CSV_Data"
                 return {sheet_name: df}
             except Exception as e:
-                raise RuntimeError(f"CSV dosyası okunamadı ({os.path.basename(file_path)}): {e}")
+                raise RuntimeError(f"Failed to read CSV file ({os.path.basename(file_path)}): {e}")
 
         try:
             with pd.ExcelFile(file_path) as excel_file:
@@ -53,7 +53,7 @@ class ExcelHandler(BaseHandler):
                     sheets[sheet_name] = df
             return sheets
         except Exception as e:
-            raise RuntimeError(f"Excel dosyası okunamadı ({os.path.basename(file_path)}): {e}")
+            raise RuntimeError(f"Failed to read Excel file ({os.path.basename(file_path)}): {e}")
 
     def write(self, file_path: str, sheets_data: dict, **kwargs) -> None:
         """
@@ -67,7 +67,7 @@ class ExcelHandler(BaseHandler):
                     first_df.to_csv(file_path, index=False, encoding='utf-8')
                 return
             except Exception as e:
-                raise RuntimeError(f"CSV dosyası kaydedilemedi ({os.path.basename(file_path)}): {e}")
+                raise RuntimeError(f"Failed to save CSV file ({os.path.basename(file_path)}): {e}")
 
         try:
             with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
@@ -75,4 +75,4 @@ class ExcelHandler(BaseHandler):
                     if isinstance(df, pd.DataFrame):
                         df.to_excel(writer, sheet_name=sheet_name, index=False)
         except Exception as e:
-            raise RuntimeError(f"Excel dosyası kaydedilemedi ({os.path.basename(file_path)}): {e}")
+            raise RuntimeError(f"Failed to save Excel file ({os.path.basename(file_path)}): {e}")

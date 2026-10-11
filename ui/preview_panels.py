@@ -591,81 +591,81 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
             <!-- Vertical Action Toolbar on the Far Right -->
             <div class="hud-toolbar-v">
-                <!-- 1. Katmanlar & Servisler (QGIS Mantığıyla En Üstte) -->
+                <!-- 1. Layers & Services -->
                 <div style="position: relative;">
-                    <button class="hud-vbtn" id="btnLayers" onclick="toggleLayersFlyout()" data-tip="Katmanlar & Servisler" title="Katmanlar">
+                    <button class="hud-vbtn" id="btnLayers" onclick="toggleLayersFlyout()" data-tip="Layers & Services" title="Layers">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/></svg>
                     </button>
                     <div class="hud-layers-flyout" id="layersFlyout">
                         <div class="hud-layers-header">
                             <span style="display:flex; align-items:center; gap:6px;">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/></svg>
-                                <span>Katmanlar</span>
+                                <span>Layers</span>
                                 <span id="layerTotalCountBadge" class="hud-layer-count-badge">0</span>
                             </span>
-                            <button class="hud-layers-add-btn" onclick="requestAddService()" title="WMS / WFS Servisi ve Altlık Harita Ekle">+ WMS & WFS</button>
+                            <button class="hud-layers-add-btn" onclick="requestAddService()" title="Add WMS / WFS Service & Basemaps">+ WMS & WFS</button>
                         </div>
                         <div class="hud-layers-list" id="layersListContainer">
-                            <div style="color: #858585; font-size: 11px; padding: 6px 2px; text-align: center;">(Katman yok)</div>
+                            <div style="color: #858585; font-size: 11px; padding: 6px 2px; text-align: center;">(No layers)</div>
                         </div>
                     </div>
                 </div>
 
                 <div class="hud-vdivider"></div>
 
-                <!-- 2. Navigasyon & Görünüm -->
-                <button class="hud-vbtn" id="btnTable" onclick="toggleTableHud()" data-tip="Öznitelik Tablosu (F6)" title="Öznitelik Tablosu">
+                <!-- 2. Navigation & Views -->
+                <button class="hud-vbtn" id="btnTable" onclick="toggleTableHud()" data-tip="Attribute Table (F6)" title="Attribute Table">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
                 </button>
-                <button class="hud-vbtn" id="btnFullExtent" onclick="zoomFullExtent()" data-tip="Tüm Haritaya Odaklan (Full Extent)" title="Tüm Haritaya Odaklan">
+                <button class="hud-vbtn" id="btnFullExtent" onclick="zoomFullExtent()" data-tip="Zoom to Full Extent" title="Full Extent">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
                 </button>
-                <button class="hud-vbtn" id="btnFit" onclick="fitLayerBounds()" data-tip="Seçili Katmana Odaklan" title="Seçili Katmana Odaklan">
+                <button class="hud-vbtn" id="btnFit" onclick="fitLayerBounds()" data-tip="Zoom to Layer" title="Zoom to Layer">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/></svg>
                 </button>
                 
                 <div class="hud-vdivider"></div>
                 
-                <!-- 3. Akıllı Seçim Araçları -->
-                <button class="hud-vbtn active" id="btnSelectClick" onclick="setSelectTool('click')" data-tip="Tekli Seçim (Tıkla)" title="Tekli Seçim">
+                <!-- 3. Selection Tools -->
+                <button class="hud-vbtn active" id="btnSelectClick" onclick="setSelectTool('click')" data-tip="Single Selection (Click)" title="Single Select">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>
                 </button>
-                <button class="hud-vbtn" id="btnSelectBox" onclick="setSelectTool('box')" data-tip="Çoklu Seçim (Kutu ile Seç)" title="Çoklu Seçim">
+                <button class="hud-vbtn" id="btnSelectBox" onclick="setSelectTool('box')" data-tip="Multi Selection (Box Select)" title="Box Select">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/></svg>
                 </button>
-                <button class="hud-vbtn disabled" id="btnZoomSel" onclick="zoomToSelected()" data-tip="Seçilenlere Yakınlaş" title="Seçilenlere Yakınlaş">
+                <button class="hud-vbtn disabled" id="btnZoomSel" onclick="zoomToSelected()" data-tip="Zoom to Selected" title="Zoom to Selected">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></svg>
                 </button>
-                <button class="hud-vbtn disabled" id="btnClearSel" onclick="clearSelection()" data-tip="Seçimi Temizle (Esc)" title="Seçimi Temizle">
+                <button class="hud-vbtn disabled" id="btnClearSel" onclick="clearSelection()" data-tip="Clear Selection (Esc)" title="Clear Selection">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
                 </button>
                 
                 <div class="hud-vdivider"></div>
                 
-                <!-- 4. Vektör Çizim & Düzenleme -->
-                <button class="hud-vbtn" id="btnAddPoint" onclick="toggleDrawMode('point')" data-tip="Nokta Ekle (Haritaya Tıkla)" title="Nokta Ekle">
+                <!-- 4. Vector Drawing & Editing -->
+                <button class="hud-vbtn" id="btnAddPoint" onclick="toggleDrawMode('point')" data-tip="Add Point (Click Map)" title="Add Point">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.914 11.105A7.298 7.298 0 0 0 20 10a8 8 0 0 0-16 0c0 4.993 5.539 10.193 7.399 11.799a1 1 0 0 0 1.202 0 32.4 32.4 0 0 0 .824-.738"/><circle cx="12" cy="10" r="3"/><line x1="19" x2="19" y1="16" y2="22"/><line x1="16" x2="22" y1="19" y2="19"/></svg>
                 </button>
-                <button class="hud-vbtn" id="btnAddLine" onclick="toggleDrawMode('line')" data-tip="Çizgi Ekle (Çiz & Çift Tıkla)" title="Çizgi Ekle">
+                <button class="hud-vbtn" id="btnAddLine" onclick="toggleDrawMode('line')" data-tip="Add Line (Draw & Double Click)" title="Add Line">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><path d="M5 17A12 12 0 0 1 17 5"/></svg>
                 </button>
-                <button class="hud-vbtn" id="btnAddPolygon" onclick="toggleDrawMode('polygon')" data-tip="Çokgen Ekle (Çiz & Çift Tıkla)" title="Çokgen Ekle">
+                <button class="hud-vbtn" id="btnAddPolygon" onclick="toggleDrawMode('polygon')" data-tip="Add Polygon (Draw & Double Click)" title="Add Polygon">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.83 2.38a2 2 0 0 1 2.34 0l8 5.74a2 2 0 0 1 .73 2.25l-3.04 9.26a2 2 0 0 1-1.9 1.37H7.04a2 2 0 0 1-1.9-1.37L2.1 10.37a2 2 0 0 1 .73-2.25z"/></svg>
                 </button>
-                <button class="hud-vbtn" id="btnEditGeom" onclick="toggleVertexEditMode()" data-tip="Düğümleri Düzenle (Düğüm Noktaları)" title="Düğüm Düzenle">
+                <button class="hud-vbtn" id="btnEditGeom" onclick="toggleVertexEditMode()" data-tip="Edit Nodes (Vertex Tool)" title="Vertex Tool">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>
                 </button>
-                <button class="hud-vbtn hud-vbtn-del" id="btnDelete" onclick="deleteSelectedFeatures()" data-tip="Seçili Geometrileri Sil (Del)" title="Seçili Geometrileri Sil">
+                <button class="hud-vbtn hud-vbtn-del" id="btnDelete" onclick="deleteSelectedFeatures()" data-tip="Delete Selected Features (Del)" title="Delete Selected">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
                 </button>
                 
                 <div class="hud-vdivider"></div>
                 
-                <!-- 5. Ölçüm & Çıktı -->
-                <button class="hud-vbtn" id="btnMeasure" onclick="toggleMeasure()" data-tip="Mesafe / Alan Ölçümü" title="Ölçüm">
+                <!-- 5. Measurement & Export -->
+                <button class="hud-vbtn" id="btnMeasure" onclick="toggleMeasure()" data-tip="Measure Distance / Area" title="Measure">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.3 8.7 8.7 21.3c-1 1-2.5 1-3.4 0l-2.6-2.6c-1-1-1-2.5 0-3.4L15.3 2.7c1-1 2.5-1 3.4 0l2.6 2.6c1 1 1 2.5 0 3.4Z"/><path d="m14.5 3.5 2 2"/><path d="m11.5 6.5 2 2"/><path d="m8.5 9.5 2 2"/><path d="m5.5 12.5 2 2"/></svg>
                 </button>
-                <button class="hud-vbtn" id="btnSnapshot" onclick="captureMapSnapshot()" data-tip="Harita Görüntüsünü Kaydet (PNG)" title="Ekranı Yakala">
+                <button class="hud-vbtn" id="btnSnapshot" onclick="captureMapSnapshot()" data-tip="Capture Map Snapshot (PNG)" title="Snapshot">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
                 </button>
             </div>
@@ -684,8 +684,8 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 coordsControl.onAdd = function() {{
                     var div = L.DomUtil.create('div', 'hud-coords-control');
                     div.id = 'hudCoordinates';
-                    div.title = 'Koordinatları kopyalamak için tıklayın';
-                    div.innerText = '39.0000° K, 35.0000° D';
+                    div.title = 'Click to copy coordinates';
+                    div.innerText = '39.0000° N, 35.0000° E';
                     L.DomEvent.disableClickPropagation(div);
                     div.onclick = copyMapCoordinates;
                     return div;
@@ -835,22 +835,22 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     var c = color || '#0078d4';
                     var gt = (geomType || 'any').toLowerCase();
                     if (gt === 'point') {{
-                        return '<span class="hud-layer-symbology" title="Nokta Katmanı">' +
+                        return '<span class="hud-layer-symbology" title="Point Layer">' +
                                '<svg width="15" height="15" viewBox="0 0 15 15">' +
                                '<circle cx="7.5" cy="7.5" r="4.5" fill="' + c + '" stroke="#ffffff" stroke-width="1.2"/>' +
                                '</svg></span>';
                     }} else if (gt === 'line') {{
-                        return '<span class="hud-layer-symbology" title="Çizgi Katmanı">' +
+                        return '<span class="hud-layer-symbology" title="Line Layer">' +
                                '<svg width="15" height="15" viewBox="0 0 15 15">' +
                                '<path d="M 2 12 L 6.5 3.5 L 13 8" fill="none" stroke="' + c + '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
                                '</svg></span>';
                     }} else if (gt === 'polygon') {{
-                        return '<span class="hud-layer-symbology" title="Çokgen Katmanı">' +
+                        return '<span class="hud-layer-symbology" title="Polygon Layer">' +
                                '<svg width="15" height="15" viewBox="0 0 15 15">' +
                                '<polygon points="2.5,4.5 9.5,2 13,8 5,12.5" fill="' + c + '" fill-opacity="0.45" stroke="' + c + '" stroke-width="1.8" stroke-linejoin="round"/>' +
                                '</svg></span>';
                     }} else {{
-                        return '<span class="hud-layer-symbology" title="Karma Katman">' +
+                        return '<span class="hud-layer-symbology" title="Mixed Layer">' +
                                '<svg width="15" height="15" viewBox="0 0 15 15">' +
                                '<polygon points="1.5,5.5 7,2 11.5,6.5 6,12" fill="' + c + '" fill-opacity="0.35" stroke="' + c + '" stroke-width="1.4"/>' +
                                '<circle cx="10" cy="4" r="2.2" fill="' + c + '" stroke="#ffffff" stroke-width="0.8"/>' +
@@ -859,7 +859,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
 
                 function getWmsSymbolHtml() {{
-                    return '<span class="hud-layer-symbology" title="WMS / Harita Servisi">' +
+                    return '<span class="hud-layer-symbology" title="WMS / Map Service">' +
                            '<svg width="15" height="15" viewBox="0 0 15 15">' +
                            '<circle cx="7.5" cy="7.5" r="5.5" fill="none" stroke="#38bdf8" stroke-width="1.2"/>' +
                            '<ellipse cx="7.5" cy="7.5" rx="2.5" ry="5.5" fill="none" stroke="#38bdf8" stroke-width="1.0"/>' +
@@ -879,7 +879,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     if (badge) badge.innerText = totalCount;
 
                     if (totalCount === 0) {{
-                        container.innerHTML = '<div style="color: #858585; font-size: 11px; padding: 8px 4px; text-align: center;">(Katman veya servis yok)</div>';
+                        container.innerHTML = '<div style="color: #858585; font-size: 11px; padding: 8px 4px; text-align: center;">(No layers or services)</div>';
                         return;
                     }}
 
@@ -887,45 +887,45 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                     // 1. Vector & WFS Layers (QGIS Layer Tree format)
                     if (vKeys.length > 0) {{
-                        html += '<div class="hud-layers-section-header">📁 Vektör & WFS (' + vKeys.length + ')</div>';
+                        html += '<div class="hud-layers-section-header">📁 Vector & WFS (' + vKeys.length + ')</div>';
                         vKeys.forEach(function(k) {{
                             var l = vectorLayers[k];
                             var chk = l.visible ? 'checked' : '';
                             var symHtml = getLayerSymbolHtml(l.geomType, l.color);
                             var countStr = l.count > 0 ? ' <span style="color:#858585; font-size:10px;">(' + l.count.toLocaleString() + ')</span>' : '';
                             var isWfs = (l.isWfs || (l.name && (l.name.indexOf('(WFS)') !== -1 || l.name.indexOf('[WFS]') !== -1 || l.name.indexOf('WFS') !== -1)));
-                            var tagHtml = isWfs ? '<span class="hud-layer-tag wfs-tag" title="WFS Servisi">WFS</span> ' : '';
+                            var tagHtml = isWfs ? '<span class="hud-layer-tag wfs-tag" title="WFS Service">WFS</span> ' : '';
 
                             html += 
-                                '<div class="hud-layer-item' + (l.isActive ? ' active-layer' : '') + '" onclick="requestSetActiveLayer(\\x27' + l.id + '\\x27)" title="' + l.name + (l.isActive ? ' (Aktif)' : '') + '">' +
-                                '<input type="checkbox" ' + chk + ' onclick="event.stopPropagation();" onchange="setVectorLayerVisibility(\\x27' + l.id + '\\x27, this.checked)" title="Görünürlük"/>' +
+                                '<div class="hud-layer-item' + (l.isActive ? ' active-layer' : '') + '" onclick="requestSetActiveLayer(\\x27' + l.id + '\\x27)" title="' + l.name + (l.isActive ? ' (Active)' : '') + '">' +
+                                '<input type="checkbox" ' + chk + ' onclick="event.stopPropagation();" onchange="setVectorLayerVisibility(\\x27' + l.id + '\\x27, this.checked)" title="Visibility"/>' +
                                 symHtml +
                                 tagHtml +
                                 '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; font-size:11px;' + (l.isActive ? ' font-weight:600; color:#4cc2ff;' : '') + '">' + l.name + countStr + '</span>' +
-                                '<button class="hud-layer-btn-del" onclick="event.stopPropagation(); removeVectorLayerUi(\\x27' + l.id + '\\x27)" title="Katmanı Kaldır">✕</button>' +
+                                '<button class="hud-layer-btn-del" onclick="event.stopPropagation(); removeVectorLayerUi(\\x27' + l.id + '\\x27)" title="Remove Layer">✕</button>' +
                                 '</div>';
                         }});
                     }}
 
-                    // 2. Web Services (WMS & Altlık Servisleri)
+                    // 2. Web Services (WMS & Basemap Services)
                     if (wKeys.length > 0) {{
                         if (vKeys.length > 0) {{
                             html += '<div style="height:1px; background:rgba(255,255,255,0.08); margin:6px 0 4px 0;"></div>';
                         }}
-                        html += '<div class="hud-layers-section-header">🌐 WMS & Servisler (' + wKeys.length + ')</div>';
+                        html += '<div class="hud-layers-section-header">🌐 WMS & Services (' + wKeys.length + ')</div>';
                         wKeys.forEach(function(k) {{
                             var layer = wmsRegistry[k];
                             var chk = layer.visible ? 'checked' : '';
                             var title = layer.title || layer.layerName;
                             var wmsSym = getWmsSymbolHtml();
-                            var tagHtml = '<span class="hud-layer-tag wms-tag" title="WMS / Harita Servisi">WMS</span> ';
+                            var tagHtml = '<span class="hud-layer-tag wms-tag" title="WMS / Map Service">WMS</span> ';
                             html += 
                                 '<div class="hud-layer-item" title="' + title + '">' +
-                                '<input type="checkbox" ' + chk + ' onclick="event.stopPropagation();" onchange="toggleWmsVisibility(\\x27' + layer.id + '\\x27, this.checked)" title="Görünürlük"/>' +
+                                '<input type="checkbox" ' + chk + ' onclick="event.stopPropagation();" onchange="toggleWmsVisibility(\\x27' + layer.id + '\\x27, this.checked)" title="Visibility"/>' +
                                 wmsSym +
                                 tagHtml +
                                 '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; font-size:11px;">' + title + '</span>' +
-                                '<button class="hud-layer-btn-del" onclick="event.stopPropagation(); removeWms(\\x27' + layer.id + '\\x27)" title="Servisi Kaldır">✕</button>' +
+                                '<button class="hud-layer-btn-del" onclick="event.stopPropagation(); removeWms(\\x27' + layer.id + '\\x27)" title="Remove Service">✕</button>' +
                                 '</div>';
                         }});
                     }}
@@ -1007,8 +1007,8 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     if (coordsEl && !coordsEl.classList.contains('copied')) {{
                         var lat = e.latlng.lat;
                         var lng = e.latlng.lng;
-                        var latH = lat >= 0 ? 'K' : 'G';
-                        var lngH = lng >= 0 ? 'D' : 'B';
+                        var latH = lat >= 0 ? 'N' : 'S';
+                        var lngH = lng >= 0 ? 'E' : 'W';
                         coordsEl.setAttribute('data-lat', lat.toFixed(5));
                         coordsEl.setAttribute('data-lng', lng.toFixed(5));
                         coordsEl.innerText = Math.abs(lat).toFixed(4) + '° ' + latH + ', ' + Math.abs(lng).toFixed(4) + '° ' + lngH;
@@ -1023,8 +1023,8 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         var lng = coordsEl.getAttribute('data-lng') || c.lng.toFixed(5);
                         var latNum = parseFloat(lat);
                         var lngNum = parseFloat(lng);
-                        var latH = latNum >= 0 ? 'K' : 'G';
-                        var lngH = lngNum >= 0 ? 'D' : 'B';
+                        var latH = latNum >= 0 ? 'N' : 'S';
+                        var lngH = lngNum >= 0 ? 'E' : 'W';
                         coordsEl.innerText = Math.abs(latNum).toFixed(4) + '° ' + latH + ', ' + Math.abs(lngNum).toFixed(4) + '° ' + lngH;
                     }}
                 }});
@@ -1035,8 +1035,8 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         var c = map.getCenter();
                         var lat = c.lat;
                         var lng = c.lng;
-                        var latH = lat >= 0 ? 'K' : 'G';
-                        var lngH = lng >= 0 ? 'D' : 'B';
+                        var latH = lat >= 0 ? 'N' : 'S';
+                        var lngH = lng >= 0 ? 'E' : 'W';
                         coordsEl.setAttribute('data-lat', lat.toFixed(5));
                         coordsEl.setAttribute('data-lng', lng.toFixed(5));
                         coordsEl.innerText = Math.abs(lat).toFixed(4) + '° ' + latH + ', ' + Math.abs(lng).toFixed(4) + '° ' + lngH;
@@ -1062,7 +1062,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     }}
                     var origText = coordsEl.innerText;
                     coordsEl.classList.add('copied');
-                    coordsEl.innerText = text + ' (Kopyalandı)';
+                    coordsEl.innerText = text + ' (Copied)';
                     setTimeout(function() {{
                         coordsEl.classList.remove('copied');
                         coordsEl.innerText = origText;
@@ -1110,16 +1110,16 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 }}
 
                 function getLayerTypeNameTr(type) {{
-                    if (type === 'point') return 'Nokta';
-                    if (type === 'line') return 'Çizgi';
-                    if (type === 'polygon') return 'Çokgen';
-                    return 'Karma';
+                    if (type === 'point') return 'Point';
+                    if (type === 'line') return 'Line';
+                    if (type === 'polygon') return 'Polygon';
+                    return 'Mixed';
                 }}
 
                 function getDrawModeNameTr(mode) {{
-                    if (mode === 'point') return 'Nokta';
-                    if (mode === 'line') return 'Çizgi';
-                    if (mode === 'polygon') return 'Çokgen';
+                    if (mode === 'point') return 'Point';
+                    if (mode === 'line') return 'Line';
+                    if (mode === 'polygon') return 'Polygon';
                     return mode;
                 }}
 
@@ -1132,30 +1132,30 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     if (bPoint) {{
                         if (isDrawModeAllowed('point')) {{
                             bPoint.classList.remove('disabled');
-                            bPoint.setAttribute('data-tip', 'Nokta Ekle (Haritaya Tıkla)');
+                            bPoint.setAttribute('data-tip', 'Add Point (Click Map)');
                         }} else {{
                             bPoint.classList.add('disabled');
-                            bPoint.setAttribute('data-tip', '⚠️ Bu katman [' + layerTr + '] tipindedir. Nokta eklenemez!');
+                            bPoint.setAttribute('data-tip', '⚠️ This layer is of type [' + layerTr + ']. Cannot add point!');
                         }}
                     }}
 
                     if (bLine) {{
                         if (isDrawModeAllowed('line')) {{
                             bLine.classList.remove('disabled');
-                            bLine.setAttribute('data-tip', 'Çizgi Ekle (Çiz & Çift Tıkla)');
+                            bLine.setAttribute('data-tip', 'Add Line (Draw & Double Click)');
                         }} else {{
                             bLine.classList.add('disabled');
-                            bLine.setAttribute('data-tip', '⚠️ Bu katman [' + layerTr + '] tipindedir. Çizgi eklenemez!');
+                            bLine.setAttribute('data-tip', '⚠️ This layer is of type [' + layerTr + ']. Cannot add line!');
                         }}
                     }}
 
                     if (bPoly) {{
                         if (isDrawModeAllowed('polygon')) {{
                             bPoly.classList.remove('disabled');
-                            bPoly.setAttribute('data-tip', 'Çokgen Ekle (Çiz & Çift Tıkla)');
+                            bPoly.setAttribute('data-tip', 'Add Polygon (Draw & Double Click)');
                         }} else {{
                             bPoly.classList.add('disabled');
-                            bPoly.setAttribute('data-tip', '⚠️ Bu katman [' + layerTr + '] tipindedir. Çokgen eklenemez!');
+                            bPoly.setAttribute('data-tip', '⚠️ This layer is of type [' + layerTr + ']. Cannot add polygon!');
                         }}
                     }}
                 }}
@@ -1173,7 +1173,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     if (!isDrawModeAllowed(mode)) {{
                         var layerName = getLayerTypeNameTr(activeLayerGeomType);
                         var targetName = getDrawModeNameTr(mode);
-                        showWarningBanner('⚠️ Bu katman [' + layerName + '] tipindedir. ' + targetName + ' eklenemez!');
+                        showWarningBanner('⚠️ This layer is of type [' + layerName + ']. Cannot add ' + targetName.toLowerCase() + '!');
                         return;
                     }}
 
@@ -1277,25 +1277,25 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     if (count > 0) {{
                         if (btnDel) {{
                             btnDel.classList.add('has-selection');
-                            btnDel.setAttribute('data-tip', 'Seçili ' + count + ' Geometriyi Sil (Del)');
+                            btnDel.setAttribute('data-tip', 'Delete ' + count + ' Selected Feature(s) (Del)');
                         }}
                     }} else {{
                         if (btnDel) {{
                             btnDel.classList.remove('has-selection');
-                            btnDel.setAttribute('data-tip', 'Seçili Geometrileri Sil (Önce Geometri Seçin)');
+                            btnDel.setAttribute('data-tip', 'Delete Selected Features (Select Features First)');
                         }}
                     }}
 
                     if (btnEdit) {{
                         if (count === 1) {{
                             btnEdit.classList.remove('disabled');
-                            btnEdit.setAttribute('data-tip', 'Düğümleri Düzenle (Köşe Noktaları ✏️)');
+                            btnEdit.setAttribute('data-tip', 'Edit Nodes (Vertex Tool ✏️)');
                         }} else if (count > 1) {{
                             btnEdit.classList.add('disabled');
-                            btnEdit.setAttribute('data-tip', '⚠️ Düğüm düzenlemek için tek bir geometri seçiniz');
+                            btnEdit.setAttribute('data-tip', '⚠️ Select a single feature to edit nodes');
                         }} else {{
                             btnEdit.classList.remove('disabled');
-                            btnEdit.setAttribute('data-tip', 'Düğümleri Düzenle (Düğüm Noktaları)');
+                            btnEdit.setAttribute('data-tip', 'Edit Nodes (Vertex Tool)');
                         }}
                     }}
                 }}
@@ -1425,7 +1425,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 function deleteSelectedFeatures() {{
                     if (vertexEditActive) finishVertexEditMode();
                     if (selectedIndices.size === 0) {{
-                        showWarningBanner("Silinecek seçili nesne yok!");
+                        showWarningBanner("No selected features to delete!");
                         return;
                     }}
                     var arr = Array.from(selectedIndices);
@@ -1464,7 +1464,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 function startVertexEditMode() {{
                     if (!activeLayerId || !vectorLayers[activeLayerId]) {{
-                        showWarningBanner("⚠️ Düğüm düzenlemek için önce bir katman açın!");
+                        showWarningBanner("⚠️ Please open a layer first to edit nodes!");
                         return;
                     }}
 
@@ -1480,9 +1480,9 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         var idx = Array.from(selectedIndices)[0];
                         attachVertexHandles(activeLayerId, idx);
                     }} else if (selectedIndices.size > 1) {{
-                        showWarningBanner("⚠️ Düğüm düzenlemek için tek bir geometri seçiniz!");
+                        showWarningBanner("⚠️ Please select a single feature to edit nodes!");
                     }} else {{
-                        showWarningBanner("✏️ Düğümlerini düzenlemek istediğiniz geometriye tıklayın.");
+                        showWarningBanner("✏️ Click on the feature you want to edit nodes for.");
                     }}
                 }}
 
@@ -2061,7 +2061,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 function setVectorLayer(layerId, name, geojsonData, isActive, geomType, color, fitBounds, isWfs) {{
                     if (!layerId) layerId = 'default';
-                    name = name || 'Mekansal Katman';
+                    name = name || 'Spatial Layer';
                     var isWfsLayer = !!isWfs || (name && (name.indexOf('(WFS)') !== -1 || name.indexOf('[WFS]') !== -1 || name.indexOf('WFS') !== -1));
 
                     var prevVisible = true;
@@ -2267,7 +2267,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         return;
                     }}
                     var currentId = activeLayerId || 'default';
-                    var currentName = (vectorLayers[currentId] && vectorLayers[currentId].name) || 'Mekansal Katman';
+                    var currentName = (vectorLayers[currentId] && vectorLayers[currentId].name) || 'Spatial Layer';
                     setVectorLayer(currentId, currentName, geojsonData, true, activeLayerGeomType, null, shouldFit);
                 }}
 
@@ -2346,7 +2346,7 @@ class MapPreviewPanel(AbstractPreviewPanel):
                         return;
                     }}
 
-                    var html = '<div class="snapshot-legend-title">🗂️ Katmanlar</div>';
+                    var html = '<div class="snapshot-legend-title">🗂️ Layers</div>';
                     html += '<div class="snapshot-legend-items">';
 
                     vKeys.forEach(function(k) {{
@@ -2627,14 +2627,14 @@ class MapPreviewPanel(AbstractPreviewPanel):
         try:
             QApplication.clipboard().setPixmap(pixmap)
             file_path, _ = QFileDialog.getSaveFileName(
-                self, "Harita Görünümünü Kaydet", "harita_gorunumu.png", "PNG Resim (*.png);;JPEG Resim (*.jpg)"
+                self, "Save Map View", "map_view.png", "PNG Image (*.png);;JPEG Image (*.jpg)"
             )
             from ui.toast import ToastNotification
             if file_path:
                 pixmap.save(file_path)
-                ToastNotification.show_toast(self.window(), f"Harita görüntüsü kaydedildi: {os.path.basename(file_path)}", "success")
+                ToastNotification.show_toast(self.window(), f"Map snapshot saved: {os.path.basename(file_path)}", "success")
             else:
-                ToastNotification.show_toast(self.window(), "Harita görüntüsü panoya kopyalandı", "info")
+                ToastNotification.show_toast(self.window(), "Map snapshot copied to clipboard", "info")
         except Exception as e:
             print(f"Error capturing snapshot: {e}")
 
