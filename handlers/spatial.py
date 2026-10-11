@@ -68,16 +68,9 @@ class SpatialHandler(BaseHandler):
                 break
 
         if wkt_col:
-            from shapely import from_wkt
-            geometries = []
-            for val in df[wkt_col]:
-                if pd.isna(val) or not str(val).strip():
-                    geometries.append(None)
-                else:
-                    try:
-                        geometries.append(from_wkt(str(val)))
-                    except Exception:
-                        geometries.append(None)
+            import shapely
+            raw_wkt = df[wkt_col].fillna("").astype(str).values
+            geometries = shapely.from_wkt(raw_wkt, on_invalid='ignore')
             gdf = gpd.GeoDataFrame(df, geometry=geometries, crs="EPSG:4326")
             return gdf
 
@@ -126,7 +119,11 @@ class SpatialHandler(BaseHandler):
             merge_all = kwargs.get('merge_all', False)
             layer_name = kwargs.get('layer_name', None)
 
-            layers = fiona.listlayers(file_path)
+            try:
+                import pyogrio
+                layers = [l[0] for l in pyogrio.list_layers(file_path)]
+            except Exception:
+                layers = fiona.listlayers(file_path)
 
             if len(layers) > 1 and not (merge_all or layer_name):
                 raise MultipleLayersError(layers)

@@ -310,6 +310,7 @@ class SpreadsheetEditorWidget(QWidget):
         df = self._sheets.get(sheet_name, pd.DataFrame())
         self._is_loading = True
         self.table.blockSignals(True)
+        self.table.setUpdatesEnabled(False)
         try:
             self.table.clear()
             rows, cols = df.shape
@@ -331,6 +332,7 @@ class SpreadsheetEditorWidget(QWidget):
 
             self.lbl_status.setText(f"{rows:,} satır x {cols} sütun")
         finally:
+            self.table.setUpdatesEnabled(True)
             self.table.blockSignals(False)
             self._is_loading = False
 

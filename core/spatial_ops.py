@@ -54,8 +54,11 @@ class SpatialOps:
         """
         Sanitizes non-serializable columns (datetime, Timestamps, NaT, NaN, categorical)
         so that gdf.to_json() succeeds without serialization errors.
+        Uses shallow copy to avoid duplicating geometry coordinate buffers.
         """
-        gdf_clean = gdf.copy()
+        if gdf is None or gdf.empty:
+            return gdf
+        gdf_clean = gdf.copy(deep=False)
         for col in gdf_clean.columns:
             if col == gdf_clean.geometry.name:
                 continue
@@ -100,27 +103,6 @@ class SpatialOps:
         if gdf.crs is None:
             gdf.set_crs("EPSG:4326", inplace=True)
         return gdf
-
-    @staticmethod
-    def is_valid_geojson_content(content: str) -> bool:
-        """
-        Quickly tests if string is valid GeoJSON Feature or FeatureCollection.
-        """
-        if not content or len(content.strip()) < 10:
-            return False
-        stripped = content.strip()
-        if not (stripped.startswith("{") and stripped.endswith("}")):
-            return False
-        try:
-            data = json.loads(content)
-            if isinstance(data, dict):
-                t = data.get("type", "")
-                if t in ("FeatureCollection", "Feature", "GeometryCollection", "Point", "MultiPoint",
-                         "LineString", "MultiLineString", "Polygon", "MultiPolygon"):
-                    return True
-        except Exception:
-            pass
-        return False
 
     @staticmethod
     def reproject_gdf(gdf: gpd.GeoDataFrame, target_crs: str) -> gpd.GeoDataFrame:

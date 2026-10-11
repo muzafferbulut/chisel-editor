@@ -191,11 +191,12 @@ class GeoDataFrameTableModel(QAbstractTableModel):
     def _update_columns(self):
         if self._gdf is not None and not self._gdf.empty:
             geom_name = getattr(self._gdf, 'geometry', None)
-            geom_col = geom_name.name if geom_name is not None else None
-            self._columns = [c for c in self._gdf.columns if c != geom_col]
-            if geom_col and geom_col in self._gdf.columns:
-                self._columns.append(geom_col)
+            self._geom_col = geom_name.name if geom_name is not None else None
+            self._columns = [c for c in self._gdf.columns if c != self._geom_col]
+            if self._geom_col and self._geom_col in self._gdf.columns:
+                self._columns.append(self._geom_col)
         else:
+            self._geom_col = None
             self._columns = []
 
     def set_data(self, gdf: gpd.GeoDataFrame):
@@ -228,7 +229,7 @@ class GeoDataFrameTableModel(QAbstractTableModel):
         val = self._gdf[col_name].iat[row]
 
         if role == Qt.ItemDataRole.DisplayRole:
-            if col_name == getattr(self._gdf, 'geometry', None).name if hasattr(self._gdf, 'geometry') else None:
+            if col_name == self._geom_col:
                 if val is not None and hasattr(val, 'geom_type'):
                     return f"<{val.geom_type}>"
                 return "<Empty>"
@@ -239,7 +240,7 @@ class GeoDataFrameTableModel(QAbstractTableModel):
             return str(val)
 
         elif role == Qt.ItemDataRole.EditRole:
-            if col_name == getattr(self._gdf, 'geometry', None).name if hasattr(self._gdf, 'geometry') else None:
+            if col_name == self._geom_col:
                 if val is not None and hasattr(val, 'wkt'):
                     return val.wkt
                 return ""
@@ -264,10 +265,9 @@ class GeoDataFrameTableModel(QAbstractTableModel):
             return False
 
         col_name = self._columns[col_idx]
-        geom_name = getattr(self._gdf, 'geometry', None).name if hasattr(self._gdf, 'geometry') else None
 
         try:
-            if col_name == geom_name:
+            if col_name == self._geom_col:
                 import shapely.wkt
                 val_str = str(value).strip()
                 if not val_str:
@@ -956,9 +956,9 @@ class AttributeTableWidget(QWidget):
                 self.btn_stats.setToolTip("Sütun İstatistikleri (Tüm katman için)")
                 return
 
-            selection = QItemSelection()
             col_count = self.proxy_model.columnCount()
             first_valid_proxy = None
+            proxy_rows = []
 
             for idx in indices:
                 if 0 <= idx < self.source_model.rowCount():
@@ -967,11 +967,30 @@ class AttributeTableWidget(QWidget):
                     if proxy_idx.isValid():
                         if first_valid_proxy is None:
                             first_valid_proxy = proxy_idx
-                        tl = self.proxy_model.index(proxy_idx.row(), 0)
-                        br = self.proxy_model.index(proxy_idx.row(), col_count - 1)
-                        selection.select(tl, br)
+                        proxy_rows.append(proxy_idx.row())
 
-            sel_model.select(selection, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+            if proxy_rows:
+                proxy_rows.sort()
+                ranges = []
+                start = proxy_rows[0]
+                end = start
+                for r in proxy_rows[1:]:
+                    if r == end + 1:
+                        end = r
+                    else:
+                        ranges.append((start, end))
+                        start = r
+                        end = r
+                ranges.append((start, end))
+
+                selection = QItemSelection()
+                col_end = max(0, col_count - 1)
+                for s_row, e_row in ranges:
+                    tl = self.proxy_model.index(s_row, 0)
+                    br = self.proxy_model.index(e_row, col_end)
+                    selection.select(tl, br)
+
+                sel_model.select(selection, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
             if first_valid_proxy:
                 self.table_view.scrollTo(first_valid_proxy, QTableView.ScrollHint.PositionAtCenter)
 
