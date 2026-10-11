@@ -626,9 +626,18 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 
                 <div class="hud-vdivider"></div>
                 
-                <!-- 3. Akıllı Seçim Aracı -->
-                <button class="hud-vbtn active" id="btnSelectClick" onclick="setSelectTool('click')" data-tip="Nesne Seç (Tıkla / Shift+Kutu)" title="Nesne Seç">
+                <!-- 3. Akıllı Seçim Araçları -->
+                <button class="hud-vbtn active" id="btnSelectClick" onclick="setSelectTool('click')" data-tip="Tekli Seçim (Tıkla)" title="Tekli Seçim">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>
+                </button>
+                <button class="hud-vbtn" id="btnSelectBox" onclick="setSelectTool('box')" data-tip="Çoklu Seçim (Kutu ile Seç)" title="Çoklu Seçim">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/></svg>
+                </button>
+                <button class="hud-vbtn disabled" id="btnZoomSel" onclick="zoomToSelected()" data-tip="Seçilenlere Yakınlaş" title="Seçilenlere Yakınlaş">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></svg>
+                </button>
+                <button class="hud-vbtn disabled" id="btnClearSel" onclick="clearSelection()" data-tip="Seçimi Temizle (Esc)" title="Seçimi Temizle">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
                 </button>
                 
                 <div class="hud-vdivider"></div>
@@ -1225,9 +1234,15 @@ class MapPreviewPanel(AbstractPreviewPanel):
                     if (mode === 'box' && typeof finishVertexEditMode === 'function') finishVertexEditMode();
                     closeAllFlyouts();
 
+                    if (selectMode === mode && mode === 'box') {{
+                        mode = 'click';
+                    }}
+
                     selectMode = mode;
                     var bClick = document.getElementById('btnSelectClick');
+                    var bBox = document.getElementById('btnSelectBox');
                     if (bClick) bClick.classList.toggle('active', mode === 'click');
+                    if (bBox) bBox.classList.toggle('active', mode === 'box');
 
                     if (mode === 'box') {{
                         map.dragging.disable();
@@ -1245,8 +1260,19 @@ class MapPreviewPanel(AbstractPreviewPanel):
 
                 function updateSelectionUI() {{
                     var count = selectedIndices.size;
+                    var btnZoom = document.getElementById('btnZoomSel');
+                    var btnClear = document.getElementById('btnClearSel');
                     var btnDel = document.getElementById('btnDelete');
                     var btnEdit = document.getElementById('btnEditGeom');
+
+                    if (btnZoom) {{
+                        if (count > 0) btnZoom.classList.remove('disabled');
+                        else btnZoom.classList.add('disabled');
+                    }}
+                    if (btnClear) {{
+                        if (count > 0) btnClear.classList.remove('disabled');
+                        else btnClear.classList.add('disabled');
+                    }}
 
                     if (count > 0) {{
                         if (btnDel) {{
@@ -1702,7 +1728,9 @@ class MapPreviewPanel(AbstractPreviewPanel):
                 map.on('mouseup', function(e) {{
                     if (!isBoxSelecting) return;
                     isBoxSelecting = false;
-                    map.dragging.enable();
+                    if (selectMode !== 'box') {{
+                        map.dragging.enable();
+                    }}
                     if (!boxRectLayer || !boxStartLatLng) return;
 
                     var boxBounds = boxRectLayer.getBounds();
@@ -1730,6 +1758,15 @@ class MapPreviewPanel(AbstractPreviewPanel):
                             hit = boxBounds.intersects(l.getBounds());
                         }} else if (l.getLatLng) {{
                             hit = boxBounds.contains(l.getLatLng());
+                        }}
+                        if (!hit && l.eachLayer) {{
+                            l.eachLayer(function(child) {{
+                                if (child.getBounds && child.getBounds().isValid()) {{
+                                    if (boxBounds.intersects(child.getBounds())) hit = true;
+                                }} else if (child.getLatLng) {{
+                                    if (boxBounds.contains(child.getLatLng())) hit = true;
+                                }}
+                            }});
                         }}
                         if (hit) {{
                             selectedIndices.add(idx);
@@ -2548,6 +2585,11 @@ class MapPreviewPanel(AbstractPreviewPanel):
         if self._is_loaded:
             esc_id = json.dumps(layer_id) if layer_id else "null"
             self.web_view.page().runJavaScript(f"zoomToSelected({esc_id});")
+
+    def set_select_tool(self, mode: str = "click"):
+        if self._is_loaded:
+            esc_mode = json.dumps(mode)
+            self.web_view.page().runJavaScript(f"setSelectTool({esc_mode});")
 
     def fit_bounds(self, layer_id: str = None):
         if self._is_loaded:

@@ -15,6 +15,7 @@ LUCIDE_SVGS: dict[str, str] = {
     "search": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
 
     # Selection Tools
+    "box-select": '<path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/>',
     "square-check": '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/>',
     "check-square": '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/>',
     "square-x": '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
@@ -51,6 +52,8 @@ LUCIDE_SVGS: dict[str, str] = {
 # Aliases mapping project/action names to canonical Lucide SVG names
 ICON_ALIASES: dict[str, str] = {
     "zoom_to_selected": "zoom-in",
+    "box_select": "box-select",
+    "select_box": "box-select",
     "select_all": "square-check",
     "invert_selection": "refresh-cw",
     "clear_selection": "square-x",
