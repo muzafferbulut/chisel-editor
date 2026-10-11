@@ -3,8 +3,8 @@ Lucide Vector Icons helper for PyQt6 in Chisel Editor.
 Provides crisp, theme-adaptive vector icons directly from Lucide SVG definitions.
 """
 from typing import Optional
-from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor
-from PyQt6.QtCore import QByteArray, Qt, QSize
+from PyQt6.QtGui import QIcon, QPixmap, QPainter
+from PyQt6.QtCore import QByteArray, Qt
 from PyQt6.QtSvg import QSvgRenderer
 
 LUCIDE_SVGS: dict[str, str] = {

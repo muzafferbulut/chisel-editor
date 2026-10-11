@@ -1,5 +1,4 @@
 import os
-import csv
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableView,
     QLineEdit, QPushButton, QLabel, QHeaderView, QFileDialog, QMessageBox,

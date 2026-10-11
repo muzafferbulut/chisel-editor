@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import (
-    QFont, QTextCharFormat, QColor, QTextCursor,
+    QFont, QTextCharFormat, QTextCursor,
     QTextBlockFormat, QTextTableFormat, QTextListFormat, QIcon
 )
 from handlers.docx import DocxHandler

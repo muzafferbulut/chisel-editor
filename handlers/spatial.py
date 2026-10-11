@@ -1,4 +1,3 @@
-import os
 import io
 import warnings
 import geopandas as gpd

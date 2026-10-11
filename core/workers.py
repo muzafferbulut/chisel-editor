@@ -1,5 +1,4 @@
 import io
-import os
 import requests
 from PyQt6.QtCore import QThread, pyqtSignal
 from handlers.factory import HandlerFactory

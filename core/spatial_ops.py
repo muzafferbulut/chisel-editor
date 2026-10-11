@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 import shapely
-from shapely.geometry import Point, Polygon, LineString, MultiPolygon
+from shapely.geometry import Polygon
 from pyproj import CRS
 
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="Several features with id.*")

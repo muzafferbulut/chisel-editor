@@ -2,9 +2,9 @@ import os
 import subprocess
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QTreeView, QFileDialog, QHeaderView, QMenu, QApplication
+    QTreeView, QMenu, QApplication
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QDir
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFileSystemModel, QAction
 
 

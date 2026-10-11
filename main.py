@@ -21,7 +21,6 @@ def _qt_message_filter(msg_type, context, message):
     if message:
         sys.stderr.write(f"{message}\n")
 
-
 qInstallMessageHandler(_qt_message_filter)
 
 def main():

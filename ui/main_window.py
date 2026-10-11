@@ -1,5 +1,4 @@
 import os
-import io
 import geopandas as gpd
 from PyQt6.QtWidgets import (
     QMainWindow, QMenuBar, QMenu, QFileDialog, QMessageBox,
@@ -15,7 +14,7 @@ from ui.dialogs import (
     ExportSpatialDialog, SpatialInfoDialog, BufferDialog, DissolveDialog
 )
 from ui.ogc_dialogs import WMSDialog, WFSDialog
-from ui.sidebar import SideBar, ExplorerPanel
+from ui.sidebar import ExplorerPanel
 from ui.toast import ToastNotification
 from core.workers import FileLoadWorker, SpatialOpWorker, WFSWorker
 from core.theme import ThemeManager
@@ -896,9 +895,6 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(spatial_tab.layer_id))
             ToastNotification.show_toast(self, f"WFS Katmanı Eklendi: {wfs_title} ({len(gdf):,} özellik)", "info")
 
-    def _on_wms_visibility_changed(self, layer_id: str, visible: bool):
-        self.shared_map_panel.set_wms_visibility(layer_id, visible)
-
     def _on_wms_remove_requested(self, layer_id: str):
         self.shared_map_panel.remove_wms_layer(layer_id)
         ToastNotification.show_toast(self, "WMS Katmanı Kaldırıldı", "info")
@@ -1045,9 +1041,6 @@ class MainWindow(QMainWindow):
             if tab.text_editor.isHidden():
                 tab.set_view_mode("code")
             tab.text_editor.trigger_replace()
-
-    def _show_find_replace(self):
-        self._show_replace()
 
     def _change_theme(self, theme_name: str):
         ThemeManager.apply_theme(QApplication.instance(), theme_name)

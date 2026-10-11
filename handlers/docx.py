@@ -3,7 +3,7 @@ from .base import BaseHandler
 
 try:
     import docx
-    from docx.shared import Inches, Pt, RGBColor
+    from docx.shared import Pt
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 except ImportError:
     docx = None
