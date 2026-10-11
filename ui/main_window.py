@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QLabel, QApplication, QTabWidget, QProgressBar, QPushButton,
     QWidget, QHBoxLayout, QSplitter
 )
-from PyQt6.QtGui import QAction, QActionGroup, QDragEnterEvent, QDropEvent, QKeySequence, QCursor
+from PyQt6.QtGui import QAction, QActionGroup, QDragEnterEvent, QDropEvent, QKeySequence, QCursor, QShortcut
 from PyQt6.QtCore import Qt, QSettings, QTimer
 
 from handlers.factory import HandlerFactory
@@ -239,9 +239,6 @@ class MainWindow(QMainWindow):
         act_close.setShortcut(QKeySequence("Ctrl+W"))
         act_close.triggered.connect(lambda: self._close_tab(self.tab_widget.currentIndex()))
 
-        act_export = QAction("Export GIS Data...", self)
-        act_export.triggered.connect(self._export_spatial_data)
-
         act_exit = QAction("Exit", self)
         act_exit.setShortcut(QKeySequence("Ctrl+Q"))
         act_exit.triggered.connect(self.close)
@@ -253,8 +250,6 @@ class MainWindow(QMainWindow):
         file_menu.addAction(act_save)
         file_menu.addAction(act_save_as)
         file_menu.addAction(act_close)
-        file_menu.addSeparator()
-        file_menu.addAction(act_export)
         file_menu.addSeparator()
         file_menu.addAction(act_exit)
 
@@ -278,38 +273,6 @@ class MainWindow(QMainWindow):
         act_toggle_sidebar.triggered.connect(self._toggle_side_bar)
         view_menu.addAction(act_toggle_sidebar)
 
-        act_attr_table = QAction("Attribute Table", self)
-        act_attr_table.setShortcut(QKeySequence("F6"))
-        act_attr_table.triggered.connect(self._toggle_attribute_table)
-        view_menu.addAction(act_attr_table)
-
-        view_menu.addSeparator()
-        mode_code = QAction("📝 Code View", self)
-        mode_code.setShortcut(QKeySequence("Alt+1"))
-        mode_code.triggered.connect(lambda: self._set_current_view_mode("code"))
-
-        mode_code_map = QAction("⚡ Code + Map View", self)
-        mode_code_map.setShortcut(QKeySequence("Alt+2"))
-        mode_code_map.triggered.connect(lambda: self._set_current_view_mode("code_map"))
-
-        mode_table_map = QAction("📊 Table + Map View", self)
-        mode_table_map.setShortcut(QKeySequence("Alt+3"))
-        mode_table_map.triggered.connect(lambda: self._set_current_view_mode("table_map"))
-
-        mode_map = QAction("🗺️ Full Map View", self)
-        mode_map.setShortcut(QKeySequence("Alt+4"))
-        mode_map.triggered.connect(lambda: self._set_current_view_mode("map"))
-
-        mode_table = QAction("📋 Full Table View", self)
-        mode_table.setShortcut(QKeySequence("Alt+5"))
-        mode_table.triggered.connect(lambda: self._set_current_view_mode("table"))
-
-        view_menu.addAction(mode_code)
-        view_menu.addAction(mode_code_map)
-        view_menu.addAction(mode_table_map)
-        view_menu.addAction(mode_map)
-        view_menu.addAction(mode_table)
-
         view_menu.addSeparator()
         theme_menu: QMenu = view_menu.addMenu("Theme")
         self.theme_action_group = QActionGroup(self)
@@ -326,6 +289,14 @@ class MainWindow(QMainWindow):
 
         # --- GIS / Spatial Menu ---
         gis_menu: QMenu = menu_bar.addMenu("GIS")
+
+        act_export = QAction("Export GIS Data...", self)
+        act_export.triggered.connect(self._export_spatial_data)
+
+        # Global shortcuts for spatial tools
+        QShortcut(QKeySequence("F6"), self, self._toggle_attribute_table)
+        QShortcut(QKeySequence("Ctrl+Shift+F"), self, self._zoom_full_extent)
+        QShortcut(QKeySequence("F5"), self, self._refresh_map)
 
         # Services & Basemaps Submenu
         service_menu = gis_menu.addMenu("🌐 Services & Basemaps")
@@ -350,29 +321,6 @@ class MainWindow(QMainWindow):
         service_menu.addAction(act_wms)
         service_menu.addAction(act_wfs)
 
-        act_full_extent = QAction("🏠 Zoom to Full Extent", self)
-        act_full_extent.setShortcut(QKeySequence("Ctrl+Shift+F"))
-        act_full_extent.triggered.connect(self._zoom_full_extent)
-
-        act_fit = QAction("🎯 Zoom to Layer", self)
-        act_fit.triggered.connect(self._fit_bounds)
-
-        act_refresh_map = QAction("🔄 Refresh Map", self)
-        act_refresh_map.setShortcut(QKeySequence("F5"))
-        act_refresh_map.triggered.connect(self._refresh_map)
-
-        act_snapshot = QAction("📷 Save Map View as PNG...", self)
-        act_snapshot.triggered.connect(self._capture_map_snapshot)
-
-        act_info = QAction("ℹ️ Layer Info & Statistics...", self)
-        act_info.triggered.connect(self._show_layer_info)
-
-        gis_menu.addAction(act_attr_table)
-        gis_menu.addAction(act_full_extent)
-        gis_menu.addAction(act_fit)
-        gis_menu.addAction(act_refresh_map)
-        gis_menu.addAction(act_snapshot)
-        gis_menu.addAction(act_info)
         gis_menu.addSeparator()
 
         # Geoprocessing Tools
@@ -382,9 +330,6 @@ class MainWindow(QMainWindow):
         act_dissolve = QAction("🔗 Dissolve Geometries...", self)
         act_dissolve.triggered.connect(self._dissolve_geometries)
 
-        act_calc_geom = QAction("📐 Calculate Geometry (Area / Length)...", self)
-        act_calc_geom.triggered.connect(self._calc_geometry_attributes)
-
         act_simplify = QAction("✂️ Simplify Geometries (Douglas-Peucker)...", self)
         act_simplify.triggered.connect(self._simplify_geometries)
 
@@ -393,7 +338,6 @@ class MainWindow(QMainWindow):
 
         gis_menu.addAction(act_buffer)
         gis_menu.addAction(act_dissolve)
-        gis_menu.addAction(act_calc_geom)
         gis_menu.addAction(act_simplify)
         gis_menu.addAction(act_validate)
         gis_menu.addSeparator()
@@ -1070,8 +1014,7 @@ class MainWindow(QMainWindow):
             "• <b>Ctrl+B</b>: Toggle Side Bar<br>"
             "• <b>F6</b>: Toggle Attribute Table<br>"
             "• <b>Ctrl+F</b>: Find (Monaco Find)<br>"
-            "• <b>Ctrl+H</b>: Replace (Monaco Replace)<br>"
-            "• <b>Alt+1...5</b>: View Modes (Code, Code+Map, Table+Map, Map, Table)"
+            "• <b>Ctrl+H</b>: Replace (Monaco Replace)"
         )
 
     def _show_about(self):
