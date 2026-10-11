@@ -344,7 +344,9 @@ class AttributeTableWidget(QWidget):
         self._block_selection_signals = False
         self._block_layer_signals = False
         self._cached_selected_rows = set()
+        self._tool_buttons = {}
         self._init_ui()
+        self.apply_theme()
 
     def _create_vsep(self) -> QFrame:
         sep = QFrame()
@@ -353,7 +355,14 @@ class AttributeTableWidget(QWidget):
         sep.setStyleSheet("background-color: rgba(128, 128, 128, 0.25); width: 1px; margin: 3px 2px; border: none;")
         return sep
 
-    def _get_icon(self, icon_name: str) -> QIcon:
+    def _get_icon(self, icon_name: str, theme_name: str = None) -> QIcon:
+        try:
+            from ui.icons import get_lucide_icon
+            icon = get_lucide_icon(icon_name, theme_name=theme_name)
+            if not icon.isNull():
+                return icon
+        except Exception:
+            pass
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         icon_path = os.path.join(base_dir, "resources", "icons", f"{icon_name}.png")
         if os.path.isfile(icon_path):
@@ -362,6 +371,7 @@ class AttributeTableWidget(QWidget):
 
     def _create_tool_btn(self, icon_name: str, fallback_text: str, tooltip: str, callback=None, checkable: bool = False, obj_name: str = "") -> QPushButton:
         btn = QPushButton()
+        self._tool_buttons[btn] = icon_name
         icon = self._get_icon(icon_name)
         if not icon.isNull():
             btn.setIcon(icon)
@@ -447,9 +457,12 @@ class AttributeTableWidget(QWidget):
 
         # Quick Search Box
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("🔍 Filtrele...")
+        self.search_input.setPlaceholderText("Tabloda filtrele...")
         self.search_input.setMaximumWidth(200)
         self.search_input.setClearButtonEnabled(True)
+        self.search_action = self.search_input.addAction(
+            self._get_icon("search"), QLineEdit.ActionPosition.LeadingPosition
+        )
         self.search_input.textChanged.connect(self._filter_table)
         toolbar.addWidget(self.search_input)
 
@@ -479,12 +492,10 @@ class AttributeTableWidget(QWidget):
         toolbar.addWidget(self._create_vsep())
 
         # QGIS Data / Calculation Tools
-        self.btn_add_row = self._create_tool_btn("add_row", "➕ Satır", "Yeni Kayıt / Satır Ekle", self._add_row)
-        self.btn_add_row.setStyleSheet("padding: 0 4px; min-width: 50px; max-width: 65px; font-weight: 600; font-size: 11px;")
+        self.btn_add_row = self._create_tool_btn("add_row", "+R", "Yeni Kayıt / Satır Ekle", self._add_row)
         toolbar.addWidget(self.btn_add_row)
 
-        self.btn_add_col = self._create_tool_btn("add_field", "➕ Alan", "Yeni Sütun / Alan Ekle", self._add_field)
-        self.btn_add_col.setStyleSheet("padding: 0 4px; min-width: 50px; max-width: 65px; font-weight: 600; font-size: 11px;")
+        self.btn_add_col = self._create_tool_btn("add_field", "+A", "Yeni Sütun / Alan Ekle", self._add_field)
         toolbar.addWidget(self.btn_add_col)
 
         self.btn_edit_geom = self._create_tool_btn("edit_geometry", "✏️", "Seçili Geometriyi Düzenle (WKT & Koordinatlar)", self._edit_selected_geometry)
@@ -592,6 +603,17 @@ class AttributeTableWidget(QWidget):
             }}
         """
         self.toolbar_container.setStyleSheet(tb_qss)
+
+        # Update all toolbar button icons to match current theme colors
+        if hasattr(self, '_tool_buttons'):
+            for btn, icon_name in self._tool_buttons.items():
+                ico = self._get_icon(icon_name, theme_name=theme_name)
+                if not ico.isNull():
+                    btn.setIcon(ico)
+                    btn.setIconSize(QSize(16, 16))
+
+        if hasattr(self, 'search_action') and self.search_action:
+            self.search_action.setIcon(self._get_icon("search", theme_name=theme_name))
 
         table_qss = f"""
             QTableView {{
