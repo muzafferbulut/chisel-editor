@@ -1,4 +1,5 @@
 import io
+import os
 import warnings
 import geopandas as gpd
 import fiona
@@ -115,6 +116,35 @@ class SpatialHandler(BaseHandler):
                 except Exception:
                     df = pd.read_csv(file_path, sep=None, engine="python")
                 return gpd.GeoDataFrame(df, geometry=[None] * len(df), crs="EPSG:4326")
+
+            if file_path.lower().endswith(".kmz"):
+                import zipfile
+                import tempfile
+                try:
+                    gdf = gpd.read_file(file_path)
+                    if hasattr(gdf, "crs") and gdf.crs is None:
+                        gdf.set_crs("EPSG:4326", inplace=True)
+                    return gdf
+                except Exception:
+                    with zipfile.ZipFile(file_path, 'r') as zf:
+                        kml_members = [m for m in zf.namelist() if m.lower().endswith('.kml')]
+                        if kml_members:
+                            with tempfile.TemporaryDirectory() as tmp_dir:
+                                zf.extract(kml_members[0], tmp_dir)
+                                extracted_kml = os.path.join(tmp_dir, kml_members[0])
+                                gdf = gpd.read_file(extracted_kml)
+                                if hasattr(gdf, "crs") and gdf.crs is None:
+                                    gdf.set_crs("EPSG:4326", inplace=True)
+                                return gdf
+
+            if file_path.lower().endswith(".dxf"):
+                try:
+                    gdf = gpd.read_file(file_path)
+                    if hasattr(gdf, "crs") and gdf.crs is None:
+                        gdf.set_crs("EPSG:4326", inplace=True)
+                    return gdf
+                except Exception as e:
+                    raise RuntimeError(f"Failed to read DXF file: {str(e)}")
 
             merge_all = kwargs.get('merge_all', False)
             layer_name = kwargs.get('layer_name', None)

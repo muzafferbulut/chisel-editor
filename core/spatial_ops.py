@@ -356,6 +356,14 @@ class SpatialOps:
             clean_gdf.to_file(target_path, driver='GPKG', engine='pyogrio')
         elif ext == '.shp':
             shp_gdf = clean_gdf.copy()
+            # ESRI Shapefiles strictly require homogenous geometry types per layer
+            valid_geom_types = shp_gdf.geometry.dropna().geom_type
+            if not valid_geom_types.empty:
+                base_types = set(t.replace('Multi', '') for t in valid_geom_types.unique())
+                if len(base_types) > 1:
+                    dominant_type = valid_geom_types.value_counts().index[0]
+                    base_dominant = dominant_type.replace('Multi', '')
+                    shp_gdf = shp_gdf[shp_gdf.geometry.geom_type.str.contains(base_dominant)].copy()
             new_cols = {}
             seen = set()
             for col in shp_gdf.columns:
@@ -377,6 +385,33 @@ class SpatialOps:
             elif not kml_gdf.crs:
                 kml_gdf.set_crs("EPSG:4326", inplace=True)
             kml_gdf.to_file(target_path, driver='KML')
+        elif ext == '.kmz':
+            import zipfile
+            import tempfile
+            kml_gdf = clean_gdf.copy()
+            if kml_gdf.crs and str(kml_gdf.crs) != "EPSG:4326":
+                kml_gdf = kml_gdf.to_crs("EPSG:4326")
+            elif not kml_gdf.crs:
+                kml_gdf.set_crs("EPSG:4326", inplace=True)
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_kml = os.path.join(tmp_dir, "doc.kml")
+                kml_gdf.to_file(tmp_kml, driver="KML")
+                with zipfile.ZipFile(target_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                    zf.write(tmp_kml, arcname="doc.kml")
+        elif ext == '.dxf':
+            dxf_gdf = gpd.GeoDataFrame(geometry=clean_gdf.geometry, crs=clean_gdf.crs)
+            layer_col = None
+            for candidate in ('Layer', 'layer', 'name', 'title', 'category', 'type', 'id'):
+                if candidate in clean_gdf.columns:
+                    layer_col = candidate
+                    break
+            if layer_col:
+                dxf_gdf['Layer'] = clean_gdf[layer_col].astype(str).str[:50]
+            else:
+                dxf_gdf['Layer'] = "0"
+            if 'Text' in clean_gdf.columns:
+                dxf_gdf['Text'] = clean_gdf['Text'].astype(str)
+            dxf_gdf.to_file(target_path, driver='DXF', engine='fiona')
         elif ext == '.fgb':
             clean_gdf.to_file(target_path, driver='FlatGeobuf', engine='pyogrio')
         elif ext == '.csv':

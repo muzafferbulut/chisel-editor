@@ -14,6 +14,7 @@ class ExplorerPanel(QWidget):
     Displays the active workspace folder name in the header.
     """
     file_open_requested = pyqtSignal(str)
+    file_convert_requested = pyqtSignal(str, str)
     folder_change_requested = pyqtSignal()
 
     def __init__(self, root_path: str = None, parent=None):
@@ -122,6 +123,17 @@ class ExplorerPanel(QWidget):
             act_open = QAction("📄 Open File", self)
             act_open.triggered.connect(lambda: self.file_open_requested.emit(file_path))
             menu.addAction(act_open)
+
+            from core.converter import FileConverter
+            targets = FileConverter.get_conversion_targets(file_path)
+            if targets:
+                menu.addSeparator()
+                convert_menu = menu.addMenu("🔄 Convert to...")
+                for t_ext, t_lbl in targets:
+                    act_conv = QAction(t_lbl, self)
+                    act_conv.triggered.connect(lambda checked, ext=t_ext, fp=file_path: self.file_convert_requested.emit(fp, ext))
+                    convert_menu.addAction(act_conv)
+                menu.addSeparator()
 
         act_copy_path = QAction("📋 Copy File Path", self)
         act_copy_path.triggered.connect(lambda: QApplication.clipboard().setText(file_path))

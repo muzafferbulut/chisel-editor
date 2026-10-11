@@ -80,6 +80,7 @@ class MainWindow(QMainWindow):
         self.side_bar = ExplorerPanel(self._current_folder, self)
         self.side_bar.file_open_requested.connect(self._load_file)
         self.side_bar.folder_change_requested.connect(self._open_folder)
+        self.side_bar.file_convert_requested.connect(self._convert_file)
 
         self.main_splitter.addWidget(self.side_bar)
 
@@ -686,17 +687,33 @@ class MainWindow(QMainWindow):
         if not tab:
             return
         if tab.file_type == "Spreadsheet":
-            if tab.current_file and tab.current_file.lower().endswith(".csv"):
-                filt = "CSV File (*.csv);;Excel Workbook (*.xlsx);;All Files (*)"
-            else:
-                filt = "Excel Workbook (*.xlsx);;CSV File (*.csv);;All Files (*)"
+            filt = (
+                "Excel Workbook (*.xlsx);;"
+                "CSV File (*.csv);;"
+                "JSON Data (*.json);;"
+                "HTML Table (*.html);;"
+                "All Files (*)"
+            )
         elif tab.file_type == "Word":
-            filt = "Word Document (*.docx);;All Files (*)"
+            filt = (
+                "Word Document (*.docx);;"
+                "HTML Document (*.html);;"
+                "Markdown Document (*.md);;"
+                "Plain Text (*.txt);;"
+                "All Files (*)"
+            )
         elif tab.is_spatial:
-            if tab.current_file and tab.current_file.lower().endswith(".csv"):
-                filt = "CSV File (*.csv);;GeoJSON (*.geojson);;All Files (*)"
-            else:
-                filt = "GeoJSON (*.geojson);;Shapefile (*.shp);;GeoPackage (*.gpkg);;All Files (*)"
+            filt = (
+                "GeoJSON (*.geojson);;"
+                "ESRI Shapefile (*.shp);;"
+                "GeoPackage (*.gpkg);;"
+                "Google KML (*.kml);;"
+                "Google KMZ (*.kmz);;"
+                "AutoCAD DXF (*.dxf);;"
+                "FlatGeobuf (*.fgb);;"
+                "CSV with WKT (*.csv);;"
+                "All Files (*)"
+            )
         else:
             filt = "All Files (*)"
         file_path, _ = QFileDialog.getSaveFileName(self, "Save As", tab.current_file or self._current_folder, filt)
@@ -708,16 +725,33 @@ class MainWindow(QMainWindow):
         if not tab:
             return
         try:
+            ext = os.path.splitext(file_path)[1].lower()
             if tab.file_type == "Spreadsheet":
-                tab.spreadsheet_editor.save_to_file(file_path)
+                if ext in ('.json', '.html'):
+                    from core.converter import FileConverter
+                    df = tab.spreadsheet_editor.to_dataframe()
+                    FileConverter._export_tabular(df, file_path, ext)
+                else:
+                    tab.spreadsheet_editor.save_to_file(file_path)
             elif tab.file_type == "Word":
-                tab.document_editor.save_to_file(file_path)
+                if ext in ('.html', '.md', '.txt'):
+                    content = tab.document_editor.to_html()
+                    if ext in ('.md', '.txt'):
+                        import re
+                        clean_text = re.sub(r'<[^>]+>', '\n', content)
+                        clean_text = re.sub(r'\n+', '\n', clean_text).strip()
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            f.write(clean_text)
+                    else:
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            f.write(content)
+                else:
+                    tab.document_editor.save_to_file(file_path)
             elif tab.file_type == "PDF":
                 ToastNotification.show_toast(self, "PDF files are read-only.", "info")
                 return
             elif tab.is_spatial:
-                handler = HandlerFactory.get_handler(file_path)
-                handler.write(file_path, tab._current_gdf)
+                SpatialOps.export_file(tab._current_gdf, file_path)
             else:
                 handler = HandlerFactory.get_handler(file_path)
                 content = tab.text_editor.toPlainText()
@@ -729,6 +763,28 @@ class MainWindow(QMainWindow):
             ToastNotification.show_toast(self, f"Saved: {os.path.basename(file_path)}", "info")
         except Exception as e:
             ToastNotification.show_toast(self, f"Save error: {str(e)}", "error")
+
+    def _convert_file(self, source_path: str, target_ext: str):
+        from core.workers import ConvertWorker
+        ToastNotification.show_toast(self, f"Converting {os.path.basename(source_path)}...", "info")
+        worker = ConvertWorker(source_path, target_ext)
+        self._active_workers.add(worker)
+        self.progress_bar.show()
+
+        def _on_finished(src, target, err):
+            self._active_workers.discard(worker)
+            if not self._active_workers:
+                self.progress_bar.hide()
+            if err:
+                ToastNotification.show_toast(self, f"Conversion failed: {err}", "error")
+            else:
+                ToastNotification.show_toast(
+                    self, f"Successfully converted: {os.path.basename(src)} ➔ {os.path.basename(target)}", "success"
+                )
+                self.side_bar._refresh_tree()
+
+        worker.finished.connect(_on_finished)
+        worker.start()
 
     # --- WMS, WFS & Basemap Service Integrations ---
     PRESET_BASEMAP_URLS = {

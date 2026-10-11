@@ -156,3 +156,21 @@ class SpatialOpWorker(QThread):
 
         except Exception as e:
             self.finished.emit(self.op_name, None, str(e))
+
+
+class ConvertWorker(QThread):
+    finished = pyqtSignal(str, str, str)  # (source_path, target_path, error_str)
+
+    def __init__(self, source_path: str, target_ext: str, target_path: str = None):
+        super().__init__()
+        self.source_path = source_path
+        self.target_ext = target_ext
+        self.target_path = target_path
+
+    def run(self):
+        try:
+            from core.converter import FileConverter
+            out_path = FileConverter.convert(self.source_path, self.target_ext, self.target_path)
+            self.finished.emit(self.source_path, out_path, "")
+        except Exception as e:
+            self.finished.emit(self.source_path, "", str(e))

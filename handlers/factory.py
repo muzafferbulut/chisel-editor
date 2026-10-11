@@ -10,7 +10,7 @@ class HandlerFactory:
 
     SPATIAL_EXTENSIONS = {
         '.geojson', '.gpkg', '.shp', '.kml', '.kmz',
-        '.fgb', '.gpx', '.geojsonseq', '.topojson'
+        '.fgb', '.gpx', '.geojsonseq', '.topojson', '.dxf'
     }
 
     EXCEL_EXTENSIONS = {'.xlsx', '.xls'}
