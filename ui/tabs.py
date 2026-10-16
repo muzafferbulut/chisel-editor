@@ -11,6 +11,7 @@ from ui.spreadsheet_editor import SpreadsheetEditorWidget
 from ui.document_editor import WordDocumentEditorWidget
 from ui.pdf_viewer import PdfViewerWidget
 from core.spatial_ops import SpatialOps
+import pandas as pd
 
 
 class EditorTab(QWidget):
@@ -212,6 +213,10 @@ class EditorTab(QWidget):
 
         layer_name = custom_name or (os.path.basename(file_path) if file_path else f"Layer {len(self.spatial_layers) + 1}")
         layer_id = f"layer_{uuid.uuid4().hex[:8]}"
+
+        if gdf is not None and not gdf.empty:
+            if not isinstance(gdf.index, pd.RangeIndex):
+                gdf = gdf.reset_index(drop=True)
 
         feat_count = len(gdf) if gdf is not None else 0
         v_count = SpatialOps.count_vertices(gdf) if gdf is not None else 0
@@ -440,8 +445,35 @@ class EditorTab(QWidget):
             self.map_panel.set_selected_features(indices, self.layer_id)
 
     def _on_table_zoom_to_selected(self):
-        if self.map_panel and self.layer_id:
-            self.map_panel.zoom_to_selected(self.layer_id)
+        if not self.map_panel or not self.layer_id:
+            return
+        try:
+            indexes = self.table_panel.table_view.selectionModel().selectedRows()
+            selected_rows = []
+            for p_idx in indexes:
+                s_idx = self.table_panel.proxy_model.mapToSource(p_idx)
+                if s_idx.isValid():
+                    selected_rows.append(s_idx.row())
+
+            if selected_rows and self._current_gdf is not None and not self._current_gdf.empty:
+                sub = self._current_gdf.iloc[selected_rows]
+                valid_sub = sub[sub.geometry.notna() & (~sub.geometry.is_empty)]
+                if not valid_sub.empty:
+                    b = valid_sub.total_bounds
+                    # If CRS is projected, convert to EPSG:4326 for leaflet zoom
+                    if valid_sub.crs is not None and str(valid_sub.crs).upper() not in ("EPSG:4326", "OGC:CRS84", "4326"):
+                        import pyproj
+                        from shapely.ops import transform
+                        from shapely.geometry import box
+                        transformer = pyproj.Transformer.from_crs(valid_sub.crs, "EPSG:4326", always_xy=True)
+                        b_box = box(b[0], b[1], b[2], b[3])
+                        b = transform(transformer.transform, b_box).bounds
+                    self.map_panel.zoom_to_extent(b[0], b[1], b[2], b[3])
+                    return
+        except Exception as e:
+            print(f"Error computing zoom bounds for selected features: {e}")
+
+        self.map_panel.zoom_to_selected(self.layer_id)
 
     def _on_feature_added(self, feature_json_str: str):
         try:

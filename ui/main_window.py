@@ -482,11 +482,15 @@ class MainWindow(QMainWindow):
 
     def _on_map_feature_clicked(self, index: int):
         tab = self._get_current_tab()
+        if not (tab and tab.is_spatial):
+            tab = self._find_spatial_tab()
         if tab and tab.is_spatial:
             tab.table_panel.select_feature(index)
 
     def _on_map_selection_changed(self, indices: list):
         tab = self._get_current_tab()
+        if not (tab and tab.is_spatial):
+            tab = self._find_spatial_tab()
         if tab and tab.is_spatial:
             tab.table_panel.select_features(indices)
 

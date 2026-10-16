@@ -135,6 +135,9 @@ class SpatialOps:
         except Exception:
             pass
 
+        # Preserve original dataframe row index for stable GeoJSON feature.id across LOD/viewport zoom
+        if not clean_gdf.index.is_unique:
+            clean_gdf = clean_gdf.reset_index(drop=True)
         raw_json = clean_gdf.to_json()
 
         # Sanitize against any NaN / Infinity literals in JSON
@@ -711,6 +714,7 @@ class SpatialOps:
             indices = gdf.sindex.query(query_geom, predicate="intersects")
             if len(indices) == 0:
                 return gdf.iloc[0:0]
+            indices = np.unique(indices)
             sub_gdf = gdf.iloc[indices].copy()
         except Exception:
             sub_gdf = gdf.copy()
