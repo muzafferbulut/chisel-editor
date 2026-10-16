@@ -293,7 +293,7 @@ class MainWindow(QMainWindow):
         # --- GIS / Spatial Menu ---
         gis_menu: QMenu = menu_bar.addMenu("GIS")
 
-        act_export = QAction("💾 Export...", self)
+        act_export = QAction("💾 Export", self)
         act_export.triggered.connect(self._export_spatial_data)
 
         # Global shortcuts for spatial tools
@@ -327,22 +327,22 @@ class MainWindow(QMainWindow):
         gis_menu.addSeparator()
 
         # Geoprocessing Tools
-        act_buffer = QAction("⭕ Buffer...", self)
+        act_buffer = QAction("⭕ Buffer", self)
         act_buffer.triggered.connect(self._buffer_geometries)
 
-        act_dissolve = QAction("🔗 Dissolve...", self)
+        act_dissolve = QAction("🔗 Dissolve", self)
         act_dissolve.triggered.connect(self._dissolve_geometries)
 
         act_simplify = QAction("✂️ Simplify...", self)
         act_simplify.triggered.connect(self._simplify_geometries)
 
-        act_topology = QAction("📐 Topology Checker...", self)
+        act_topology = QAction("📐 Topology Engine", self)
         act_topology.triggered.connect(self._show_topology_checker)
 
-        act_validate = QAction("🛡️ Validate Geometries", self)
+        act_validate = QAction("🛡️ Validate Geom", self)
         act_validate.triggered.connect(self._validate_geometries)
 
-        act_repair = QAction("🔧 Repair Geometries", self)
+        act_repair = QAction("🔧 Repair Geom", self)
         act_repair.triggered.connect(self._repair_geometries)
 
         gis_menu.addAction(act_buffer)
@@ -354,10 +354,10 @@ class MainWindow(QMainWindow):
         gis_menu.addAction(act_repair)
         gis_menu.addSeparator()
 
-        act_set_crs = QAction("🌐 Set CRS...", self)
+        act_set_crs = QAction("🌐 Set CRS", self)
         act_set_crs.triggered.connect(self._set_crs)
 
-        act_reproject = QAction("🔄 Reproject CRS...", self)
+        act_reproject = QAction("🔄 Reproject CRS", self)
         act_reproject.triggered.connect(self._reproject_crs)
 
         gis_menu.addAction(act_set_crs)

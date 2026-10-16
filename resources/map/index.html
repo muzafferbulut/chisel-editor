@@ -477,18 +477,15 @@
   <body>
     <div id="map"></div>
 
-    <!-- Clean GIS Legend for Snapshot / Map Output -->
     <div id="snapshotLegend" class="snapshot-legend"></div>
 
-    <!-- Vertical Action Toolbar on the Far Right -->
     <div class="hud-toolbar-v">
-      <!-- 1. Layers & Services -->
       <div style="position: relative">
         <button
           class="hud-vbtn"
           id="btnLayers"
           onclick="toggleLayersFlyout()"
-          data-tip="Layers & Services"
+          data-tip="Layers"
           title="Layers"
         >
           <svg
@@ -528,9 +525,6 @@
                 <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" />
               </svg>
               <span>Layers</span>
-              <span id="layerTotalCountBadge" class="hud-layer-count-badge"
-                >0</span
-              >
             </span>
             <button
               class="hud-layers-add-btn"
@@ -557,12 +551,11 @@
 
       <div class="hud-vdivider"></div>
 
-      <!-- 2. Navigation & Views -->
       <button
         class="hud-vbtn"
         id="btnTable"
         onclick="toggleTableHud()"
-        data-tip="Attribute Table (F6)"
+        data-tip="Attribute Table"
         title="Attribute Table"
       >
         <svg
@@ -608,12 +601,11 @@
 
       <div class="hud-vdivider"></div>
 
-      <!-- 3. Selection Tools -->
       <button
         class="hud-vbtn active"
         id="btnSelectClick"
         onclick="setSelectTool('click')"
-        data-tip="Single Selection (Click)"
+        data-tip="Single Selection"
         title="Single Select"
       >
         <svg
@@ -634,7 +626,7 @@
         class="hud-vbtn"
         id="btnSelectBox"
         onclick="setSelectTool('box')"
-        data-tip="Multi Selection (Box Select)"
+        data-tip="Multi Selection"
         title="Box Select"
       >
         <svg
@@ -688,7 +680,7 @@
         class="hud-vbtn disabled"
         id="btnClearSel"
         onclick="clearSelection()"
-        data-tip="Clear Selection (Esc)"
+        data-tip="Clear Selection"
         title="Clear Selection"
       >
         <svg
@@ -709,7 +701,6 @@
 
       <div class="hud-vdivider"></div>
 
-      <!-- 4. Vector Drawing & Editing -->
       <button
         class="hud-vbtn"
         id="btnAddPoint"
@@ -739,7 +730,7 @@
         class="hud-vbtn"
         id="btnAddLine"
         onclick="toggleDrawMode('line')"
-        data-tip="Add Line (Draw & Double Click)"
+        data-tip="Add Line"
         title="Add Line"
       >
         <svg
@@ -783,7 +774,7 @@
         class="hud-vbtn"
         id="btnEditGeom"
         onclick="toggleVertexEditMode()"
-        data-tip="Edit Nodes (Vertex Tool)"
+        data-tip="Edit Nodes"
         title="Vertex Tool"
       >
         <svg
@@ -829,12 +820,11 @@
 
       <div class="hud-vdivider"></div>
 
-      <!-- 5. Measurement & Export -->
       <button
         class="hud-vbtn"
         id="btnMeasure"
         onclick="toggleMeasure()"
-        data-tip="Measure Distance / Area"
+        data-tip="Measure"
         title="Measure"
       >
         <svg
@@ -860,7 +850,7 @@
         class="hud-vbtn"
         id="btnSnapshot"
         onclick="captureMapSnapshot()"
-        data-tip="Capture Map Snapshot (PNG)"
+        data-tip="Snapshot"
         title="Snapshot"
       >
         <svg
@@ -906,7 +896,6 @@
 
       var sharedCanvas = L.canvas({ padding: 0.5, tolerance: 10 });
 
-      // STRICTLY FREE BASE TILES (No API key, no watermark)
       var freeTiles = {
         osm: L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 19,
@@ -983,14 +972,12 @@
         }
       }
 
-      // --- Layer Panel & Flyout Controls ---
-      var vectorLayers = {}; // layerId -> { id, name, count, geomType, color, visible, isActive, leafletLayer, indexMap, geojsonData }
+      var vectorLayers = {};
       var activeLayerId = null;
       var selectedFeatureLayerId = null;
-      var wmsRegistry = {}; // layerId -> { id, title, url, layerName, visible }
+      var wmsRegistry = {};
 
-      // --- QGIS Selection State ---
-      var selectMode = "click"; // 'click' | 'box'
+      var selectMode = "click";
       var selectedIndices = new Set();
       var isBoxSelecting = false;
       var boxStartLatLng = null;
@@ -1128,9 +1115,6 @@
         var wKeys = Object.keys(wmsRegistry);
         var totalCount = vKeys.length + wKeys.length;
 
-        var badge = document.getElementById("layerTotalCountBadge");
-        if (badge) badge.innerText = totalCount;
-
         if (totalCount === 0) {
           container.innerHTML =
             '<div style="color: #858585; font-size: 11px; padding: 8px 4px; text-align: center;">(No layers or services)</div>';
@@ -1139,12 +1123,7 @@
 
         var html = "";
 
-        // 1. Vector & WFS Layers (QGIS Layer Tree format)
         if (vKeys.length > 0) {
-          html +=
-            '<div class="hud-layers-section-header">📁 Vector & WFS (' +
-            vKeys.length +
-            ")</div>";
           vKeys.forEach(function (k) {
             var l = vectorLayers[k];
             var chk = l.visible ? "checked" : "";
@@ -1194,16 +1173,13 @@
           });
         }
 
-        // 2. Web Services (WMS & Basemap Services)
         if (wKeys.length > 0) {
           if (vKeys.length > 0) {
             html +=
               '<div style="height:1px; background:rgba(255,255,255,0.08); margin:6px 0 4px 0;"></div>';
           }
           html +=
-            '<div class="hud-layers-section-header">🌐 WMS & Services (' +
-            wKeys.length +
-            ")</div>";
+            '<div class="hud-layers-section-header">🌐 WMS & Services</div>';
           wKeys.forEach(function (k) {
             var layer = wmsRegistry[k];
             var chk = layer.visible ? "checked" : "";
@@ -1235,7 +1211,6 @@
         container.innerHTML = html;
       }
 
-      // --- WMS & XYZ Tile Layer Management ---
       function addWmsLayer(layerId, url, layers, format, transparent, title) {
         if (wmsLayers[layerId]) map.removeLayer(wmsLayers[layerId]);
         if (url.indexOf("{z}") !== -1) {
@@ -1464,13 +1439,8 @@
         if (bPoint) {
           if (isDrawModeAllowed("point")) {
             bPoint.classList.remove("disabled");
-            bPoint.setAttribute("data-tip", "Add Point (Click Map)");
           } else {
             bPoint.classList.add("disabled");
-            bPoint.setAttribute(
-              "data-tip",
-              "⚠️ This layer is of type [" + layerTr + "]. Cannot add point!",
-            );
           }
         }
 
@@ -1480,10 +1450,6 @@
             bLine.setAttribute("data-tip", "Add Line (Draw & Double Click)");
           } else {
             bLine.classList.add("disabled");
-            bLine.setAttribute(
-              "data-tip",
-              "⚠️ This layer is of type [" + layerTr + "]. Cannot add line!",
-            );
           }
         }
 
@@ -1493,10 +1459,6 @@
             bPoly.setAttribute("data-tip", "Add Polygon (Draw & Double Click)");
           } else {
             bPoly.classList.add("disabled");
-            bPoly.setAttribute(
-              "data-tip",
-              "⚠️ This layer is of type [" + layerTr + "]. Cannot add polygon!",
-            );
           }
         }
       }
@@ -1576,7 +1538,6 @@
         polyDrawPoly = null;
       }
 
-      // --- QGIS Selection State & Tools ---
       function setSelectTool(mode) {
         if (drawMode) cancelDrawMode();
         if (measureActive) toggleMeasure();
@@ -1637,7 +1598,7 @@
             btnDel.classList.remove("has-selection");
             btnDel.setAttribute(
               "data-tip",
-              "Delete Selected Features (Select Features First)",
+              "Delete  Features",
             );
           }
         }
@@ -1759,12 +1720,11 @@
           var l = lObj.indexMap[idx];
           if (!l) continue;
 
-          // 1. Point / CircleMarker
           if (l.getLatLng) {
             var pt = map.latLngToContainerPoint(l.getLatLng());
             var d = Math.hypot(pt.x - cPoint.x, pt.y - cPoint.y);
             var r = (l.options && l.options.radius) || 6;
-            var tol = Math.max(r, 6) + 8; // 14px comfortable click radius
+            var tol = Math.max(r, 6) + 8;
             if (d <= tol && d < bestDist) {
               bestDist = d;
               bestHit = { idx: idx, layer: l, feature: l.feature };
@@ -1772,7 +1732,6 @@
             continue;
           }
 
-          // 2. Multi-feature / FeatureGroup
           if (l.eachLayer) {
             var hitInGroup = false;
             l.eachLayer(function (child) {
@@ -1804,12 +1763,10 @@
             if (hitInGroup && bestDist === 0) return bestHit;
           }
 
-          // 3. Line or Polygon contains test
           if (l._containsPoint && l._containsPoint(layerPt)) {
             return { idx: idx, layer: l, feature: l.feature };
           }
 
-          // 4. Line segment distance fallback
           if (l.getLatLngs) {
             var latlngs = l.getLatLngs();
             var isLine =
@@ -1948,7 +1905,6 @@
         deleteSelectedFeatures();
       }
 
-      // --- Vertex Editing (Node Tool) ---
       var vertexEditActive = false;
       var vertexEditLayerId = null;
       var vertexEditFeatureIdx = -1;
@@ -1980,11 +1936,7 @@
           var idx = Array.from(selectedIndices)[0];
           attachVertexHandles(activeLayerId, idx);
         } else if (selectedIndices.size > 1) {
-          showWarningBanner("⚠️ Please select a single feature to edit nodes!");
         } else {
-          showWarningBanner(
-            "✏️ Click on the feature you want to edit nodes for.",
-          );
         }
       }
 
@@ -2039,7 +1991,6 @@
       }
 
       function attachHandlesToSubLayer(subLayer, featureIdx) {
-        // Point / CircleMarker
         if (subLayer.getLatLng && !subLayer.getLatLngs) {
           var pt = subLayer.getLatLng();
           var m = L.marker(pt, {
@@ -2071,7 +2022,6 @@
           return;
         }
 
-        // Polyline or Polygon
         if (subLayer.getLatLngs) {
           var rawLatLngs = subLayer.getLatLngs();
           var isPoly = subLayer instanceof L.Polygon;
@@ -2177,7 +2127,6 @@
         }
       }
 
-      // --- Measurement Ruler Tool ---
       var measureActive = false;
       var measurePoints = [];
       var measureMarkers = [];
@@ -2213,7 +2162,6 @@
         measureTooltip = null;
       }
 
-      // --- Box Drag Selection & Click Mouse Handlers ---
       var mapMouseDownPos = null;
       var mapMouseDownTime = 0;
       map.on("mousedown", function (e) {
@@ -2258,7 +2206,6 @@
         if (e.originalEvent && e.originalEvent.button !== 0) return;
         if (e.originalEvent && e.originalEvent.detail > 1) return;
 
-        // Case 1: Box select mode (or Shift-drag)
         if (isBoxSelecting) {
           isBoxSelecting = false;
           if (selectMode !== "box") {
@@ -2308,7 +2255,6 @@
             notifySelectionChanged();
             return;
           } else {
-            // Box mode clicked without dragging (< 5px) -> Single Selection
             if (activeLayerId && vectorLayers[activeLayerId]) {
               var hit = findFeatureAtPoint(
                 e.containerPoint,
@@ -2339,9 +2285,7 @@
           }
         }
 
-        // Case 2: Click select mode
         if (selectMode === "click") {
-          // If mouse moved <= 6px, it is a click (human hand tremor allowed)
           if (dist <= 6) {
             if (Date.now() - lastFeatureClickTime < 120) {
               return;
@@ -2376,7 +2320,6 @@
         }
       });
 
-      // --- Map Click Handler ---
       map.on("click", function (e) {
         closeAllFlyouts();
 
@@ -2497,14 +2440,12 @@
           return;
         }
 
-        // If a feature was just clicked on the map, do NOT clear selection
         if (Date.now() - lastFeatureClickTime < 400) {
           return;
         }
 
         var layerWasClicked = e.originalEvent && e.originalEvent._layerClicked;
         if (!layerWasClicked && (selectMode === "click" || selectMode === "box")) {
-          // Double check if click point hit any feature
           if (activeLayerId && vectorLayers[activeLayerId]) {
             var hit = findFeatureAtPoint(
               e.containerPoint,
@@ -2533,7 +2474,6 @@
         }
       });
 
-      // --- Double Click Handler for Finish Drawing ---
       map.on("dblclick", function (e) {
         if (drawMode === "line") {
           if (polyDrawPoints.length >= 2) {
@@ -2582,7 +2522,6 @@
         }
       });
 
-      // --- Keyboard Handlers ---
       document.addEventListener("keydown", function (e) {
         if (e.key === "Escape") {
           if (vertexEditActive) finishVertexEditMode();
@@ -2605,7 +2544,6 @@
       function handleFeatureClick(currentIdx, layerId, feature, layer, e) {
         if (drawMode || measureActive) return;
 
-        // Debounce duplicate events on compound / multi geometries (child and parent group bubbling)
         if (
           Date.now() - lastFeatureClickTime < 100 &&
           lastClickedFeatureIdx === currentIdx &&
@@ -3260,7 +3198,6 @@
         }
       }
 
-      // --- QGIS-style Dedicated Topology Error Focus Rubberband & Highlight ---
       var topologyHighlightGroup = L.featureGroup().addTo(map);
 
       function showTopologyErrorFocus(
@@ -3274,7 +3211,6 @@
         if (!map) return;
         topologyHighlightGroup.clearLayers();
 
-        // 1. Select and highlight parent feature(s) on main active layer
         if (
           Array.isArray(parentIndices) &&
           parentIndices.length > 0 &&
@@ -3284,7 +3220,6 @@
           setSelectedFeatures(parentIndices, parentLayerId);
         }
 
-        // 2. Render defective geometry part with prominent pulsing red styling
         if (geojsonGeom) {
           try {
             var featureObj =
@@ -3294,7 +3229,6 @@
 
             var errLayer = L.geoJSON(featureObj, {
               pointToLayer: function (feature, latlng) {
-                // Dual target circles for point errors: outer radar ring + solid bullseye
                 var outerRing = L.circleMarker(latlng, {
                   interactive: false,
                   radius: 16,
@@ -3338,7 +3272,6 @@
           }
         }
 
-        // 3. Smooth zoom to the exact bounding box of the error
         var centerLatLng = null;
         if (
           boundsObj &&
@@ -3362,7 +3295,6 @@
           }
         }
 
-        // 4. Open clean popup at the center of the defect
         if ((title || desc) && centerLatLng && isSafeLatLng(centerLatLng)) {
           setTimeout(function () {
             try {
