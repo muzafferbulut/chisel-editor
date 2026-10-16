@@ -92,7 +92,7 @@ class SpatialOps:
         if clean_gdf is not None and not clean_gdf.empty and "geometry" in clean_gdf.columns:
             # Filter out null, empty, or non-finite geometries
             try:
-                valid_mask = clean_gdf.geometry.notna() & (~clean_gdf.geometry.is_empty) & clean_gdf.geometry.is_valid
+                valid_mask = clean_gdf.geometry.notna() & (~clean_gdf.geometry.is_empty)
                 clean_gdf = clean_gdf[valid_mask]
             except Exception:
                 pass

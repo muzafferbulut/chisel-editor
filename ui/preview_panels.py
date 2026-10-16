@@ -377,6 +377,34 @@ class MapPreviewPanel(AbstractPreviewPanel):
         except Exception as ex:
             print(f"zoom_to_extent exception: {ex}")
 
+    def show_topology_error_focus(
+        self,
+        geojson_geom: dict,
+        bounds_obj: dict,
+        title: str = "",
+        description: str = "",
+        parent_indices: list = None,
+        parent_layer_id: str = None
+    ):
+        if not self._is_loaded:
+            return
+        try:
+            esc_geom = json.dumps(geojson_geom) if geojson_geom else "null"
+            esc_bounds = json.dumps(bounds_obj) if bounds_obj else "null"
+            esc_title = json.dumps(title) if title else "null"
+            esc_desc = json.dumps(description) if description else "null"
+            esc_parents = json.dumps(parent_indices) if parent_indices else "[]"
+            esc_layer_id = json.dumps(parent_layer_id) if parent_layer_id else "null"
+
+            js_code = f"showTopologyErrorFocus({esc_geom}, {esc_bounds}, {esc_title}, {esc_desc}, {esc_parents}, {esc_layer_id});"
+            self.web_view.page().runJavaScript(js_code)
+        except Exception as e:
+            print(f"Error in show_topology_error_focus: {e}")
+
+    def clear_topology_highlight(self):
+        if self._is_loaded:
+            self.web_view.page().runJavaScript("clearTopologyHighlight();")
+
     def capture_snapshot(self):
         if not self._is_loaded:
             return

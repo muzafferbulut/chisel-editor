@@ -312,6 +312,7 @@ class TopologyCheckerDialog(QDialog):
         layer_name: str,
         map_panel,
         on_layer_updated: Optional[Callable[[gpd.GeoDataFrame], None]] = None,
+        layer_id: str = None,
         parent=None
     ):
         super().__init__(parent)
@@ -319,6 +320,7 @@ class TopologyCheckerDialog(QDialog):
         self.layer_name = layer_name or "Spatial Layer"
         self.map_panel = map_panel
         self.on_layer_updated = on_layer_updated
+        self.layer_id = layer_id
 
         self.report: Optional[TopologyReport] = None
         self.worker: Optional[TopologyWorker] = None
@@ -587,7 +589,8 @@ class TopologyCheckerDialog(QDialog):
         self,
         gdf: gpd.GeoDataFrame,
         layer_name: str,
-        on_layer_updated: Optional[Callable[[gpd.GeoDataFrame], None]] = None
+        on_layer_updated: Optional[Callable[[gpd.GeoDataFrame], None]] = None,
+        layer_id: str = None
     ):
         """
         Refreshes dialog state when user switches active layers or tabs.
@@ -597,6 +600,8 @@ class TopologyCheckerDialog(QDialog):
         self.layer_name = layer_name or "Spatial Layer"
         if on_layer_updated:
             self.on_layer_updated = on_layer_updated
+        if layer_id:
+            self.layer_id = layer_id
 
         from core.spatial_ops import SpatialOps
         self.geom_type = SpatialOps.get_layer_geometry_type(self.gdf)
@@ -653,10 +658,9 @@ class TopologyCheckerDialog(QDialog):
             return
 
         self.report = report
-        self._populate_table(report)
-
         if self.chk_show_map.isChecked():
             self._update_map_error_layer()
+        self._populate_table(report)
 
     def _populate_table(self, report: TopologyReport):
         self.table.setUpdatesEnabled(False)
@@ -745,6 +749,12 @@ class TopologyCheckerDialog(QDialog):
         else:
             self.map_panel.remove_vector_layer(self.ERROR_LAYER_ID)
 
+    def closeEvent(self, event):
+        if self.map_panel:
+            self.map_panel.clear_topology_highlight()
+            self.map_panel.remove_vector_layer(self.ERROR_LAYER_ID)
+        super().closeEvent(event)
+
     def _on_table_selection_changed(self):
         selected_rows = self.table.selectedIndexes()
         if not selected_rows or not self.report:
@@ -752,7 +762,7 @@ class TopologyCheckerDialog(QDialog):
         row = selected_rows[0].row()
         if 0 <= row < len(self.report.errors):
             err = self.report.errors[row]
-            self._zoom_to_error_geometry(err.geometry, err.id)
+            self._zoom_to_error_geometry(err.geometry, err.id, err=err)
 
     def _on_zoom_to_selected(self):
         selected_rows = self.table.selectedIndexes()
@@ -761,53 +771,96 @@ class TopologyCheckerDialog(QDialog):
         row = selected_rows[0].row()
         if 0 <= row < len(self.report.errors):
             err = self.report.errors[row]
-            self._zoom_to_error_geometry(err.geometry, err.id)
+            self._zoom_to_error_geometry(err.geometry, err.id, err=err)
 
-    def _zoom_to_error_geometry(self, geom, err_id: int = None):
+    def _transform_geom_to_4326(self, geom):
         """
-        Calculates bounding box of defective geometry part, converts to EPSG:4326
-        degrees if layer is projected, and tells map to zoom in and highlight it.
+        Converts any Shapely error geometry to WGS 84 (EPSG:4326) coordinates for Leaflet.
+        """
+        if geom is None or (hasattr(geom, "is_empty") and geom.is_empty):
+            return None
+        import shapely.ops
+        import pyproj
+
+        if self.gdf is not None and self.gdf.crs is not None:
+            crs_str = str(self.gdf.crs).upper()
+            if "4326" not in crs_str and "CRS84" not in crs_str:
+                try:
+                    project = pyproj.Transformer.from_crs(self.gdf.crs, "EPSG:4326", always_xy=True).transform
+                    return shapely.ops.transform(project, geom)
+                except Exception:
+                    pass
+
+        b = geom.bounds
+        if abs(b[0]) > 180.0 or abs(b[2]) > 180.0 or abs(b[1]) > 90.0 or abs(b[3]) > 90.0:
+            try:
+                project = pyproj.Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True).transform
+                return shapely.ops.transform(project, geom)
+            except Exception:
+                pass
+        return geom
+
+    def _zoom_to_error_geometry(self, geom, err_id: int = None, err: TopologyError = None):
+        """
+        Extracts defective geometry piece, converts it to WGS84 GeoJSON,
+        calculates padded extent, and triggers high-zoom QGIS-style error focus.
         """
         if geom is None or not self.map_panel:
             return
 
         try:
-            bounds = geom.bounds  # (minx, miny, maxx, maxy) in layer CRS
+            # 1. Transform defective error geometry to EPSG:4326 for Leaflet
+            geom_4326 = self._transform_geom_to_4326(geom)
+            if geom_4326 is None or (hasattr(geom_4326, "is_empty") and geom_4326.is_empty):
+                return
+
+            bounds = geom_4326.bounds  # (minx, miny, maxx, maxy) in degrees (lon, lat)
             minx, miny, maxx, maxy = bounds
 
-            # If layer CRS is projected, transform bounds to EPSG:4326 for Leaflet
-            if self.gdf.crs and str(self.gdf.crs) != "EPSG:4326":
-                try:
-                    import pyproj
-                    transformer = pyproj.Transformer.from_crs(self.gdf.crs, "EPSG:4326", always_xy=True)
-                    minx, miny = transformer.transform(minx, miny)
-                    maxx, maxy = transformer.transform(maxx, maxy)
-                except Exception as pe:
-                    print(f"pyproj transform error: {pe}")
-            elif abs(minx) > 180.0 or abs(maxx) > 180.0 or abs(miny) > 90.0 or abs(maxy) > 90.0:
-                try:
-                    import pyproj
-                    transformer = pyproj.Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
-                    minx, miny = transformer.transform(minx, miny)
-                    maxx, maxy = transformer.transform(maxx, maxy)
-                except Exception:
-                    pass
+            span_x = abs(maxx - minx)
+            span_y = abs(maxy - miny)
+            if span_x < 0.0008 or span_y < 0.0008:
+                delta = 0.0006  # ~65 meters comfortable zoom buffer around point/micro-defect
+                south = max(-85.0, miny - delta)
+                north = min(85.0, maxy + delta)
+                west = max(-180.0, minx - delta)
+                east = min(180.0, maxx + delta)
+                max_zoom = 18
+            else:
+                pad_x = max(span_x * 0.25, 0.0003)
+                pad_y = max(span_y * 0.25, 0.0003)
+                south = max(-85.0, miny - pad_y)
+                north = min(85.0, maxy + pad_y)
+                west = max(-180.0, minx - pad_x)
+                east = min(180.0, maxx + pad_x)
+                max_zoom = 18
 
-            # If it's a point or micro-geometry, provide comfortable visual padding (~150 meters)
-            if abs(maxx - minx) < 1e-4 and abs(maxy - miny) < 1e-4:
-                delta = 0.0015
-                minx -= delta
-                maxx += delta
-                miny -= delta
-                maxy += delta
+            bounds_obj = {
+                "south": south,
+                "north": north,
+                "west": west,
+                "east": east,
+                "maxZoom": max_zoom
+            }
 
-            self.map_panel.zoom_to_extent(minx, miny, maxx, maxy, max_zoom=18)
+            import shapely.geometry
+            geojson_geom = shapely.geometry.mapping(geom_4326)
 
-            if err_id is not None:
-                self.map_panel.highlight_feature(err_id, self.ERROR_LAYER_ID)
+            parent_ids = err.feature_ids if err else []
+            title = err.rule_name if err else "Topoloji Hatası"
+            desc = err.description if err else ""
+
+            self.map_panel.show_topology_error_focus(
+                geojson_geom=geojson_geom,
+                bounds_obj=bounds_obj,
+                title=title,
+                description=desc,
+                parent_indices=parent_ids,
+                parent_layer_id=getattr(self, "layer_id", None)
+            )
 
         except Exception as e:
-            print(f"Failed to zoom to error: {e}")
+            print(f"Failed to focus on error geometry: {e}")
 
     # -------------------------------------------------------------
     # Remediation
@@ -895,9 +948,3 @@ class TopologyCheckerDialog(QDialog):
                 ToastNotification.show_toast(self, f"Errors exported to {os.path.basename(path)}", "success")
             except Exception as e:
                 QMessageBox.critical(self, "Export Failed", f"Could not export error file: {e}")
-
-    def closeEvent(self, event):
-        # Clean up temporary error layer from map when dialog closes
-        if self.map_panel:
-            self.map_panel.remove_vector_layer(self.ERROR_LAYER_ID)
-        super().closeEvent(event)

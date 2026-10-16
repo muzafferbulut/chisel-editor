@@ -1059,7 +1059,7 @@ class MainWindow(QMainWindow):
 
         # If already open, update to active layer and bring to focus without blocking main window
         if hasattr(self, "topology_dialog") and self.topology_dialog is not None and self.topology_dialog.isVisible():
-            self.topology_dialog.update_layer(tab._current_gdf, layer_name, _on_topology_layer_updated)
+            self.topology_dialog.update_layer(tab._current_gdf, layer_name, _on_topology_layer_updated, layer_id=tab.layer_id)
             self.topology_dialog.raise_()
             self.topology_dialog.activateWindow()
             return
@@ -1069,6 +1069,7 @@ class MainWindow(QMainWindow):
             layer_name=layer_name,
             map_panel=self.shared_map_panel,
             on_layer_updated=_on_topology_layer_updated,
+            layer_id=tab.layer_id,
             parent=self
         )
         self.topology_dialog.show()

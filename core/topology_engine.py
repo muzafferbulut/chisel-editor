@@ -219,7 +219,18 @@ class TopologyEngine:
         """
         Returns rule specifications matching the layer's geometry type.
         """
-        norm_type = (geom_type or "any").lower()
+        raw = (geom_type or "any").lower()
+        if "line" in raw:
+            norm_type = "line"
+        elif "poly" in raw:
+            norm_type = "polygon"
+        elif "point" in raw:
+            norm_type = "point"
+        elif "mixed" in raw:
+            norm_type = "mixed"
+        else:
+            norm_type = "any"
+
         res = []
         for rule in cls.RULES.values():
             if "any" in rule.geom_types or norm_type in rule.geom_types or norm_type == "mixed":
@@ -751,7 +762,7 @@ class TopologyEngine:
                     reason = str(e)
 
                 # Attempt to extract invalid point from reason text e.g. "Self-intersection[32.8 39.9]"
-                err_geom = geom.centroid
+                err_geom = None
                 if "[" in reason and "]" in reason:
                     try:
                         coords_str = reason[reason.find("[") + 1: reason.find("]")]
@@ -760,6 +771,23 @@ class TopologyEngine:
                             err_geom = Point(float(parts[0]), float(parts[1]))
                     except Exception:
                         pass
+
+                if err_geom is None:
+                    try:
+                        b = geom.exterior
+                        noded = shapely.node(b)
+                        subgeoms = noded.geoms if hasattr(noded, "geoms") else [noded]
+                        pts = [c for g in subgeoms for c in (g.coords[0], g.coords[-1])]
+                        from collections import Counter
+                        cnts = Counter(pts)
+                        crossings = [Point(c) for c, cnt in cnts.items() if cnt >= 4]
+                        if crossings:
+                            err_geom = MultiPoint(crossings) if len(crossings) > 1 else crossings[0]
+                    except Exception:
+                        pass
+
+                if err_geom is None:
+                    err_geom = geom.centroid if geom is not None and not geom.is_empty else Point(0, 0)
 
                 errors.append(TopologyError(
                     id=curr_id,

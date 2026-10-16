@@ -2324,6 +2324,113 @@
                         if (l.openPopup) { try { l.openPopup(); } catch(e){} }
                     }
                 }
+
+                // --- QGIS-style Dedicated Topology Error Focus Rubberband & Highlight ---
+                var topologyHighlightGroup = L.featureGroup().addTo(map);
+
+                function showTopologyErrorFocus(geojsonGeom, boundsObj, title, desc, parentIndices, parentLayerId) {
+                    if (!map) return;
+                    topologyHighlightGroup.clearLayers();
+
+                    // 1. Select and highlight parent feature(s) on main active layer
+                    if (Array.isArray(parentIndices) && parentIndices.length > 0 && parentLayerId && vectorLayers[parentLayerId]) {
+                        setSelectedFeatures(parentIndices, parentLayerId);
+                    }
+
+                    // 2. Render defective geometry part with prominent pulsing red styling
+                    if (geojsonGeom) {
+                        try {
+                            var featureObj = (geojsonGeom && geojsonGeom.type === 'Feature')
+                                ? geojsonGeom
+                                : { type: 'Feature', geometry: geojsonGeom, properties: {} };
+
+                            var errLayer = L.geoJSON(featureObj, {
+                                pointToLayer: function(feature, latlng) {
+                                    // Dual target circles for point errors: outer radar ring + solid bullseye
+                                    var outerRing = L.circleMarker(latlng, {
+                                        radius: 16,
+                                        color: '#ff0033',
+                                        weight: 2.5,
+                                        dashArray: '3, 3',
+                                        fillColor: '#ff0033',
+                                        fillOpacity: 0.22
+                                    });
+                                    var innerBullseye = L.circleMarker(latlng, {
+                                        radius: 7,
+                                        color: '#ffffff',
+                                        weight: 2,
+                                        fillColor: '#ff0033',
+                                        fillOpacity: 1.0
+                                    });
+                                    return L.featureGroup([outerRing, innerBullseye]);
+                                },
+                                style: function(feature) {
+                                    var gtype = (feature && feature.geometry && feature.geometry.type) || 'Polygon';
+                                    var isLine = gtype.indexOf('Line') !== -1;
+                                    return {
+                                        color: '#ff0033',
+                                        weight: isLine ? 5.0 : 3.0,
+                                        opacity: 1.0,
+                                        dashArray: isLine ? '6, 6' : '4, 4',
+                                        fillColor: '#ff0033',
+                                        fillOpacity: isLine ? 0 : 0.65
+                                    };
+                                }
+                            });
+
+                            topologyHighlightGroup.addLayer(errLayer);
+                            topologyHighlightGroup.bringToFront();
+                        } catch(e) {
+                            console.error("showTopologyErrorFocus render error:", e);
+                        }
+                    }
+
+                    // 3. Smooth zoom to the exact bounding box of the error
+                    var centerLatLng = null;
+                    if (boundsObj && typeof boundsObj.south === 'number' && typeof boundsObj.west === 'number') {
+                        var sw = L.latLng(boundsObj.south, boundsObj.west);
+                        var ne = L.latLng(boundsObj.north, boundsObj.east);
+                        var b = L.latLngBounds(sw, ne);
+                        if (isSafeBounds(b)) {
+                            centerLatLng = b.getCenter();
+                            try {
+                                map.fitBounds(b, {
+                                    maxZoom: boundsObj.maxZoom || 18,
+                                    padding: [60, 60],
+                                    animate: true
+                                });
+                            } catch(e) {
+                                console.error("showTopologyErrorFocus fitBounds error:", e);
+                            }
+                        }
+                    }
+
+                    // 4. Open clean popup at the center of the defect
+                    if ((title || desc) && centerLatLng && isSafeLatLng(centerLatLng)) {
+                        setTimeout(function() {
+                            try {
+                                var popupContent = '<div style="font-family:sans-serif; min-width:180px; max-width:280px;">' +
+                                    '<div style="font-size:12px; font-weight:bold; color:#d63031; border-bottom:1px solid #fab1a0; padding-bottom:3px; margin-bottom:4px;">' +
+                                    '⚠️ ' + (title || 'Topoloji Hatası') + '</div>' +
+                                    '<div style="font-size:11px; color:#2d3436; line-height:1.4;">' + (desc || '') + '</div>' +
+                                    '</div>';
+                                L.popup({ autoPan: false, closeButton: true, offset: [0, -10] })
+                                    .setLatLng(centerLatLng)
+                                    .setContent(popupContent)
+                                    .openOn(map);
+                            } catch(e){}
+                        }, 280);
+                    }
+                }
+
+                function clearTopologyHighlight() {
+                    if (topologyHighlightGroup) {
+                        topologyHighlightGroup.clearLayers();
+                    }
+                    if (map && map.closePopup) {
+                        try { map.closePopup(); } catch(e){}
+                    }
+                }
             </script>
         </body>
         </html>
