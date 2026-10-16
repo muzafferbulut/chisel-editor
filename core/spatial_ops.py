@@ -82,9 +82,67 @@ class SpatialOps:
     def to_geojson_str(gdf: gpd.GeoDataFrame, indent: int = None) -> str:
         """
         Converts GeoDataFrame to clean GeoJSON string.
+        Ensures EPSG:4326 projection as required by GeoJSON RFC 7946 standard for Leaflet.
+        Guarantees no NaN, null, or out-of-range coordinates that could break Leaflet.
         """
+        if gdf is None or gdf.empty:
+            return '{"type": "FeatureCollection", "features": []}'
+
         clean_gdf = SpatialOps.sanitize_gdf_for_json(gdf)
+        if clean_gdf is not None and not clean_gdf.empty and "geometry" in clean_gdf.columns:
+            # Filter out null, empty, or non-finite geometries
+            try:
+                valid_mask = clean_gdf.geometry.notna() & (~clean_gdf.geometry.is_empty) & clean_gdf.geometry.is_valid
+                clean_gdf = clean_gdf[valid_mask]
+            except Exception:
+                pass
+
+            if clean_gdf.empty:
+                return '{"type": "FeatureCollection", "features": []}'
+
+            try:
+                crs_is_4326 = False
+                if clean_gdf.crs is not None:
+                    crs_str = str(clean_gdf.crs).upper()
+                    crs_is_4326 = ("4326" in crs_str or "CRS84" in crs_str)
+
+                b = clean_gdf.total_bounds
+                is_in_degrees = (
+                    abs(b[0]) <= 180.0 and abs(b[2]) <= 180.0 and
+                    abs(b[1]) <= 90.0 and abs(b[3]) <= 90.0
+                )
+
+                if crs_is_4326:
+                    if not is_in_degrees:
+                        # User data has metric coordinates but CRS was wrongly set to 4326
+                        clean_gdf = clean_gdf.set_crs("EPSG:3857", allow_override=True)
+                        clean_gdf = clean_gdf.to_crs("EPSG:4326")
+                else:
+                    if clean_gdf.crs is not None:
+                        clean_gdf = clean_gdf.to_crs("EPSG:4326")
+                    elif not is_in_degrees:
+                        clean_gdf = clean_gdf.set_crs("EPSG:3857", allow_override=True)
+                        clean_gdf = clean_gdf.to_crs("EPSG:4326")
+                    else:
+                        clean_gdf = clean_gdf.set_crs("EPSG:4326", allow_override=True)
+            except Exception as e:
+                print(f"Warning during CRS conversion in to_geojson_str: {e}")
+
+        # Drop any null or empty geometries after reprojection
+        try:
+            valid_mask = clean_gdf.geometry.notna() & (~clean_gdf.geometry.is_empty)
+            clean_gdf = clean_gdf[valid_mask]
+        except Exception:
+            pass
+
         raw_json = clean_gdf.to_json()
+
+        # Sanitize against any NaN / Infinity literals in JSON
+        if "NaN" in raw_json or "Infinity" in raw_json:
+            import re
+            raw_json = re.sub(r'\bNaN\b', 'null', raw_json)
+            raw_json = re.sub(r'\bInfinity\b', 'null', raw_json)
+
         if indent is not None and indent > 0:
             try:
                 parsed = json.loads(raw_json)
@@ -107,11 +165,30 @@ class SpatialOps:
     @staticmethod
     def reproject_gdf(gdf: gpd.GeoDataFrame, target_crs: str) -> gpd.GeoDataFrame:
         """
-        Reprojects GeoDataFrame to target CRS.
+        Reprojects GeoDataFrame to target CRS cleanly and safely.
         """
-        if gdf.crs is None:
-            raise ValueError("Data has no CRS defined. Please set CRS first before reprojecting.")
-        return gdf.to_crs(target_crs)
+        if gdf is None or gdf.empty:
+            return gdf
+
+        source_gdf = gdf.copy()
+        if source_gdf.crs is None:
+            # Auto-detect source CRS based on coordinate ranges
+            b = source_gdf.total_bounds
+            if abs(b[0]) <= 180 and abs(b[2]) <= 180 and abs(b[1]) <= 90 and abs(b[3]) <= 90:
+                source_gdf = source_gdf.set_crs("EPSG:4326")
+            else:
+                source_gdf = source_gdf.set_crs("EPSG:3857")
+
+        reproj_gdf = source_gdf.to_crs(target_crs)
+        # Drop any null or empty geometries that may result from out-of-bounds projections
+        try:
+            valid_mask = reproj_gdf.geometry.notna() & (~reproj_gdf.geometry.is_empty)
+            if not valid_mask.all():
+                reproj_gdf = reproj_gdf[valid_mask].reset_index(drop=True)
+        except Exception:
+            pass
+
+        return reproj_gdf
 
     @staticmethod
     def set_crs_gdf(gdf: gpd.GeoDataFrame, crs_str: str) -> gpd.GeoDataFrame:
@@ -122,11 +199,63 @@ class SpatialOps:
         return new_gdf.set_crs(crs_str, allow_override=True)
 
     @staticmethod
-    def validate_and_repair(gdf: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, int]:
+    def validate_geometries(gdf: gpd.GeoDataFrame) -> dict:
         """
-        Validates geometries and repairs invalid ones using shapely.make_valid.
+        Validates geometries without modifying them.
+        Returns a dictionary with validation statistics and error reasons:
+        {
+            'total_features': int,
+            'valid_count': int,
+            'invalid_count': int,
+            'empty_count': int,
+            'reasons': list[str]
+        }
+        """
+        if gdf is None or gdf.empty:
+            return {
+                'total_features': 0,
+                'valid_count': 0,
+                'invalid_count': 0,
+                'empty_count': 0,
+                'reasons': []
+            }
+
+        total = len(gdf)
+        is_empty = gdf.geometry.is_empty | gdf.geometry.isna()
+        empty_count = int(is_empty.sum())
+
+        valid_mask = gdf.geometry.is_valid
+        invalid_mask = ~valid_mask & ~is_empty
+        invalid_count = int(invalid_mask.sum())
+        valid_count = total - invalid_count - empty_count
+
+        reasons = []
+        if invalid_count > 0:
+            for idx in gdf[invalid_mask].index[:20]:
+                geom = gdf.geometry.loc[idx]
+                try:
+                    reason = shapely.is_valid_reason(geom)
+                except Exception as e:
+                    reason = str(e)
+                reasons.append(f"Feature #{idx}: {reason}")
+
+        return {
+            'total_features': total,
+            'valid_count': valid_count,
+            'invalid_count': invalid_count,
+            'empty_count': empty_count,
+            'reasons': reasons
+        }
+
+    @staticmethod
+    def repair_geometries(gdf: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, int]:
+        """
+        Repairs invalid geometries using shapely.make_valid.
         Returns: (repaired_gdf, count_of_repaired_geometries)
         """
+        if gdf is None or gdf.empty:
+            return gdf, 0
+
         new_gdf = gdf.copy()
         invalid_mask = ~new_gdf.geometry.is_valid
         invalid_count = int(invalid_mask.sum())
@@ -136,6 +265,11 @@ class SpatialOps:
                 lambda geom: shapely.make_valid(geom) if geom is not None and not geom.is_empty else geom
             )
         return new_gdf, invalid_count
+
+    @staticmethod
+    def validate_and_repair(gdf: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, int]:
+        """Backwards compatibility alias for repair_geometries."""
+        return SpatialOps.repair_geometries(gdf)
 
     @staticmethod
     def count_vertices(gdf: gpd.GeoDataFrame) -> int:
@@ -500,23 +634,43 @@ class SpatialOps:
         return deg_per_pixel * 1.5
 
     @staticmethod
-    def get_overview_lod(gdf: gpd.GeoDataFrame, max_features: int = 3000) -> gpd.GeoDataFrame:
+    def get_overview_lod(gdf: gpd.GeoDataFrame, max_features: int = 1500, max_vertices: int = 25000) -> gpd.GeoDataFrame:
         """
         Builds a fast, representative overview of a large dataset for initial render.
         Samples features and simplifies vertices for lightweight initial loading.
         """
-        if gdf is None or gdf.empty or len(gdf) <= max_features:
+        if gdf is None or gdf.empty:
             return gdf
 
-        step = max(1, len(gdf) // max_features)
-        sampled = gdf.iloc[::step].copy()
+        feat_count = len(gdf)
+        v_count = SpatialOps.count_vertices(gdf)
+        if feat_count <= max_features and v_count <= max_vertices:
+            return gdf
 
-        geom_type = SpatialOps.get_layer_geometry_type(sampled)
-        if geom_type in ("line", "polygon", "mixed"):
-            try:
-                sampled.geometry = sampled.geometry.simplify(0.005, preserve_topology=False)
-            except Exception:
-                pass
+        # 1. Feature sampling if feature count exceeds max_features
+        if feat_count > max_features:
+            import math
+            step = math.ceil(feat_count / max_features)
+            sampled = gdf.iloc[::step].copy()
+        else:
+            sampled = gdf.copy()
+
+        # 2. Vertex simplification if vertices exceed max_vertices
+        sampled_v_count = SpatialOps.count_vertices(sampled)
+        if sampled_v_count > max_vertices:
+            geom_type = SpatialOps.get_layer_geometry_type(sampled)
+            if geom_type in ("line", "polygon", "mixed"):
+                try:
+                    b = sampled.total_bounds
+                    span = max(abs(b[2] - b[0]), abs(b[3] - b[1]))
+                    if span > 0:
+                        tol = max(1e-5, span / 800.0)
+                        simplified_geom = sampled.geometry.simplify(tol, preserve_topology=False)
+                        valid_mask = simplified_geom.notna() & (~simplified_geom.is_empty)
+                        geom_col = sampled.geometry.name
+                        sampled.loc[valid_mask, geom_col] = simplified_geom[valid_mask]
+                except Exception:
+                    pass
 
         return sampled
 
@@ -546,7 +700,15 @@ class SpatialOps:
         search_box = box(minx - dx, miny - dy, maxx + dx, maxy + dy)
 
         try:
-            indices = gdf.sindex.query(search_box, predicate="intersects")
+            if gdf.crs is not None and str(gdf.crs).upper() not in ("EPSG:4326", "OGC:CRS84", "4326"):
+                import pyproj
+                from shapely.ops import transform
+                transformer = pyproj.Transformer.from_crs("EPSG:4326", gdf.crs, always_xy=True)
+                query_geom = transform(transformer.transform, search_box)
+            else:
+                query_geom = search_box
+
+            indices = gdf.sindex.query(query_geom, predicate="intersects")
             if len(indices) == 0:
                 return gdf.iloc[0:0]
             sub_gdf = gdf.iloc[indices].copy()
@@ -556,6 +718,8 @@ class SpatialOps:
         geom_type = SpatialOps.get_layer_geometry_type(sub_gdf)
         if geom_type in ("line", "polygon", "mixed") and zoom < 16:
             tol = SpatialOps.get_viewport_lod_tolerance(zoom)
+            if gdf.crs is not None and str(gdf.crs).upper() not in ("EPSG:4326", "OGC:CRS84", "4326"):
+                tol = tol * 111319.0
             try:
                 sub_gdf.geometry = sub_gdf.geometry.simplify(tol, preserve_topology=False)
             except Exception:

@@ -214,7 +214,8 @@ class EditorTab(QWidget):
         layer_id = f"layer_{uuid.uuid4().hex[:8]}"
 
         feat_count = len(gdf) if gdf is not None else 0
-        is_large = (feat_count > 3000)
+        v_count = SpatialOps.count_vertices(gdf) if gdf is not None else 0
+        is_large = (feat_count > 1500 or v_count > 25000)
         geom_type = SpatialOps.get_layer_geometry_type(gdf)
 
         self.spatial_layers[layer_id] = {
@@ -230,7 +231,7 @@ class EditorTab(QWidget):
 
         self._is_loading = True
         if is_large:
-            init_gdf = SpatialOps.get_overview_lod(gdf, max_features=3000)
+            init_gdf = SpatialOps.get_overview_lod(gdf, max_features=1500, max_vertices=25000)
             render_geojson = SpatialOps.to_geojson_str(init_gdf)
         else:
             if raw_geojson is None and gdf is not None and not gdf.empty:
@@ -354,23 +355,34 @@ class EditorTab(QWidget):
                 w.cancel()
                 w.wait(200)
 
-    def update_spatial_gdf(self, gdf: gpd.GeoDataFrame, fit_bounds: bool = False):
+    def get_active_layer_name(self) -> str:
+        if self.active_layer_id and self.active_layer_id in self.spatial_layers:
+            return self.spatial_layers[self.active_layer_id].get("name", "Spatial Layer")
+        return os.path.basename(self.current_file) if self.current_file else "Spatial Layer"
+
+    def update_spatial_gdf(self, gdf: gpd.GeoDataFrame, fit_bounds: bool = False, new_name: str = None):
         if self.active_layer_id and self.active_layer_id in self.spatial_layers:
             self.spatial_layers[self.active_layer_id]["gdf"] = gdf
             self.spatial_layers[self.active_layer_id]["is_dirty"] = True
+            if new_name:
+                self.spatial_layers[self.active_layer_id]["name"] = new_name
             layer_name = self.spatial_layers[self.active_layer_id]["name"]
         else:
             self._fallback_gdf = gdf
-            layer_name = os.path.basename(self.current_file) if self.current_file else "Spatial Layer"
+            layer_name = new_name or (os.path.basename(self.current_file) if self.current_file else "Spatial Layer")
 
-        self._is_large_dataset = (len(gdf) > 3000) if gdf is not None else False
+        feat_count = len(gdf) if gdf is not None else 0
+        v_count = SpatialOps.count_vertices(gdf) if gdf is not None else 0
+        self._is_large_dataset = (feat_count > 1500 or v_count > 25000)
+        if self.active_layer_id and self.active_layer_id in self.spatial_layers:
+            self.spatial_layers[self.active_layer_id]["is_large"] = self._is_large_dataset
         self._is_loading = True
         self.table_panel.load_data(gdf, layer_name=layer_name, layer_id=self.layer_id)
 
         geom_type = SpatialOps.get_layer_geometry_type(gdf)
         if self.map_panel:
             if self._is_large_dataset:
-                init_gdf = SpatialOps.get_overview_lod(gdf, max_features=3000)
+                init_gdf = SpatialOps.get_overview_lod(gdf, max_features=1500, max_vertices=25000)
                 render_str = SpatialOps.to_geojson_str(init_gdf)
             else:
                 render_str = SpatialOps.to_geojson_str(gdf, indent=0)

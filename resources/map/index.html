@@ -1864,63 +1864,100 @@
                 var lastGeojsonData = null;
                 var hasFittedInitially = false;
 
+                function isSafeLatLng(ll) {
+                    if (!ll) return false;
+                    var lat = typeof ll.lat === 'number' ? ll.lat : (Array.isArray(ll) ? ll[0] : null);
+                    var lng = typeof ll.lng === 'number' ? ll.lng : (Array.isArray(ll) ? ll[1] : null);
+                    if (lat === null || lng === null) return false;
+                    if (!isFinite(lat) || !isFinite(lng)) return false;
+                    if (Math.abs(lat) > 85.06) return false;
+                    if (Math.abs(lng) > 360) return false;
+                    return true;
+                }
+
+                function isSafeBounds(b) {
+                    if (!b || typeof b.isValid !== 'function' || !b.isValid()) return false;
+                    var sw = b.getSouthWest();
+                    var ne = b.getNorthEast();
+                    if (!sw || !ne) return false;
+                    if (!isSafeLatLng(sw) || !isSafeLatLng(ne)) return false;
+                    return true;
+                }
+
                 function createLeafletLayer(layerId, name, geojsonData, color) {
                     var featureIdx = 0;
                     var indexMap = {};
 
-                    var lLayer = L.geoJSON(geojsonData, {
-                        renderer: sharedCanvas,
-                        smoothFactor: 1.0,
-                        pointToLayer: function(feature, latlng) {
-                            return L.circleMarker(latlng, {
-                                renderer: sharedCanvas,
-                                radius: 5,
-                                fillColor: color,
-                                color: '#ffffff',
-                                weight: 1.2,
-                                opacity: currentOpacity,
-                                fillOpacity: currentOpacity * 0.9
-                            });
-                        },
-                        style: function(feature) {
-                            var gtype = (feature.geometry && feature.geometry.type) || 'Polygon';
-                            var isLine = gtype.indexOf('Line') !== -1;
-                            return {
-                                renderer: sharedCanvas,
-                                color: color,
-                                weight: isLine ? 2.5 : 2,
-                                opacity: currentOpacity,
-                                fillColor: color,
-                                fillOpacity: isLine ? 0 : currentOpacity * 0.35
-                            };
-                        },
-                        onEachFeature: function(feature, layer) {
-                            var currentIdx = (feature && feature.id !== undefined && !isNaN(parseInt(feature.id, 10)))
-                                ? parseInt(feature.id, 10)
-                                : featureIdx++;
-                            indexMap[currentIdx] = layer;
-                            layer._featureIdx = currentIdx;
-                            layer._layerId = layerId;
+                    try {
+                        var lLayer = L.geoJSON(geojsonData, {
+                            renderer: sharedCanvas,
+                            smoothFactor: 1.0,
+                            filter: function(feature) {
+                                if (!feature || !feature.geometry) return false;
+                                var g = feature.geometry;
+                                if (!g.coordinates) return false;
+                                if (g.type === 'Point') {
+                                    return isSafeLatLng({ lat: g.coordinates[1], lng: g.coordinates[0] });
+                                }
+                                return true;
+                            },
+                            pointToLayer: function(feature, latlng) {
+                                if (!isSafeLatLng(latlng)) {
+                                    return L.circleMarker([0, 0], { opacity: 0, fillOpacity: 0, radius: 0 });
+                                }
+                                return L.circleMarker(latlng, {
+                                    renderer: sharedCanvas,
+                                    radius: 5,
+                                    fillColor: color,
+                                    color: '#ffffff',
+                                    weight: 1.2,
+                                    opacity: currentOpacity,
+                                    fillOpacity: currentOpacity * 0.9
+                                });
+                            },
+                            style: function(feature) {
+                                var gtype = (feature.geometry && feature.geometry.type) || 'Polygon';
+                                var isLine = gtype.indexOf('Line') !== -1;
+                                return {
+                                    renderer: sharedCanvas,
+                                    color: color,
+                                    weight: isLine ? 2.5 : 2,
+                                    opacity: currentOpacity,
+                                    fillColor: color,
+                                    fillOpacity: isLine ? 0 : currentOpacity * 0.35
+                                };
+                            },
+                            onEachFeature: function(feature, layer) {
+                                var currentIdx = (feature && feature.id !== undefined && !isNaN(parseInt(feature.id, 10)))
+                                    ? parseInt(feature.id, 10)
+                                    : featureIdx++;
+                                indexMap[currentIdx] = layer;
+                                layer._featureIdx = currentIdx;
+                                layer._layerId = layerId;
 
-                            if (layer.eachLayer) {
-                                layer.eachLayer(function(child) {
-                                    child._featureIdx = currentIdx;
-                                    child._layerId = layerId;
-                                    child.on('click', function(e) {
-                                        e.originalEvent._layerClicked = true;
-                                        handleFeatureClick(currentIdx, layerId, feature, child, e);
+                                if (layer.eachLayer) {
+                                    layer.eachLayer(function(child) {
+                                        child._featureIdx = currentIdx;
+                                        child._layerId = layerId;
+                                        child.on('click', function(e) {
+                                            e.originalEvent._layerClicked = true;
+                                            handleFeatureClick(currentIdx, layerId, feature, child, e);
+                                        });
                                     });
+                                }
+
+                                layer.on('click', function(e) {
+                                    e.originalEvent._layerClicked = true;
+                                    handleFeatureClick(currentIdx, layerId, feature, layer, e);
                                 });
                             }
+                        });
 
-                            layer.on('click', function(e) {
-                                e.originalEvent._layerClicked = true;
-                                handleFeatureClick(currentIdx, layerId, feature, layer, e);
-                            });
-                        }
-                    });
-
-                    return { leafletLayer: lLayer, indexMap: indexMap };
+                        return { leafletLayer: lLayer, indexMap: indexMap };
+                    } catch (e) {
+                        console.error("Leaflet layer creation failed:", e);
+                        return { leafletLayer: L.featureGroup(), indexMap: {} };
+                    }
                 }
 
                 function setVectorLayer(layerId, name, geojsonData, isActive, geomType, color, fitBounds, isWfs) {
@@ -1934,7 +1971,7 @@
                         prevVisible = vectorLayers[layerId].visible;
                         if (!assignedColor) assignedColor = vectorLayers[layerId].color;
                         if (vectorLayers[layerId].leafletLayer) {
-                            map.removeLayer(vectorLayers[layerId].leafletLayer);
+                            try { map.removeLayer(vectorLayers[layerId].leafletLayer); } catch(e){}
                         }
                     } else {
                         if (!assignedColor) {
@@ -1970,12 +2007,18 @@
                         }
                     }
 
-                    var res = createLeafletLayer(layerId, name, geojsonData, assignedColor);
+                    var res;
+                    try {
+                        res = createLeafletLayer(layerId, name, geojsonData, assignedColor);
+                    } catch(e) {
+                        console.error("setVectorLayer createLeafletLayer failed:", e);
+                        res = { leafletLayer: L.featureGroup(), indexMap: {} };
+                    }
                     var lGeojson = res.leafletLayer;
                     var lIndexMap = res.indexMap;
 
-                    if (prevVisible) {
-                        map.addLayer(lGeojson);
+                    if (prevVisible && lGeojson) {
+                        try { map.addLayer(lGeojson); } catch(e){ console.error("map.addLayer error:", e); }
                     }
 
                     vectorLayers[layerId] = {
@@ -2014,20 +2057,28 @@
                     if (!layerId || !vectorLayers[layerId]) return;
                     var layerObj = vectorLayers[layerId];
                     if (layerObj.leafletLayer) {
-                        map.removeLayer(layerObj.leafletLayer);
+                        try { map.removeLayer(layerObj.leafletLayer); } catch(e){}
                     }
-                    var res = createLeafletLayer(layerId, name || layerObj.name, geojsonData, layerObj.color);
+                    var res;
+                    try {
+                        res = createLeafletLayer(layerId, name || layerObj.name, geojsonData, layerObj.color);
+                    } catch(e) {
+                        console.error("updateVectorLayerData error:", e);
+                        res = { leafletLayer: L.featureGroup(), indexMap: {} };
+                    }
                     layerObj.leafletLayer = res.leafletLayer;
                     layerObj.indexMap = res.indexMap;
                     layerObj.geojsonData = geojsonData;
                     if (geomType && geomType !== 'any') {
                         layerObj.geomType = geomType;
                     }
-                    if (layerObj.visible) {
-                        map.addLayer(layerObj.leafletLayer);
-                        if (layerObj.isActive) {
-                            layerObj.leafletLayer.bringToFront();
-                        }
+                    if (layerObj.visible && layerObj.leafletLayer) {
+                        try {
+                            map.addLayer(layerObj.leafletLayer);
+                            if (layerObj.isActive) {
+                                layerObj.leafletLayer.bringToFront();
+                            }
+                        } catch(e){}
                     }
                     refreshLayerStyles(layerId);
                 }
@@ -2141,8 +2192,8 @@
                         var targetLayer = (layerId && vectorLayers[layerId]) ? vectorLayers[layerId] : (activeLayerId && vectorLayers[activeLayerId] ? vectorLayers[activeLayerId] : null);
                         if (targetLayer && targetLayer.leafletLayer && targetLayer.leafletLayer.getBounds) {
                             var b = targetLayer.leafletLayer.getBounds();
-                            if (b && b.isValid()) {
-                                map.fitBounds(b, { padding: [40, 40], maxZoom: 16 });
+                            if (isSafeBounds(b)) {
+                                try { map.fitBounds(b, { padding: [40, 40], maxZoom: 16 }); } catch(e){}
                                 return;
                             }
                         }
@@ -2152,14 +2203,14 @@
                             var l = vectorLayers[k];
                             if (l.visible && l.leafletLayer && l.leafletLayer.getBounds) {
                                 var lb = l.leafletLayer.getBounds();
-                                if (lb && lb.isValid()) {
+                                if (isSafeBounds(lb)) {
                                     allBounds.extend(lb);
                                     hasValid = true;
                                 }
                             }
                         });
-                        if (hasValid && allBounds.isValid()) {
-                            map.fitBounds(allBounds, { padding: [40, 40], maxZoom: 16 });
+                        if (hasValid && isSafeBounds(allBounds)) {
+                            try { map.fitBounds(allBounds, { padding: [40, 40], maxZoom: 16 }); } catch(e){}
                         }
                     };
                     doFit();
@@ -2175,16 +2226,16 @@
                         var l = vectorLayers[k];
                         if (l.visible && l.leafletLayer && l.leafletLayer.getBounds) {
                             var lb = l.leafletLayer.getBounds();
-                            if (lb && lb.isValid()) {
+                            if (isSafeBounds(lb)) {
                                 allBounds.extend(lb);
                                 hasValid = true;
                             }
                         }
                     });
-                    if (hasValid && allBounds.isValid()) {
-                        map.fitBounds(allBounds, { padding: [40, 40], maxZoom: 16 });
+                    if (hasValid && isSafeBounds(allBounds)) {
+                        try { map.fitBounds(allBounds, { padding: [40, 40], maxZoom: 16 }); } catch(e){}
                     } else {
-                        map.setView([39.0, 35.0], 6);
+                        try { map.setView([39.0, 35.0], 6); } catch(e){}
                     }
                 }
 
@@ -2265,12 +2316,12 @@
                     updateSelectionUI();
                     var l = layerObj.indexMap[idx];
                     if (l) {
-                        if (l.getBounds && l.getBounds().isValid()) {
-                            map.fitBounds(l.getBounds(), { maxZoom: 16, padding: [40, 40] });
-                        } else if (l.getLatLng) {
-                            map.setView(l.getLatLng(), Math.max(map.getZoom(), 13));
+                        if (l.getBounds && isSafeBounds(l.getBounds())) {
+                            try { map.fitBounds(l.getBounds(), { maxZoom: 16, padding: [40, 40] }); } catch(e){}
+                        } else if (l.getLatLng && isSafeLatLng(l.getLatLng())) {
+                            try { map.setView(l.getLatLng(), Math.max(map.getZoom(), 13)); } catch(e){}
                         }
-                        if (l.openPopup) l.openPopup();
+                        if (l.openPopup) { try { l.openPopup(); } catch(e){} }
                     }
                 }
             </script>

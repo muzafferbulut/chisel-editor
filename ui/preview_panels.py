@@ -335,6 +335,48 @@ class MapPreviewPanel(AbstractPreviewPanel):
         if self._is_loaded:
             self.web_view.page().runJavaScript("refreshMap();")
 
+    def zoom_to_extent(self, minx: float, miny: float, maxx: float, maxy: float, max_zoom: int = 17):
+        if not self._is_loaded:
+            return
+        try:
+            # If coordinates are in projected meters (abs > 180), convert to degrees using pyproj
+            if abs(minx) > 180.0 or abs(maxx) > 180.0 or abs(miny) > 90.0 or abs(maxy) > 90.0:
+                try:
+                    import pyproj
+                    transformer = pyproj.Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
+                    minx, miny = transformer.transform(minx, miny)
+                    maxx, maxy = transformer.transform(maxx, maxy)
+                except Exception:
+                    pass
+
+            s = max(-85.05, min(85.05, float(miny)))
+            n = max(-85.05, min(85.05, float(maxy)))
+            w = max(-180.0, min(180.0, float(minx)))
+            e = max(-180.0, min(180.0, float(maxx)))
+
+            if s > n:
+                s, n = n, s
+            if w > e:
+                w, e = e, w
+
+            # Ensure minimal box dimensions so Leaflet fitBounds doesn't degenerate
+            if abs(n - s) < 1e-5:
+                s -= 0.001
+                n += 0.001
+            if abs(e - w) < 1e-5:
+                w -= 0.001
+                e += 0.001
+
+            js_code = (
+                f"if (typeof map !== 'undefined' && map) {{ "
+                f"try {{ map.fitBounds([[{s:.6f}, {w:.6f}], [{n:.6f}, {e:.6f}]], {{ maxZoom: {max_zoom}, padding: [50, 50], animate: true }}); }} "
+                f"catch(err) {{ console.error('fitBounds failed:', err); }} "
+                f"}}"
+            )
+            self.web_view.page().runJavaScript(js_code)
+        except Exception as ex:
+            print(f"zoom_to_extent exception: {ex}")
+
     def capture_snapshot(self):
         if not self._is_loaded:
             return

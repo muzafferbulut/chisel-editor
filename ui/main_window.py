@@ -56,6 +56,8 @@ class MainWindow(QMainWindow):
         else:
             self._current_folder = os.getcwd()
 
+        self.topology_dialog = None
+
         self._init_ui()
         self._create_menus()
         self._restore_session_files()
@@ -143,8 +145,8 @@ class MainWindow(QMainWindow):
         self.btn_status_crs.setFixedHeight(18)
         self.btn_status_crs.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_status_crs.setStyleSheet(status_btn_style)
-        self.btn_status_crs.setToolTip("Click to Set or Reproject CRS")
-        self.btn_status_crs.clicked.connect(self._set_crs)
+        self.btn_status_crs.setToolTip("Click for Coordinate Reference System (CRS) Options")
+        self.btn_status_crs.clicked.connect(self._show_crs_menu)
         self.btn_status_crs.hide()
         self.status_bar.addPermanentWidget(self.btn_status_crs)
 
@@ -291,7 +293,7 @@ class MainWindow(QMainWindow):
         # --- GIS / Spatial Menu ---
         gis_menu: QMenu = menu_bar.addMenu("GIS")
 
-        act_export = QAction("Export GIS Data...", self)
+        act_export = QAction("💾 Export...", self)
         act_export.triggered.connect(self._export_spatial_data)
 
         # Global shortcuts for spatial tools
@@ -325,22 +327,31 @@ class MainWindow(QMainWindow):
         gis_menu.addSeparator()
 
         # Geoprocessing Tools
-        act_buffer = QAction("⭕ Buffer Geometries...", self)
+        act_buffer = QAction("⭕ Buffer...", self)
         act_buffer.triggered.connect(self._buffer_geometries)
 
-        act_dissolve = QAction("🔗 Dissolve Geometries...", self)
+        act_dissolve = QAction("🔗 Dissolve...", self)
         act_dissolve.triggered.connect(self._dissolve_geometries)
 
-        act_simplify = QAction("✂️ Simplify Geometries (Douglas-Peucker)...", self)
+        act_simplify = QAction("✂️ Simplify...", self)
         act_simplify.triggered.connect(self._simplify_geometries)
 
-        act_validate = QAction("🛡️ Validate & Repair Geometries", self)
-        act_validate.triggered.connect(self._validate_repair_geometries)
+        act_topology = QAction("📐 Topology Checker...", self)
+        act_topology.triggered.connect(self._show_topology_checker)
+
+        act_validate = QAction("🛡️ Validate Geometries", self)
+        act_validate.triggered.connect(self._validate_geometries)
+
+        act_repair = QAction("🔧 Repair Geometries", self)
+        act_repair.triggered.connect(self._repair_geometries)
 
         gis_menu.addAction(act_buffer)
         gis_menu.addAction(act_dissolve)
         gis_menu.addAction(act_simplify)
+        gis_menu.addSeparator()
+        gis_menu.addAction(act_topology)
         gis_menu.addAction(act_validate)
+        gis_menu.addAction(act_repair)
         gis_menu.addSeparator()
 
         act_set_crs = QAction("🌐 Set CRS...", self)
@@ -555,8 +566,8 @@ class MainWindow(QMainWindow):
 
     def _open_file(self):
         filter_str = (
-            "All Supported Files (*.geojson *.shp *.kml *.gpkg *.fgb *.xlsx *.xls *.docx *.pdf *.csv *.txt *.md *.py *.json);;"
-            "Spatial Layers (*.geojson *.shp *.kml *.gpkg *.fgb);;"
+            "All Supported Files (*.geojson *.shp *.dbf *.kml *.kmz *.gpkg *.fgb *.xlsx *.xls *.docx *.pdf *.csv *.txt *.md *.py *.json);;"
+            "Spatial Layers (*.geojson *.shp *.dbf *.kml *.kmz *.gpkg *.fgb);;"
             "Spreadsheets (*.xlsx *.xls *.csv);;"
             "Word Documents (*.docx);;"
             "PDF Documents (*.pdf);;"
@@ -570,6 +581,13 @@ class MainWindow(QMainWindow):
             self._load_file(file_path)
 
     def _load_file(self, file_path: str, **kwargs):
+        # Auto-redirect shapefile sidecar files (.shx, .dbf, .prj, .cpg) to .shp if present
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext in ('.shx', '.dbf', '.prj', '.cpg', '.qix', '.qmd'):
+            candidate_shp = os.path.splitext(file_path)[0] + '.shp'
+            if os.path.exists(candidate_shp):
+                file_path = candidate_shp
+
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
             if tab and hasattr(tab, "has_file") and tab.has_file(file_path):
@@ -610,34 +628,16 @@ class MainWindow(QMainWindow):
             return
 
         if is_spatial:
-            spatial_tab = self._find_spatial_tab()
-            if spatial_tab is not None:
-                # Add layer to existing single spatial map tab
-                spatial_tab.add_spatial_layer(file_path, gdf)
-                idx = self.tab_widget.indexOf(spatial_tab)
-                self.tab_widget.setCurrentIndex(idx)
-                self._update_tab_title(spatial_tab)
-                self._on_tab_changed(idx)
-                self._save_session_state()
-                QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(spatial_tab.layer_id))
-                ToastNotification.show_toast(self, f"Added to map: {os.path.basename(file_path)}", "info")
-                return
-            else:
-                curr = self._get_current_tab()
-                if curr and curr.current_file is None and not curr.is_dirty and not curr.is_spatial:
-                    tab = curr
-                else:
-                    tab = self._add_new_tab()
-
-                tab.current_file = file_path
-                tab.is_dirty = False
-                tab.configure_for_file_type("Spatial Layer", True, content, gdf=gdf)
-                self._update_tab_title(tab)
-                self._on_tab_changed(self.tab_widget.currentIndex())
-                self._save_session_state()
-                QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(tab.layer_id))
-                ToastNotification.show_toast(self, f"Opened: {os.path.basename(file_path)}", "info")
-                return
+            spatial_tab = self._ensure_spatial_tab()
+            spatial_tab.add_spatial_layer(file_path, gdf)
+            idx = self.tab_widget.indexOf(spatial_tab)
+            self.tab_widget.setCurrentIndex(idx)
+            self._update_tab_title(spatial_tab)
+            self._on_tab_changed(idx)
+            self._save_session_state()
+            QTimer.singleShot(150, lambda: self.shared_map_panel.fit_layer_bounds(spatial_tab.layer_id))
+            ToastNotification.show_toast(self, f"Opened: {os.path.basename(file_path)}", "info")
+            return
 
         # Non-spatial documents / code
         tab = self._get_current_tab()
@@ -803,6 +803,7 @@ class MainWindow(QMainWindow):
             self.tab_widget.setCurrentWidget(spatial_tab)
             if not spatial_tab.is_spatial:
                 spatial_tab.is_spatial = True
+            spatial_tab.attach_map_panel(self.shared_map_panel)
             spatial_tab.set_view_mode("map")
             return spatial_tab
 
@@ -814,6 +815,7 @@ class MainWindow(QMainWindow):
 
         tab.is_spatial = True
         tab.file_type = "Spatial Layer"
+        tab.attach_map_panel(self.shared_map_panel)
         tab.set_view_mode("map")
         self._update_tab_title(tab)
         self.tab_widget.setCurrentWidget(tab)
@@ -924,14 +926,77 @@ class MainWindow(QMainWindow):
             return
 
         if op_name in ("buffer", "dissolve", "calc_geometry", "reproject", "set_crs", "centroids", "bounding_boxes", "convex_hull"):
-            tab.update_spatial_gdf(result)
-            ToastNotification.show_toast(self, f"✅ {op_name.title()} operation completed!", "info")
+            if op_name == "reproject":
+                as_new_layer = getattr(self.spatial_worker, "params", {}).get("as_new_layer", False)
+                target_crs = getattr(self.spatial_worker, "params", {}).get("target_crs", "")
+                new_crs = str(result.crs) if result is not None and result.crs else target_crs or "EPSG:4326"
 
-        elif op_name == "validate_repair":
+                if as_new_layer:
+                    orig_name = tab.get_active_layer_name() if hasattr(tab, "get_active_layer_name") else "Layer"
+                    new_name = f"{orig_name} [{new_crs}]"
+                    new_id = tab.add_spatial_layer(file_path=None, gdf=result, custom_name=new_name)
+                    self._update_tab_title(tab)
+                    self.shared_map_panel.fit_layer_bounds(new_id)
+                else:
+                    orig_name = tab.get_active_layer_name() if hasattr(tab, "get_active_layer_name") else ""
+                    import re
+                    clean_orig = re.sub(r'\s*\[EPSG:[0-9]+\]', '', orig_name)
+                    updated_name = f"{clean_orig} [{new_crs}]"
+                    tab.update_spatial_gdf(result, fit_bounds=True, new_name=updated_name)
+                    self._update_tab_title(tab)
+
+                self.btn_status_crs.setText(f"🌐 {new_crs}")
+                self.btn_status_crs.show()
+                ToastNotification.show_toast(self, f"✅ Reprojected to {new_crs} successfully!", "info")
+
+            elif op_name == "set_crs":
+                new_crs = str(result.crs) if result is not None and result.crs else "EPSG:4326"
+                tab.update_spatial_gdf(result, fit_bounds=True)
+                self.btn_status_crs.setText(f"🌐 {new_crs}")
+                self.btn_status_crs.show()
+                ToastNotification.show_toast(self, f"✅ CRS set to {new_crs}!", "info")
+
+            else:
+                tab.update_spatial_gdf(result)
+                ToastNotification.show_toast(self, f"✅ {op_name.title()} operation completed!", "info")
+
+        elif op_name == "validate":
+            val_info = result
+            invalid_cnt = val_info.get("invalid_count", 0)
+            total_cnt = val_info.get("total_features", 0)
+            empty_cnt = val_info.get("empty_count", 0)
+            if invalid_cnt == 0:
+                msg = f"All {total_cnt:,} geometries are valid!"
+                if empty_cnt > 0:
+                    msg += f" ({empty_cnt} empty/null features)"
+                ToastNotification.show_toast(self, f"✅ {msg}", "success")
+                QMessageBox.information(self, "Geometry Validation", msg)
+            else:
+                reasons = val_info.get("reasons", [])
+                reasons_preview = "\n".join(f"• {r}" for r in reasons[:8])
+                if len(reasons) > 8:
+                    reasons_preview += f"\n...and {len(reasons) - 8} more."
+                ToastNotification.show_toast(self, f"⚠️ Found {invalid_cnt:,} invalid geometries!", "warning")
+                QMessageBox.warning(
+                    self,
+                    "Geometry Validation",
+                    f"Validation Result:\n\n"
+                    f"• Total Features: {total_cnt:,}\n"
+                    f"• Valid Geometries: {val_info.get('valid_count', 0):,}\n"
+                    f"• Invalid Geometries: {invalid_cnt:,}\n"
+                    f"• Empty/Null Geometries: {empty_cnt:,}\n\n"
+                    f"Sample Issues:\n{reasons_preview}\n\n"
+                    f"You can use 'GIS ➔ Repair Geometries' to automatically fix invalid geometries."
+                )
+
+        elif op_name in ("repair", "validate_repair"):
             repaired_gdf, fixed_count = result
             tab.update_spatial_gdf(repaired_gdf)
-            msg = f"{fixed_count} invalid geometries repaired." if fixed_count > 0 else "All geometries are valid!"
-            ToastNotification.show_toast(self, msg, "info")
+            if fixed_count > 0:
+                ToastNotification.show_toast(self, f"🔧 {fixed_count:,} invalid geometries repaired!", "success")
+                QMessageBox.information(self, "Geometry Repair", f"Successfully repaired {fixed_count:,} invalid geometries using MakeValid.")
+            else:
+                ToastNotification.show_toast(self, "All geometries are already valid. No repairs needed.", "info")
 
         elif op_name == "simplify":
             simplified_gdf, orig_v, simp_v = result
@@ -980,29 +1045,89 @@ class MainWindow(QMainWindow):
         if dlg.exec():
             self._run_spatial_worker("simplify", tab._current_gdf, tolerance=dlg.tolerance, preserve_topology=dlg.preserve_topology)
 
-    def _validate_repair_geometries(self):
+    def _show_topology_checker(self):
         tab = self._get_current_tab()
         if not tab or not tab.is_spatial or tab._current_gdf is None or tab._current_gdf.empty:
+            ToastNotification.show_toast(self, "No active spatial layer for topology check", "warning")
             return
-        self._run_spatial_worker("validate_repair", tab._current_gdf)
+
+        from ui.topology_dialog import TopologyCheckerDialog
+        layer_name = os.path.basename(tab.current_file) if tab.current_file else "Spatial Layer"
+
+        def _on_topology_layer_updated(new_gdf):
+            tab.update_spatial_gdf(new_gdf)
+
+        # If already open, update to active layer and bring to focus without blocking main window
+        if hasattr(self, "topology_dialog") and self.topology_dialog is not None and self.topology_dialog.isVisible():
+            self.topology_dialog.update_layer(tab._current_gdf, layer_name, _on_topology_layer_updated)
+            self.topology_dialog.raise_()
+            self.topology_dialog.activateWindow()
+            return
+
+        self.topology_dialog = TopologyCheckerDialog(
+            gdf=tab._current_gdf,
+            layer_name=layer_name,
+            map_panel=self.shared_map_panel,
+            on_layer_updated=_on_topology_layer_updated,
+            parent=self
+        )
+        self.topology_dialog.show()
+        self.topology_dialog.raise_()
+        self.topology_dialog.activateWindow()
+
+    def _validate_geometries(self):
+        tab = self._get_current_tab()
+        if not tab or not tab.is_spatial or tab._current_gdf is None or tab._current_gdf.empty:
+            ToastNotification.show_toast(self, "No active spatial layer", "warning")
+            return
+        self._run_spatial_worker("validate", tab._current_gdf)
+
+    def _repair_geometries(self):
+        tab = self._get_current_tab()
+        if not tab or not tab.is_spatial or tab._current_gdf is None or tab._current_gdf.empty:
+            ToastNotification.show_toast(self, "No active spatial layer", "warning")
+            return
+        self._run_spatial_worker("repair", tab._current_gdf)
+
+    def _validate_repair_geometries(self):
+        self._repair_geometries()
+
+    def _show_crs_menu(self):
+        tab = self._get_current_tab()
+        if not tab or not tab.is_spatial or tab._current_gdf is None:
+            ToastNotification.show_toast(self, "No active spatial layer", "warning")
+            return
+        curr_crs = str(tab._current_gdf.crs) if tab._current_gdf.crs else "Undefined"
+        menu = QMenu(self)
+        menu.addSection(f"🌐 Layer CRS: {curr_crs}")
+        act_reproj = menu.addAction("🔄 Reproject Layer (Transform Coordinates)...")
+        act_reproj.triggered.connect(self._reproject_crs)
+        act_set = menu.addAction("⚙️ Set Layer CRS (Override Definition Only)...")
+        act_set.triggered.connect(self._set_crs)
+        menu.addSeparator()
+        act_info = menu.addAction("ℹ️ Layer CRS & Extent Information...")
+        act_info.triggered.connect(self._show_layer_info)
+        menu.exec(QCursor.pos())
 
     def _set_crs(self):
         tab = self._get_current_tab()
         if not tab or not tab.is_spatial or tab._current_gdf is None or tab._current_gdf.empty:
+            ToastNotification.show_toast(self, "No active spatial layer to set CRS", "warning")
             return
         curr_crs = str(tab._current_gdf.crs) if tab._current_gdf.crs else "None"
-        dlg = CRSDialog("Set Coordinate Reference System (CRS)", curr_crs, self)
+        dlg = CRSDialog("Set Layer CRS (Override Definition)", curr_crs, self, is_reproject=False)
         if dlg.exec() and dlg.selected_epsg:
             self._run_spatial_worker("set_crs", tab._current_gdf, new_crs=dlg.selected_epsg)
 
     def _reproject_crs(self):
         tab = self._get_current_tab()
         if not tab or not tab.is_spatial or tab._current_gdf is None or tab._current_gdf.empty:
+            ToastNotification.show_toast(self, "No active spatial layer to reproject", "warning")
             return
         curr_crs = str(tab._current_gdf.crs) if tab._current_gdf.crs else "None"
-        dlg = CRSDialog("Reproject Coordinate Reference System", curr_crs, self)
+        dlg = CRSDialog("Reproject Layer (Transform Coordinates)", curr_crs, self, is_reproject=True)
         if dlg.exec() and dlg.selected_epsg:
-            self._run_spatial_worker("reproject", tab._current_gdf, target_crs=dlg.selected_epsg)
+            self._run_spatial_worker("reproject", tab._current_gdf, target_crs=dlg.selected_epsg, as_new_layer=dlg.as_new_layer)
 
     def _export_spatial_data(self):
         tab = self._get_current_tab()

@@ -83,12 +83,64 @@ class SpatialHandler(BaseHandler):
 
         return None
 
+    @staticmethod
+    def _ensure_sensible_crs(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        if hasattr(gdf, "crs") and gdf.crs is None and not gdf.empty and gdf.geometry.notna().any():
+            try:
+                b = gdf.total_bounds
+                if abs(b[0]) <= 180.0 and abs(b[2]) <= 180.0 and abs(b[1]) <= 90.0 and abs(b[3]) <= 90.0:
+                    return gdf.set_crs("EPSG:4326")
+                else:
+                    return gdf.set_crs("EPSG:3857")
+            except Exception:
+                return gdf.set_crs("EPSG:4326")
+        elif hasattr(gdf, "crs") and gdf.crs is None:
+            return gdf.set_crs("EPSG:4326")
+        return gdf
+
+    @staticmethod
+    def _read_with_encoding_fallback(file_path: str, layer: str = None) -> gpd.GeoDataFrame:
+        """
+        Attempts to read a spatial dataset with pyogrio and fiona across common encodings.
+        Resolves UnicodeDecodeError when .cpg header and DBF encoding mismatch (e.g. Turkish CP1254).
+        """
+        encodings = [None, 'cp1254', 'iso-8859-9', 'latin1', 'cp1252', 'utf-8']
+        last_error = None
+
+        # 1. Try pyogrio
+        for enc in encodings:
+            try:
+                kwargs = {'engine': 'pyogrio'}
+                if enc:
+                    kwargs['encoding'] = enc
+                if layer:
+                    kwargs['layer'] = layer
+                return gpd.read_file(file_path, **kwargs)
+            except Exception as e:
+                last_error = e
+
+        # 2. Try fiona fallback
+        for enc in encodings:
+            try:
+                kwargs = {'engine': 'fiona'}
+                if enc:
+                    kwargs['encoding'] = enc
+                if layer:
+                    kwargs['layer'] = layer
+                return gpd.read_file(file_path, **kwargs)
+            except Exception as e:
+                last_error = e
+
+        if last_error:
+            raise last_error
+        raise RuntimeError(f"Unable to read spatial data from {file_path}")
+
     def read_gdf(self, file_path: str, **kwargs) -> gpd.GeoDataFrame:
         try:
             if file_path.lower().endswith(".csv"):
                 csv_gdf = self.read_csv_spatial(file_path)
                 if csv_gdf is not None:
-                    return csv_gdf
+                    return self._ensure_sensible_crs(csv_gdf)
                 # If no spatial columns, fallback to empty geometry GeoDataFrame
                 import csv
                 try:
@@ -102,9 +154,7 @@ class SpatialHandler(BaseHandler):
                 import tempfile
                 try:
                     gdf = gpd.read_file(file_path)
-                    if hasattr(gdf, "crs") and gdf.crs is None:
-                        gdf = gdf.set_crs("EPSG:4326")
-                    return gdf
+                    return self._ensure_sensible_crs(gdf)
                 except Exception:
                     with zipfile.ZipFile(file_path, 'r') as zf:
                         kml_members = [m for m in zf.namelist() if m.lower().endswith('.kml')]
@@ -112,17 +162,13 @@ class SpatialHandler(BaseHandler):
                             with tempfile.TemporaryDirectory() as tmp_dir:
                                 zf.extract(kml_members[0], tmp_dir)
                                 extracted_kml = os.path.join(tmp_dir, kml_members[0])
-                                gdf = gpd.read_file(extracted_kml)
-                                if hasattr(gdf, "crs") and gdf.crs is None:
-                                    gdf = gdf.set_crs("EPSG:4326")
-                                return gdf
+                                gdf = self._read_with_encoding_fallback(extracted_kml)
+                                return self._ensure_sensible_crs(gdf)
 
             if file_path.lower().endswith(".dxf"):
                 try:
                     gdf = gpd.read_file(file_path)
-                    if hasattr(gdf, "crs") and gdf.crs is None:
-                        gdf = gdf.set_crs("EPSG:4326")
-                    return gdf
+                    return self._ensure_sensible_crs(gdf)
                 except Exception as e:
                     raise RuntimeError(f"Failed to read DXF file: {str(e)}")
 
@@ -133,18 +179,21 @@ class SpatialHandler(BaseHandler):
                 import pyogrio
                 layers = [l[0] for l in pyogrio.list_layers(file_path)]
             except Exception:
-                layers = fiona.listlayers(file_path)
+                try:
+                    layers = fiona.listlayers(file_path)
+                except Exception:
+                    layers = []
 
             if len(layers) > 1 and not (merge_all or layer_name):
                 raise MultipleLayersError(layers)
 
-            if merge_all:
+            if merge_all and len(layers) > 1:
                 gdfs = []
                 for l in layers:
                     try:
-                        lgdf = gpd.read_file(file_path, layer=l, engine="pyogrio")
+                        lgdf = self._read_with_encoding_fallback(file_path, layer=l)
                     except Exception:
-                        lgdf = gpd.read_file(file_path, layer=l)
+                        lgdf = None
                     if lgdf is not None and not lgdf.empty:
                         gdfs.append(lgdf)
 
@@ -167,20 +216,11 @@ class SpatialHandler(BaseHandler):
                     geom_name = gdfs[0].geometry.name if hasattr(gdfs[0], 'geometry') and gdfs[0].geometry.name in concat_df.columns else 'geometry'
                     gdf = gpd.GeoDataFrame(concat_df, geometry=geom_name, crs=base_crs)
             elif layer_name:
-                try:
-                    gdf = gpd.read_file(file_path, layer=layer_name, engine="pyogrio")
-                except Exception:
-                    gdf = gpd.read_file(file_path, layer=layer_name)
+                gdf = self._read_with_encoding_fallback(file_path, layer=layer_name)
             else:
-                try:
-                    gdf = gpd.read_file(file_path, engine="pyogrio")
-                except Exception:
-                    gdf = gpd.read_file(file_path)
+                gdf = self._read_with_encoding_fallback(file_path)
 
-            if hasattr(gdf, "crs") and gdf.crs is None:
-                gdf = gdf.set_crs("EPSG:4326")
-
-            return gdf
+            return self._ensure_sensible_crs(gdf)
         except MultipleLayersError:
             raise
         except Exception as e:

@@ -81,11 +81,12 @@ class CRSDialog(QDialog):
         ("EPSG:27700", "EPSG:27700 - British National Grid (UK)")
     ]
 
-    def __init__(self, title: str, current_crs: str = None, parent=None):
+    def __init__(self, title: str, current_crs: str = None, parent=None, is_reproject: bool = True):
         super().__init__(parent)
         self.selected_epsg = None
+        self.is_reproject = is_reproject
         self.setWindowTitle(title)
-        self.resize(460, 240)
+        self.resize(480, 280)
         self.setModal(True)
         self._setup_ui(current_crs)
 
@@ -94,8 +95,17 @@ class CRSDialog(QDialog):
         layout.setSpacing(12)
         layout.setContentsMargins(20, 20, 20, 20)
 
+        desc_text = (
+            "Transforms geographic/projected coordinates into target CRS (QGIS-style on-the-fly rendering)."
+            if self.is_reproject else
+            "Overrides layer CRS metadata definition without modifying geometry coordinates."
+        )
+        lbl_desc = QLabel(f"<span style='color:#888888; font-size:11px;'>{desc_text}</span>")
+        lbl_desc.setWordWrap(True)
+        layout.addWidget(lbl_desc)
+
         if current_crs:
-            lbl_current = QLabel(f"<b>Current CRS:</b> <code style='color:#00a2ff'>{current_crs}</code>")
+            lbl_current = QLabel(f"<b>Current Layer CRS:</b> <code style='color:#00a2ff'>{current_crs}</code>")
             layout.addWidget(lbl_current)
 
         layout.addWidget(QLabel("<b>Quick Preset:</b>"))
@@ -109,9 +119,16 @@ class CRSDialog(QDialog):
         input_layout = QHBoxLayout()
         input_layout.addWidget(QLabel("<b>Target EPSG Code:</b>"))
         self.epsg_input = QLineEdit()
-        self.epsg_input.setPlaceholderText("e.g. 4326 or EPSG:3857")
+        self.epsg_input.setPlaceholderText("e.g. 4326, 3857, or 5254")
         input_layout.addWidget(self.epsg_input)
         layout.addLayout(input_layout)
+
+        if self.is_reproject:
+            self.chk_new_layer = QCheckBox("Add as new layer (Keep original layer intact)")
+            self.chk_new_layer.setChecked(False)
+            layout.addWidget(self.chk_new_layer)
+        else:
+            self.chk_new_layer = None
 
         btn_layout = QHBoxLayout()
         self.btn_cancel = QPushButton("Cancel")
@@ -124,6 +141,10 @@ class CRSDialog(QDialog):
         btn_layout.addWidget(self.btn_apply)
 
         layout.addLayout(btn_layout)
+
+    @property
+    def as_new_layer(self) -> bool:
+        return bool(self.chk_new_layer and self.chk_new_layer.isChecked())
 
     def _on_preset_changed(self, index):
         val = self.preset_combo.currentData()
@@ -139,7 +160,7 @@ class CRSDialog(QDialog):
             self.selected_epsg = text.upper()
             self.accept()
         else:
-            QMessageBox.warning(self, "Invalid Input", "Please enter or select a valid EPSG code (e.g. 4326).")
+            QMessageBox.warning(self, "Invalid Input", "Please enter or select a valid EPSG code (e.g. 4326 or EPSG:3857).")
 
 
 class BufferDialog(QDialog):

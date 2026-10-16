@@ -9,7 +9,7 @@ from .pdf import PdfHandler
 class HandlerFactory:
 
     SPATIAL_EXTENSIONS = {
-        '.geojson', '.gpkg', '.shp', '.kml', '.kmz',
+        '.geojson', '.gpkg', '.shp', '.dbf', '.kml', '.kmz',
         '.fgb', '.gpx', '.geojsonseq', '.topojson', '.dxf'
     }
 

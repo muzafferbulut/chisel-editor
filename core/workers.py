@@ -118,6 +118,14 @@ class SpatialOpWorker(QThread):
                 res = SpatialOps.set_crs_gdf(self.gdf, new_crs)
                 self.finished.emit(self.op_name, res, "")
 
+            elif self.op_name == "validate":
+                res = SpatialOps.validate_geometries(self.gdf)
+                self.finished.emit(self.op_name, res, "")
+
+            elif self.op_name == "repair":
+                res, fixed_count = SpatialOps.repair_geometries(self.gdf)
+                self.finished.emit(self.op_name, (res, fixed_count), "")
+
             elif self.op_name == "validate_repair":
                 res, fixed_count = SpatialOps.validate_and_repair(self.gdf)
                 self.finished.emit(self.op_name, (res, fixed_count), "")
@@ -184,3 +192,52 @@ class ConvertWorker(QThread):
             self.finished.emit(self.source_path, out_path, "")
         except Exception as e:
             self.finished.emit(self.source_path, "", str(e))
+
+
+class TopologyWorker(QThread):
+    check_finished = pyqtSignal(object, str)        # (TopologyReport, error_msg)
+    repair_finished = pyqtSignal(object, int, str)  # (repaired_gdf, fixed_count, error_msg)
+
+    def __init__(self, mode: str, gdf: gpd.GeoDataFrame, **params):
+        super().__init__()
+        self.mode = mode  # "check", "fix_all", "fix_single"
+        self.gdf = gdf
+        self.params = params
+
+    def run(self):
+        try:
+            from core.topology_engine import TopologyEngine
+            if self.mode == "check":
+                configured_rules = self.params.get("configured_rules")
+                if configured_rules:
+                    report = TopologyEngine.run_configured_rules(self.gdf, configured_rules)
+                else:
+                    rules = self.params.get("enabled_rules")
+                    snap_tol = self.params.get("snap_tolerance", 0.0001)
+                    min_len = self.params.get("min_length", 0.0001)
+                    min_area = self.params.get("min_area", 1e-7)
+                    sliver_thin = self.params.get("sliver_thinness", 0.03)
+                    report = TopologyEngine.run_checks(
+                        self.gdf,
+                        enabled_rules=rules,
+                        snap_tolerance=snap_tol,
+                        min_length=min_len,
+                        min_area=min_area,
+                        sliver_thinness=sliver_thin
+                    )
+                self.check_finished.emit(report, "")
+            elif self.mode == "fix_all":
+                report = self.params.get("report")
+                repaired_gdf, count = TopologyEngine.fix_all(self.gdf, report)
+                self.repair_finished.emit(repaired_gdf, count, "")
+            elif self.mode == "fix_single":
+                error = self.params.get("error")
+                repaired_gdf, ok = TopologyEngine.fix_single_error(self.gdf, error)
+                self.repair_finished.emit(repaired_gdf, 1 if ok else 0, "")
+            else:
+                self.check_finished.emit(None, f"Unknown mode: {self.mode}")
+        except Exception as e:
+            if self.mode == "check":
+                self.check_finished.emit(None, str(e))
+            else:
+                self.repair_finished.emit(None, 0, str(e))
