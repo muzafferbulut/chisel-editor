@@ -389,11 +389,21 @@ class MapPreviewPanel(AbstractPreviewPanel):
         if not self._is_loaded:
             return
         try:
-            esc_geom = json.dumps(geojson_geom) if geojson_geom else "null"
-            esc_bounds = json.dumps(bounds_obj) if bounds_obj else "null"
+            def _json_default(obj):
+                import numpy as np
+                if isinstance(obj, (np.integer, int)):
+                    return int(obj)
+                elif isinstance(obj, (np.floating, float)):
+                    return float(obj)
+                elif isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                return str(obj)
+
+            esc_geom = json.dumps(geojson_geom, default=_json_default) if geojson_geom else "null"
+            esc_bounds = json.dumps(bounds_obj, default=_json_default) if bounds_obj else "null"
             esc_title = json.dumps(title) if title else "null"
             esc_desc = json.dumps(description) if description else "null"
-            esc_parents = json.dumps(parent_indices) if parent_indices else "[]"
+            esc_parents = json.dumps([int(x) for x in parent_indices] if parent_indices else [], default=_json_default)
             esc_layer_id = json.dumps(parent_layer_id) if parent_layer_id else "null"
 
             js_code = f"showTopologyErrorFocus({esc_geom}, {esc_bounds}, {esc_title}, {esc_desc}, {esc_parents}, {esc_layer_id});"

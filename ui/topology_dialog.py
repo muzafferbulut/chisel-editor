@@ -1,14 +1,15 @@
 import os
+import json
 from typing import Callable, Optional, Dict, List, Tuple
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QCheckBox, QDoubleSpinBox, QGroupBox,
     QProgressBar, QSplitter, QWidget, QFileDialog, QMessageBox, QAbstractItemView,
-    QComboBox, QFrame
+    QComboBox, QFrame, QLineEdit
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QBrush, QFont
+from PyQt6.QtGui import QColor, QBrush, QFont, QIcon
 
 import geopandas as gpd
 from shapely.geometry import Point
@@ -18,6 +19,8 @@ from core.topology_engine import (
     ConfiguredRule, TopologyRuleCode
 )
 from core.workers import TopologyWorker
+from core.theme import ThemeManager
+from ui.icons import get_lucide_icon
 from ui.toast import ToastNotification
 
 
@@ -35,7 +38,6 @@ def get_layer_crs_unit_info(gdf: gpd.GeoDataFrame) -> Tuple[str, str, str, bool]
         elif any(k in str(crs).upper() for k in ["4326", "WGS 84", "WGS84", "CRS84", "GEOGRAPHIC"]):
             is_degree = True
     else:
-        # Check coordinate magnitudes to infer geographic vs projected
         b = gdf.total_bounds
         if abs(b[0]) <= 180.0 and abs(b[2]) <= 180.0 and abs(b[1]) <= 90.0 and abs(b[3]) <= 90.0:
             is_degree = True
@@ -69,11 +71,12 @@ class AddRuleDialog(QDialog):
         self.area_unit = area_unit
         self.is_degree = is_degree
 
-        self.setWindowTitle("➕ Add Topology Validation Rule")
+        self.setWindowTitle("Add Topology Validation Rule")
         self.setModal(True)
-        self.resize(540, 420)
+        self.resize(540, 440)
 
         self._setup_ui()
+        self.apply_theme()
         self._on_rule_selected(0)
 
     def _setup_ui(self):
@@ -82,36 +85,26 @@ class AddRuleDialog(QDialog):
         layout.setContentsMargins(18, 18, 18, 18)
 
         # Header Info Banner
-        info_banner = QFrame()
-        info_banner.setStyleSheet(
-            "background-color: rgba(0, 162, 255, 0.08); "
-            "border: 1px solid rgba(0, 162, 255, 0.3); "
-            "border-radius: 6px; padding: 6px;"
-        )
-        info_layout = QVBoxLayout(info_banner)
-        info_layout.setContentsMargins(8, 6, 8, 6)
+        self.info_banner = QFrame()
+        info_layout = QVBoxLayout(self.info_banner)
+        info_layout.setContentsMargins(12, 10, 12, 10)
         info_layout.setSpacing(4)
 
-        lbl_layer_crs = QLabel(
-            f"<b>Active CRS:</b> <code>{self.crs_str}</code> &nbsp;|&nbsp; "
-            f"<b>Target Geometry:</b> <b>{self.geom_type.upper()}</b>"
-        )
+        lbl_layer_crs = QLabel(f"<b>Target Layer Projection:</b> {self.crs_str}")
         lbl_units = QLabel(
-            f"<b>Input Distance Unit:</b> <span style='color:#00a2ff;'><b>{self.linear_unit}</b></span> &nbsp;|&nbsp; "
-            f"<b>Area Unit:</b> <span style='color:#00a2ff;'><b>{self.area_unit}</b></span>"
+            f"<b>Distance Unit:</b> <span style='font-weight:600;'>{self.linear_unit}</span> &nbsp;|&nbsp; "
+            f"<b>Area Unit:</b> <span style='font-weight:600;'>{self.area_unit}</span>"
         )
         info_layout.addWidget(lbl_layer_crs)
         info_layout.addWidget(lbl_units)
-        layout.addWidget(info_banner)
+        layout.addWidget(self.info_banner)
 
         # Rule Selection Section
-        grp_rule = QGroupBox("Select Topology Rule")
-        rule_layout = QVBoxLayout(grp_rule)
+        self.grp_rule = QGroupBox("Select Topology Rule")
+        rule_layout = QVBoxLayout(self.grp_rule)
         rule_layout.setSpacing(8)
 
         self.cmb_rules = QComboBox()
-        self.cmb_rules.setStyleSheet("font-weight: bold; padding: 5px;")
-
         self.applicable_rules = TopologyEngine.get_applicable_rules(self.geom_type)
         for rule in self.applicable_rules:
             self.cmb_rules.addItem(rule.name, rule.code)
@@ -121,16 +114,16 @@ class AddRuleDialog(QDialog):
 
         self.lbl_rule_desc = QLabel()
         self.lbl_rule_desc.setWordWrap(True)
-        self.lbl_rule_desc.setStyleSheet("color: #7f8c8d; font-size: 11px;")
+        self.lbl_rule_desc.setStyleSheet("font-size: 11px;")
         rule_layout.addWidget(self.lbl_rule_desc)
-        layout.addWidget(grp_rule)
+        layout.addWidget(self.grp_rule)
 
         # Dynamic Parameters Section
         self.grp_params = QGroupBox(f"Rule Parameters (Specified in {self.linear_unit})")
         self.params_layout = QVBoxLayout(self.grp_params)
         self.params_layout.setSpacing(10)
 
-        # 1. Tolerance input (for Point Duplicates, Line Dangles)
+        # 1. Tolerance input (for Point Duplicates, Line Dangles, Line Duplicate Nodes)
         self.wgt_tolerance = QWidget()
         tol_layout = QHBoxLayout(self.wgt_tolerance)
         tol_layout.setContentsMargins(0, 0, 0, 0)
@@ -139,12 +132,12 @@ class AddRuleDialog(QDialog):
         self.spin_tol = QDoubleSpinBox()
         if self.is_degree:
             self.spin_tol.setDecimals(6)
-            self.spin_tol.setRange(0.000001, 10.0)
+            self.spin_tol.setRange(0.0, 10.0)
             self.spin_tol.setValue(0.0001)
             self.spin_tol.setSingleStep(0.00005)
         else:
             self.spin_tol.setDecimals(3)
-            self.spin_tol.setRange(0.001, 1000.0)
+            self.spin_tol.setRange(0.0, 1000.0)
             self.spin_tol.setValue(0.05)
             self.spin_tol.setSingleStep(0.01)
         tol_layout.addWidget(self.lbl_tol)
@@ -212,9 +205,25 @@ class AddRuleDialog(QDialog):
         thin_layout.addStretch()
         self.params_layout.addWidget(self.wgt_thinness)
 
-        # 5. Label for rules that do not require numeric thresholds
-        self.lbl_no_param = QLabel("ℹ️ This is a topological rule based on OGC geometry definitions and requires no threshold.")
-        self.lbl_no_param.setStyleSheet("color: #27ae60; font-style: italic; padding: 4px;")
+        # 5. Angle threshold (for Line Spikes / Needle-like turns)
+        self.wgt_angle = QWidget()
+        angle_layout = QHBoxLayout(self.wgt_angle)
+        angle_layout.setContentsMargins(0, 0, 0, 0)
+        self.lbl_angle = QLabel("Max Spike Angle (°):")
+        self.lbl_angle.setMinimumWidth(180)
+        self.spin_angle = QDoubleSpinBox()
+        self.spin_angle.setDecimals(1)
+        self.spin_angle.setRange(1.0, 90.0)
+        self.spin_angle.setValue(15.0)
+        self.spin_angle.setSingleStep(1.0)
+        angle_layout.addWidget(self.lbl_angle)
+        angle_layout.addWidget(self.spin_angle)
+        angle_layout.addStretch()
+        self.params_layout.addWidget(self.wgt_angle)
+
+        # 6. Label for rules that do not require numeric thresholds
+        self.lbl_no_param = QLabel("ℹ️ This topological rule validates spatial topology definitions and requires no threshold.")
+        self.lbl_no_param.setStyleSheet("color: #10b981; font-style: italic; padding: 4px;")
         self.lbl_no_param.setWordWrap(True)
         self.params_layout.addWidget(self.lbl_no_param)
 
@@ -229,12 +238,68 @@ class AddRuleDialog(QDialog):
         self.btn_cancel.clicked.connect(self.reject)
         btn_layout.addWidget(self.btn_cancel)
 
-        self.btn_add = QPushButton("➕ Add Rule")
-        self.btn_add.setStyleSheet("font-weight: bold; padding: 6px 18px;")
+        self.btn_add = QPushButton("Add Rule")
         self.btn_add.clicked.connect(self.accept)
         btn_layout.addWidget(self.btn_add)
 
         layout.addLayout(btn_layout)
+
+    def apply_theme(self, theme_name: str = None):
+        tokens = ThemeManager.get_tokens(theme_name)
+        bg = tokens.get("panel_bg", "#ffffff")
+        toolbar_bg = tokens.get("toolbar_bg", "#f8fafc")
+        text = tokens.get("text", "#1e293b")
+        text_muted = tokens.get("text_muted", "#64748b")
+        border = tokens.get("border", "#e2e8f0")
+        accent = tokens.get("accent", "#0284c7")
+
+        self.setStyleSheet(f"""
+            QDialog {{ background-color: {bg}; color: {text}; }}
+            QGroupBox {{ font-weight: 600; border: 1px solid {border}; border-radius: 6px; margin-top: 8px; padding-top: 12px; }}
+            QGroupBox::title {{ subcontrol-origin: margin; left: 8px; padding: 0 4px; color: {text}; }}
+            QComboBox, QDoubleSpinBox {{ background-color: {bg}; color: {text}; border: 1px solid {border}; border-radius: 4px; padding: 4px 8px; }}
+            QComboBox:focus, QDoubleSpinBox:focus {{ border: 1px solid {accent}; }}
+            QLabel {{ color: {text}; }}
+        """)
+
+        self.info_banner.setStyleSheet(f"""
+            QFrame {{
+                background-color: {toolbar_bg};
+                border: 1px solid {border};
+                border-radius: 6px;
+            }}
+            QLabel {{ color: {text}; font-size: 12px; }}
+        """)
+
+        self.btn_cancel.setIcon(get_lucide_icon("close", theme_name=theme_name, size=16))
+        self.btn_cancel.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {toolbar_bg};
+                color: {text};
+                border: 1px solid {border};
+                border-radius: 4px;
+                padding: 6px 16px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                border-color: {text_muted};
+            }}
+        """)
+
+        self.btn_add.setIcon(get_lucide_icon("plus", theme_name=theme_name, color="#ffffff", size=16))
+        self.btn_add.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {accent};
+                color: #ffffff;
+                border: 1px solid {accent};
+                border-radius: 4px;
+                padding: 6px 18px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                opacity: 0.9;
+            }}
+        """)
 
     def _on_rule_selected(self, index: int):
         if index < 0 or index >= len(self.applicable_rules):
@@ -243,16 +308,21 @@ class AddRuleDialog(QDialog):
         self.lbl_rule_desc.setText(rule.description)
 
         code = rule.code
-        # Hide all controls by default
         self.wgt_tolerance.hide()
         self.wgt_length.hide()
         self.wgt_area.hide()
         self.wgt_thinness.hide()
+        self.wgt_angle.hide()
         self.lbl_no_param.hide()
 
         if code == TopologyRuleCode.POINT_DUPLICATES:
             self.lbl_tol.setText(f"Snap Tolerance ({self.linear_unit}):")
             self.wgt_tolerance.show()
+        elif code == TopologyRuleCode.LINE_DUPLICATE_NODES:
+            self.lbl_tol.setText(f"Distance Tolerance ({self.linear_unit}, 0 = exact):")
+            self.wgt_tolerance.show()
+        elif code == TopologyRuleCode.LINE_SPIKES:
+            self.wgt_angle.show()
         elif code == TopologyRuleCode.LINE_DANGLES:
             self.lbl_tol.setText(f"Undershoot Tolerance ({self.linear_unit}):")
             self.wgt_tolerance.show()
@@ -277,8 +347,10 @@ class AddRuleDialog(QDialog):
         code = rule.code
         params = {}
 
-        if code in (TopologyRuleCode.POINT_DUPLICATES, TopologyRuleCode.LINE_DANGLES):
+        if code in (TopologyRuleCode.POINT_DUPLICATES, TopologyRuleCode.LINE_DANGLES, TopologyRuleCode.LINE_DUPLICATE_NODES):
             params["tolerance"] = self.spin_tol.value()
+        elif code == TopologyRuleCode.LINE_SPIKES:
+            params["max_angle"] = self.spin_angle.value()
         elif code == TopologyRuleCode.LINE_SHORT_SEGMENTS:
             params["min_length"] = self.spin_len.value()
         elif code == TopologyRuleCode.POLYGON_OVERLAPS:
@@ -300,8 +372,7 @@ class AddRuleDialog(QDialog):
 class TopologyCheckerDialog(QDialog):
     """
     QGIS Topology Checker-style Interactive Inspection & Remediation Dialog.
-    Allows configuring rules with CRS-native parameter units, running audits on demand,
-    visualizing defective geometry parts on the map, and zooming directly to error locations.
+    Fully integrated with Chisel Editor's design language, theme engine, and vector icons.
     """
 
     ERROR_LAYER_ID = "topology_errors"
@@ -330,10 +401,11 @@ class TopologyCheckerDialog(QDialog):
         self.geom_type = SpatialOps.get_layer_geometry_type(self.gdf)
         self.crs_str, self.linear_unit, self.area_unit, self.is_degree = get_layer_crs_unit_info(self.gdf)
 
-        self.setWindowTitle(f"📐 Topology Checker & Validator — {self.layer_name}")
-        self.resize(980, 720)
+        self.setWindowTitle(f"Topology Checker & Validator — {self.layer_name}")
+        self.resize(1060, 740)
+        self.setMinimumSize(880, 580)
 
-        # Modeless tool window: does NOT block the main application window
+        # Modeless tool window
         self.setModal(False)
         self.setWindowModality(Qt.WindowModality.NonModal)
         self.setWindowFlags(
@@ -343,73 +415,128 @@ class TopologyCheckerDialog(QDialog):
         )
 
         self._setup_ui()
+        self.apply_theme()
         self._update_rules_table()
-        # NOTE: Do NOT auto-execute checks on dialog open. User configures rules first.
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(10)
         main_layout.setContentsMargins(16, 16, 16, 16)
 
-        # Header Info Banner
-        header_widget = QWidget()
-        header_layout = QHBoxLayout(header_widget)
-        header_layout.setContentsMargins(0, 0, 0, 0)
+        # =========================================================
+        # 1. Header Card (Layer Identity & Health Dashboard)
+        # =========================================================
+        self.header_card = QFrame()
+        header_layout = QHBoxLayout(self.header_card)
+        header_layout.setContentsMargins(14, 10, 14, 10)
+        header_layout.setSpacing(12)
 
-        info_text = (
-            f"<b>Layer:</b> {self.layer_name} &nbsp;|&nbsp; "
-            f"<b>Type:</b> <span style='color:#00a2ff; font-weight:bold;'>{self.geom_type.upper()}</span> &nbsp;|&nbsp; "
-            f"<b>Features:</b> {len(self.gdf):,} &nbsp;|&nbsp; "
-            f"<b>CRS:</b> {self.crs_str} &nbsp;|&nbsp; "
-            f"<b>Unit:</b> <span style='color:#00a2ff;'>{self.linear_unit}</span>"
-        )
-        self.lbl_info = QLabel(info_text)
-        header_layout.addWidget(self.lbl_info)
-        header_layout.addStretch()
+        # Left Info Stack
+        left_info = QVBoxLayout()
+        left_info.setSpacing(5)
 
-        self.chk_show_map = QCheckBox("👁️ Show Errors on Map")
+        self.lbl_title = QLabel(f"🗺️ <b>{self.layer_name}</b>")
+        self.lbl_title.setStyleSheet("font-size: 14px;")
+        left_info.addWidget(self.lbl_title)
+
+        # Badges Row
+        badges_layout = QHBoxLayout()
+        badges_layout.setSpacing(6)
+
+        geom_symbol = "🔷" if "line" in self.geom_type.lower() else ("🔶" if "poly" in self.geom_type.lower() else "🟢")
+        self.badge_geom = QLabel(f"{geom_symbol} {self.geom_type.upper()}")
+        self.badge_features = QLabel(f"{len(self.gdf):,} features")
+        self.badge_crs = QLabel(f"🌐 {self.crs_str}")
+        self.badge_units = QLabel(f"📏 {self.linear_unit}")
+
+        for b in (self.badge_geom, self.badge_features, self.badge_crs, self.badge_units):
+            b.setStyleSheet("font-size: 11px; padding: 2px 7px; border-radius: 4px;")
+            badges_layout.addWidget(b)
+
+        badges_layout.addStretch()
+        left_info.addLayout(badges_layout)
+        header_layout.addLayout(left_info, stretch=1)
+
+        # Right Summary Badges Stack
+        right_stack = QVBoxLayout()
+        right_stack.setSpacing(5)
+        right_stack.setAlignment(Qt.AlignmentFlag.AlignRight)
+
+        summary_row = QHBoxLayout()
+        summary_row.setSpacing(6)
+
+        self.badge_status = QLabel("⚪ Not Audited")
+        self.badge_errors = QLabel("🔴 0 Errors")
+        self.badge_warnings = QLabel("🟡 0 Warnings")
+        self.badge_fixable = QLabel("⚡ 0 Fixable")
+
+        for b in (self.badge_status, self.badge_errors, self.badge_warnings, self.badge_fixable):
+            b.setStyleSheet("font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px;")
+            summary_row.addWidget(b)
+
+        right_stack.addLayout(summary_row)
+
+        map_toggle_layout = QHBoxLayout()
+        map_toggle_layout.addStretch()
+        self.chk_show_map = QCheckBox("Show Errors on Map")
         self.chk_show_map.setChecked(True)
         self.chk_show_map.toggled.connect(self._toggle_map_error_layer)
-        header_layout.addWidget(self.chk_show_map)
+        map_toggle_layout.addWidget(self.chk_show_map)
+        right_stack.addLayout(map_toggle_layout)
 
-        main_layout.addWidget(header_widget)
+        header_layout.addLayout(right_stack)
+        main_layout.addWidget(self.header_card)
 
-        # Splitter: Top is Rules List, Bottom is Errors Table
-        splitter = QSplitter(Qt.Orientation.Vertical)
+        # =========================================================
+        # 2. Splitter: Top is Rules Pane, Bottom is Errors Pane
+        # =========================================================
+        self.splitter = QSplitter(Qt.Orientation.Vertical)
 
-        # --- Top Section: Configured Rules List ---
+        # --- Top Section: Configured Rules Pane ---
         top_widget = QWidget()
         top_layout = QVBoxLayout(top_widget)
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setSpacing(8)
 
-        grp_rules = QGroupBox("Configured Topology Rules (Click '➕ Add Rule' to define rules)")
-        rules_box_layout = QVBoxLayout(grp_rules)
-        rules_box_layout.setSpacing(8)
-
-        # Toolbar above rules table
+        # Rules Toolbar
         rules_tb_layout = QHBoxLayout()
+        self.lbl_rules_heading = QLabel("<b>Validation Rules</b>")
+        self.lbl_rules_heading.setStyleSheet("font-size: 12px;")
+        rules_tb_layout.addWidget(self.lbl_rules_heading)
 
-        self.btn_add_rule = QPushButton("➕ Add Rule...")
-        self.btn_add_rule.setStyleSheet("font-weight: bold; padding: 5px 12px;")
+        self.btn_add_rule = QPushButton("Add Rule...")
         self.btn_add_rule.clicked.connect(self._on_add_rule_clicked)
         rules_tb_layout.addWidget(self.btn_add_rule)
 
-        self.btn_remove_rule = QPushButton("🗑️ Remove Rule")
-        self.btn_remove_rule.clicked.connect(self._on_remove_selected_rule)
-        rules_tb_layout.addWidget(self.btn_remove_rule)
-
-        self.btn_clear_rules = QPushButton("🧹 Clear All")
-        self.btn_clear_rules.clicked.connect(self._on_clear_all_rules)
-        rules_tb_layout.addWidget(self.btn_clear_rules)
-
-        self.btn_add_defaults = QPushButton("⚡ Add Recommended Rules")
-        self.btn_add_defaults.setToolTip("Quickly add recommended rules matching this geometry type and coordinate units")
+        self.btn_add_defaults = QPushButton("Recommended Rules")
+        self.btn_add_defaults.setToolTip("Quickly load recommended rules matching layer geometry and CRS")
         self.btn_add_defaults.clicked.connect(self._on_add_recommended_rules)
         rules_tb_layout.addWidget(self.btn_add_defaults)
 
+        self.btn_remove_rule = QPushButton("Remove")
+        self.btn_remove_rule.clicked.connect(self._on_remove_selected_rule)
+        rules_tb_layout.addWidget(self.btn_remove_rule)
+
+        self.btn_clear_rules = QPushButton("Clear All")
+        self.btn_clear_rules.clicked.connect(self._on_clear_all_rules)
+        rules_tb_layout.addWidget(self.btn_clear_rules)
+
         rules_tb_layout.addStretch()
-        rules_box_layout.addLayout(rules_tb_layout)
+
+        # Run Check Button
+        self.btn_run = QPushButton("Run Topology Check")
+        self.btn_run.setFixedHeight(30)
+        self.btn_run.clicked.connect(self._on_run_checks)
+        rules_tb_layout.addWidget(self.btn_run)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setFixedHeight(16)
+        self.progress_bar.setFixedWidth(120)
+        self.progress_bar.hide()
+        rules_tb_layout.addWidget(self.progress_bar)
+
+        top_layout.addLayout(rules_tb_layout)
 
         # Rules Table
         self.rules_table = QTableWidget()
@@ -425,46 +552,54 @@ class TopologyCheckerDialog(QDialog):
         self.rules_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.rules_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.rules_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        self.rules_table.setFixedHeight(150)
-        rules_box_layout.addWidget(self.rules_table)
+        self.rules_table.verticalHeader().setDefaultSectionSize(26)
+        self.rules_table.setFixedHeight(140)
+        top_layout.addWidget(self.rules_table)
 
-        # Run Check Action Bar
-        action_bar = QHBoxLayout()
-        self.btn_run = QPushButton("▶️ Run Topology Check")
-        self.btn_run.setStyleSheet(
-            "font-weight: bold; font-size: 13px; padding: 7px 18px; "
-            "background-color: #27ae60; color: white; border-radius: 4px;"
-        )
-        self.btn_run.clicked.connect(self._on_run_checks)
-        action_bar.addWidget(self.btn_run)
+        self.splitter.addWidget(top_widget)
 
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 0)
-        self.progress_bar.setFixedHeight(16)
-        self.progress_bar.hide()
-        action_bar.addWidget(self.progress_bar)
-        action_bar.addStretch()
-
-        top_layout.addWidget(grp_rules)
-        top_layout.addLayout(action_bar)
-        splitter.addWidget(top_widget)
-
-        # --- Bottom Section: Error Table & Remediation Actions ---
+        # --- Bottom Section: Errors Table & Remediation ---
         bottom_widget = QWidget()
         bottom_layout = QVBoxLayout(bottom_widget)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(8)
 
-        table_header = QHBoxLayout()
-        self.lbl_status = QLabel("<b>Status:</b> Ready. Click '➕ Add Rule...' to configure rules, then click 'Run Topology Check'.")
-        table_header.addWidget(self.lbl_status)
-        table_header.addStretch()
-        bottom_layout.addLayout(table_header)
+        # Errors Toolbar
+        table_tb_layout = QHBoxLayout()
+        table_tb_layout.setSpacing(8)
+
+        self.lbl_status = QLabel("<b>Status:</b> Ready. Click 'Run Topology Check' to audit layer.")
+        self.lbl_status.setStyleSheet("font-size: 12px;")
+        table_tb_layout.addWidget(self.lbl_status)
+        table_tb_layout.addStretch()
+
+        self.lbl_filter = QLabel("Filter:")
+        table_tb_layout.addWidget(self.lbl_filter)
+
+        self.filter_combo = QComboBox()
+        self.filter_combo.addItem("All Issues", "all")
+        self.filter_combo.addItem("Errors Only", "error")
+        self.filter_combo.addItem("Warnings Only", "warning")
+        self.filter_combo.addItem("Auto-Repairable Only", "fixable")
+        self.filter_combo.currentIndexChanged.connect(self._apply_error_filter)
+        table_tb_layout.addWidget(self.filter_combo)
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search errors (rule, feature, text)...")
+        self.search_input.setFixedWidth(240)
+        self.search_input.textChanged.connect(self._apply_error_filter)
+        table_tb_layout.addWidget(self.search_input)
+
+        self.lbl_filter_count = QLabel("")
+        self.lbl_filter_count.setStyleSheet("font-size: 11px;")
+        table_tb_layout.addWidget(self.lbl_filter_count)
+
+        bottom_layout.addLayout(table_tb_layout)
 
         # Errors Table
         self.table = QTableWidget()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(["#", "Rule Violated", "Feature ID(s)", "Severity", "Description"])
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(["#", "Severity", "Rule Violated", "Feature ID(s)", "Description", "Auto-Fix"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setAlternatingRowColors(True)
@@ -473,30 +608,32 @@ class TopologyCheckerDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.verticalHeader().setDefaultSectionSize(26)
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
         self.table.itemDoubleClicked.connect(self._on_zoom_to_selected)
         bottom_layout.addWidget(self.table)
 
-        # Bottom Action Buttons
+        # Bottom Remediation Action Bar
         btn_box = QHBoxLayout()
+        btn_box.setSpacing(8)
 
-        self.btn_zoom = QPushButton("🔍 Zoom to Error")
+        self.btn_zoom = QPushButton("Zoom to Defect")
         self.btn_zoom.clicked.connect(self._on_zoom_to_selected)
         self.btn_zoom.setEnabled(False)
         btn_box.addWidget(self.btn_zoom)
 
-        self.btn_fix_single = QPushButton("🔧 Fix Selected")
+        self.btn_fix_single = QPushButton("Fix Selected")
         self.btn_fix_single.clicked.connect(self._on_fix_selected)
         self.btn_fix_single.setEnabled(False)
         btn_box.addWidget(self.btn_fix_single)
 
-        self.btn_fix_all = QPushButton("⚡ Fix All Auto-repairable")
-        self.btn_fix_all.setStyleSheet("font-weight: bold;")
+        self.btn_fix_all = QPushButton("Fix All Auto-repairable")
         self.btn_fix_all.clicked.connect(self._on_fix_all)
         self.btn_fix_all.setEnabled(False)
         btn_box.addWidget(self.btn_fix_all)
 
-        self.btn_export = QPushButton("💾 Export Errors...")
+        self.btn_export = QPushButton("Export GeoJSON...")
         self.btn_export.clicked.connect(self._on_export_errors)
         self.btn_export.setEnabled(False)
         btn_box.addWidget(self.btn_export)
@@ -508,11 +645,215 @@ class TopologyCheckerDialog(QDialog):
         btn_box.addWidget(self.btn_close)
 
         bottom_layout.addLayout(btn_box)
-        splitter.addWidget(bottom_widget)
+        self.splitter.addWidget(bottom_widget)
 
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 3)
-        main_layout.addWidget(splitter)
+        self.splitter.setStretchFactor(0, 2)
+        self.splitter.setStretchFactor(1, 4)
+        main_layout.addWidget(self.splitter)
+
+    # -------------------------------------------------------------
+    # Theme Engine Integration
+    # -------------------------------------------------------------
+
+    def apply_theme(self, theme_name: str = None):
+        """Applies dynamic theme styling matching the active Chisel Editor theme palette."""
+        tokens = ThemeManager.get_tokens(theme_name)
+        bg = tokens.get("panel_bg", "#ffffff")
+        toolbar_bg = tokens.get("toolbar_bg", "#f8fafc")
+        text = tokens.get("text", "#1e293b")
+        text_muted = tokens.get("text_muted", "#64748b")
+        border = tokens.get("border", "#e2e8f0")
+        hover = tokens.get("hover", "rgba(128,128,128,0.18)")
+        active = tokens.get("active", "rgba(128,128,128,0.30)")
+        accent = tokens.get("accent", "#0284c7")
+        grid = tokens.get("grid_line", "#e2e8f0")
+        is_dark = ThemeManager.is_dark(theme_name)
+        alt_bg = tokens.get("hover", "#f8fafc") if not is_dark else tokens.get("active", "#252526")
+
+        # Global Dialog Style
+        self.setStyleSheet(f"""
+            QDialog {{ background-color: {bg}; color: {text}; }}
+            QLabel {{ color: {text}; }}
+            QSplitter::handle {{ background-color: {border}; }}
+            QSplitter::handle:hover {{ background-color: {accent}; }}
+        """)
+
+        # Header Card Style
+        self.header_card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {toolbar_bg};
+                border: 1px solid {border};
+                border-radius: 6px;
+            }}
+        """)
+
+        # Metadata Badges Style
+        badge_style = f"background-color: {bg}; color: {text_muted}; border: 1px solid {border}; border-radius: 4px; padding: 2px 7px;"
+        self.badge_geom.setStyleSheet(f"background-color: {bg}; color: {accent}; border: 1px solid {border}; border-radius: 4px; padding: 2px 7px; font-weight: 600;")
+        self.badge_features.setStyleSheet(badge_style)
+        self.badge_crs.setStyleSheet(badge_style)
+        self.badge_units.setStyleSheet(badge_style)
+
+        # Status Badges
+        self._update_status_badges_style(is_dark)
+
+        # Tables Style (Both Rules Table & Errors Table)
+        table_style = f"""
+            QTableWidget {{
+                background-color: {bg};
+                color: {text};
+                gridline-color: {grid};
+                border: 1px solid {border};
+                border-radius: 4px;
+                selection-background-color: {accent};
+                selection-color: #ffffff;
+                font-size: 12px;
+            }}
+            QTableWidget::item:alternate {{
+                background-color: {alt_bg};
+            }}
+            QTableWidget::item:selected {{
+                background-color: {accent};
+                color: #ffffff;
+            }}
+            QHeaderView::section {{
+                background-color: {toolbar_bg};
+                color: {text_muted};
+                border: 1px solid {border};
+                padding: 4px 6px;
+                font-weight: 600;
+                font-size: 11px;
+            }}
+        """
+        self.rules_table.setStyleSheet(table_style)
+        self.table.setStyleSheet(table_style)
+
+        # Controls & Search Input
+        ctrl_style = f"""
+            QLineEdit, QComboBox {{
+                background-color: {bg};
+                color: {text};
+                border: 1px solid {border};
+                border-radius: 4px;
+                padding: 3px 8px;
+                font-size: 11px;
+            }}
+            QLineEdit:focus, QComboBox:focus {{
+                border-color: {accent};
+            }}
+        """
+        self.search_input.setStyleSheet(ctrl_style)
+        self.filter_combo.setStyleSheet(ctrl_style)
+
+        # Buttons Styling & Lucide Icons
+        btn_neutral_style = f"""
+            QPushButton {{
+                background-color: {toolbar_bg};
+                color: {text};
+                border: 1px solid {border};
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 12px;
+                font-weight: 500;
+            }}
+            QPushButton:hover:enabled {{
+                background-color: {hover};
+                border-color: {accent};
+            }}
+            QPushButton:pressed:enabled {{
+                background-color: {active};
+            }}
+            QPushButton:disabled {{
+                color: {text_muted};
+                opacity: 0.5;
+            }}
+        """
+
+        for btn in (self.btn_add_rule, self.btn_add_defaults, self.btn_remove_rule, self.btn_clear_rules, self.btn_zoom, self.btn_fix_single, self.btn_export, self.btn_close):
+            btn.setStyleSheet(btn_neutral_style)
+
+        self.btn_add_rule.setIcon(get_lucide_icon("plus", theme_name=theme_name, size=14))
+        self.btn_add_defaults.setIcon(get_lucide_icon("zap", theme_name=theme_name, size=14))
+        self.btn_remove_rule.setIcon(get_lucide_icon("trash-2", theme_name=theme_name, size=14))
+        self.btn_clear_rules.setIcon(get_lucide_icon("eraser", theme_name=theme_name, size=14))
+        self.btn_zoom.setIcon(get_lucide_icon("focus", theme_name=theme_name, size=14))
+        self.btn_fix_single.setIcon(get_lucide_icon("wrench", theme_name=theme_name, size=14))
+        self.btn_export.setIcon(get_lucide_icon("file-down", theme_name=theme_name, size=14))
+        self.btn_close.setIcon(get_lucide_icon("close", theme_name=theme_name, size=14))
+
+        # Primary Run Button
+        self.btn_run.setIcon(get_lucide_icon("play", color="#ffffff", size=14))
+        self.btn_run.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {accent};
+                color: #ffffff;
+                border: 1px solid {accent};
+                border-radius: 4px;
+                padding: 5px 16px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QPushButton:hover:enabled {{
+                opacity: 0.92;
+            }}
+            QPushButton:pressed:enabled {{
+                background-color: {active};
+            }}
+            QPushButton:disabled {{
+                background-color: {border};
+                color: {text_muted};
+                border-color: {border};
+            }}
+        """)
+
+        # Prominent Fix All Button
+        self.btn_fix_all.setIcon(get_lucide_icon("zap", color="#ffffff", size=14))
+        self.btn_fix_all.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #10b981;
+                color: #ffffff;
+                border: 1px solid #10b981;
+                border-radius: 4px;
+                padding: 4px 14px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QPushButton:hover:enabled {{
+                background-color: #059669;
+            }}
+            QPushButton:disabled {{
+                background-color: {border};
+                color: {text_muted};
+                border-color: {border};
+            }}
+        """)
+
+    def _update_status_badges_style(self, is_dark: bool = False):
+        if not self.report or self.report.total_errors == 0:
+            self.badge_status.setText("✅ Clean (0 Issues)" if self.report else "⚪ Not Audited")
+            self.badge_status.setStyleSheet("background-color: rgba(16, 185, 129, 0.15); color: #10b981; font-weight: 600; padding: 3px 8px; border-radius: 4px;" if self.report else "background-color: rgba(100, 116, 139, 0.15); color: #64748b; font-weight: 600; padding: 3px 8px; border-radius: 4px;")
+            self.badge_errors.hide()
+            self.badge_warnings.hide()
+            self.badge_fixable.hide()
+        else:
+            err_cnt = sum(1 for e in self.report.errors if e.severity == "error")
+            warn_cnt = self.report.total_errors - err_cnt
+            fix_cnt = sum(1 for e in self.report.errors if e.can_fix)
+
+            self.badge_status.setText(f"● {self.report.total_errors:,} Issues")
+            self.badge_status.setStyleSheet("background-color: rgba(239, 68, 68, 0.15); color: #ef4444; font-weight: 600; padding: 3px 8px; border-radius: 4px;")
+
+            self.badge_errors.setText(f"🔴 {err_cnt:,} Errors")
+            self.badge_errors.setStyleSheet("background-color: rgba(239, 68, 68, 0.12); color: #ef4444; font-weight: 600; padding: 3px 8px; border-radius: 4px;")
+            self.badge_errors.setVisible(err_cnt > 0)
+
+            self.badge_warnings.setText(f"🟡 {warn_cnt:,} Warnings")
+            self.badge_warnings.setStyleSheet("background-color: rgba(245, 158, 11, 0.12); color: #f59e0b; font-weight: 600; padding: 3px 8px; border-radius: 4px;")
+            self.badge_warnings.setVisible(warn_cnt > 0)
+
+            self.badge_fixable.setText(f"⚡ {fix_cnt:,} Fixable")
+            self.badge_fixable.setStyleSheet("background-color: rgba(16, 185, 129, 0.12); color: #10b981; font-weight: 600; padding: 3px 8px; border-radius: 4px;")
+            self.badge_fixable.setVisible(fix_cnt > 0)
 
     # -------------------------------------------------------------
     # Rule Configuration Handlers
@@ -530,7 +871,7 @@ class TopologyCheckerDialog(QDialog):
             item_name.setFont(QFont(self.font().family(), weight=QFont.Weight.Bold))
             item_geom = QTableWidgetItem(geom_types_str)
             item_param = QTableWidgetItem(crule.get_param_summary(self.is_degree))
-            item_fix = QTableWidgetItem("✅ " + can_fix_str if can_fix_str == "Yes" else "❌ No")
+            item_fix = QTableWidgetItem("✅ Yes" if can_fix_str == "Yes" else "—")
 
             self.rules_table.setItem(idx, 0, item_id)
             self.rules_table.setItem(idx, 1, item_name)
@@ -539,7 +880,8 @@ class TopologyCheckerDialog(QDialog):
             self.rules_table.setItem(idx, 4, item_fix)
 
         cnt = len(self.configured_rules)
-        btn_label = f"▶️ Run Topology Check ({cnt} rules)" if cnt > 0 else "▶️ Run Topology Check"
+        self.lbl_rules_heading.setText(f"<b>Validation Rules ({cnt} active)</b>")
+        btn_label = f"Run Topology Check ({cnt} rules)" if cnt > 0 else "Run Topology Check"
         self.btn_run.setText(btn_label)
 
     def _on_add_rule_clicked(self):
@@ -592,10 +934,7 @@ class TopologyCheckerDialog(QDialog):
         on_layer_updated: Optional[Callable[[gpd.GeoDataFrame], None]] = None,
         layer_id: str = None
     ):
-        """
-        Refreshes dialog state when user switches active layers or tabs.
-        Does NOT automatically execute checks.
-        """
+        """Refreshes dialog state when active layer or tab changes."""
         self.gdf = gdf.copy()
         self.layer_name = layer_name or "Spatial Layer"
         if on_layer_updated:
@@ -607,24 +946,22 @@ class TopologyCheckerDialog(QDialog):
         self.geom_type = SpatialOps.get_layer_geometry_type(self.gdf)
         self.crs_str, self.linear_unit, self.area_unit, self.is_degree = get_layer_crs_unit_info(self.gdf)
 
-        self.setWindowTitle(f"📐 Topology Checker & Validator — {self.layer_name}")
-        info_text = (
-            f"<b>Layer:</b> {self.layer_name} &nbsp;|&nbsp; "
-            f"<b>Type:</b> <span style='color:#00a2ff; font-weight:bold;'>{self.geom_type.upper()}</span> &nbsp;|&nbsp; "
-            f"<b>Features:</b> {len(self.gdf):,} &nbsp;|&nbsp; "
-            f"<b>CRS:</b> {self.crs_str} &nbsp;|&nbsp; "
-            f"<b>Unit:</b> <span style='color:#00a2ff;'>{self.linear_unit}</span>"
-        )
-        self.lbl_info.setText(info_text)
+        self.setWindowTitle(f"Topology Checker & Validator — {self.layer_name}")
+        self.lbl_title.setText(f"🗺️ <b>{self.layer_name}</b>")
+        geom_symbol = "🔷" if "line" in self.geom_type.lower() else ("🔶" if "poly" in self.geom_type.lower() else "🟢")
+        self.badge_geom.setText(f"{geom_symbol} {self.geom_type.upper()}")
+        self.badge_features.setText(f"{len(self.gdf):,} features")
+        self.badge_crs.setText(f"🌐 {self.crs_str}")
+        self.badge_units.setText(f"📏 {self.linear_unit}")
 
-        # Clear previous error table and map overlay
         self.report = None
         self.table.setRowCount(0)
-        self.lbl_status.setText("<b>Status:</b> Ready. Configure rules and click 'Run Topology Check'.")
+        self.lbl_status.setText("<b>Status:</b> Ready. Click 'Run Topology Check' to audit layer.")
         self.btn_zoom.setEnabled(False)
         self.btn_fix_single.setEnabled(False)
         self.btn_fix_all.setEnabled(False)
         self.btn_export.setEnabled(False)
+        self._update_status_badges_style()
 
         if self.map_panel:
             self.map_panel.remove_vector_layer(self.ERROR_LAYER_ID)
@@ -633,7 +970,7 @@ class TopologyCheckerDialog(QDialog):
 
     def _on_run_checks(self):
         if not self.configured_rules:
-            ToastNotification.show_toast(self, "Please add at least one rule with '➕ Add Rule...' first.", "warning")
+            ToastNotification.show_toast(self, "Please configure at least one rule first.", "warning")
             return
 
         self.btn_run.setEnabled(False)
@@ -653,7 +990,7 @@ class TopologyCheckerDialog(QDialog):
         self.btn_run.setEnabled(True)
 
         if error_msg:
-            self.lbl_status.setText(f"<span style='color:#e74c3c;'>Error: {error_msg}</span>")
+            self.lbl_status.setText(f"<span style='color:#ef4444;'>Error: {error_msg}</span>")
             ToastNotification.show_toast(self, f"Topology check error: {error_msg}", "error")
             return
 
@@ -661,28 +998,31 @@ class TopologyCheckerDialog(QDialog):
         if self.chk_show_map.isChecked():
             self._update_map_error_layer()
         self._populate_table(report)
+        self._update_status_badges_style()
 
     def _populate_table(self, report: TopologyReport):
         self.table.setUpdatesEnabled(False)
         try:
             self.table.setRowCount(0)
             if not report or report.total_errors == 0:
-                self.lbl_status.setText("✅ <b>No topology errors found! Layer satisfies all configured rules.</b>")
+                self.lbl_status.setText("✅ <b>No topology errors found! Layer satisfies all rules.</b>")
                 self.btn_fix_all.setEnabled(False)
                 self.btn_fix_single.setEnabled(False)
                 self.btn_export.setEnabled(False)
                 self.btn_zoom.setEnabled(False)
+                self.lbl_filter_count.setText("")
                 ToastNotification.show_toast(self, "✅ Topologically clean! 0 errors found.", "success")
                 return
 
             err_count = sum(1 for e in report.errors if e.severity == "error")
             warn_count = report.total_errors - err_count
+            fix_count = sum(1 for e in report.errors if e.can_fix)
 
             summary_str = f"⚠️ <b>Found {report.total_errors:,} issue(s)</b> ({err_count} errors, {warn_count} warnings)"
-            breakdown = ", ".join(f"{code}: {cnt}" for code, cnt in report.rule_counts.items())
-            self.lbl_status.setText(f"{summary_str} &nbsp;|&nbsp; <small>{breakdown}</small>")
+            self.lbl_status.setText(summary_str)
 
-            self.btn_fix_all.setEnabled(True)
+            self.btn_fix_all.setText(f"Fix All Auto-repairable ({fix_count:,})")
+            self.btn_fix_all.setEnabled(fix_count > 0)
             self.btn_fix_single.setEnabled(True)
             self.btn_export.setEnabled(True)
             self.btn_zoom.setEnabled(True)
@@ -691,26 +1031,73 @@ class TopologyCheckerDialog(QDialog):
             self.table.setRowCount(len(display_errors))
             for row_idx, err in enumerate(display_errors):
                 item_id = QTableWidgetItem(str(err.id + 1))
+                item_sev = QTableWidgetItem("🔴 Error" if err.severity == "error" else ("🟡 Warning" if err.severity == "warning" else "ℹ️ Info"))
                 item_rule = QTableWidgetItem(err.rule_name)
                 item_feat = QTableWidgetItem(", ".join(map(str, err.feature_ids)) if err.feature_ids else "-")
-                item_sev = QTableWidgetItem("⛔ Error" if err.severity == "error" else "⚠️ Warning")
                 item_desc = QTableWidgetItem(err.description)
+                item_fix = QTableWidgetItem("⚡ Ready" if err.can_fix else "—")
 
                 if err.severity == "error":
-                    item_sev.setForeground(QBrush(QColor("#e74c3c")))
+                    item_sev.setForeground(QBrush(QColor("#ef4444")))
+                    item_sev.setFont(QFont(self.font().family(), weight=QFont.Weight.Bold))
+                elif err.severity == "warning":
+                    item_sev.setForeground(QBrush(QColor("#f59e0b")))
                     item_sev.setFont(QFont(self.font().family(), weight=QFont.Weight.Bold))
                 else:
-                    item_sev.setForeground(QBrush(QColor("#f39c12")))
+                    item_sev.setForeground(QBrush(QColor("#3b82f6")))
+
+                if err.can_fix:
+                    item_fix.setForeground(QBrush(QColor("#10b981")))
+                    item_fix.setFont(QFont(self.font().family(), weight=QFont.Weight.Bold))
 
                 self.table.setItem(row_idx, 0, item_id)
-                self.table.setItem(row_idx, 1, item_rule)
-                self.table.setItem(row_idx, 2, item_feat)
-                self.table.setItem(row_idx, 3, item_sev)
+                self.table.setItem(row_idx, 1, item_sev)
+                self.table.setItem(row_idx, 2, item_rule)
+                self.table.setItem(row_idx, 3, item_feat)
                 self.table.setItem(row_idx, 4, item_desc)
+                self.table.setItem(row_idx, 5, item_fix)
 
+            self._apply_error_filter()
             self.table.selectRow(0)
         finally:
             self.table.setUpdatesEnabled(True)
+
+    def _apply_error_filter(self):
+        query = self.search_input.text().strip().lower()
+        filter_mode = self.filter_combo.currentData() or "all"
+
+        if not self.report or not self.report.errors:
+            self.lbl_filter_count.setText("")
+            return
+
+        visible_count = 0
+        total_rows = self.table.rowCount()
+        for row in range(total_rows):
+            err_idx = int(self.table.item(row, 0).text()) - 1
+            if not (0 <= err_idx < len(self.report.errors)):
+                continue
+            err = self.report.errors[err_idx]
+
+            match_mode = True
+            if filter_mode == "error" and err.severity != "error":
+                match_mode = False
+            elif filter_mode == "warning" and err.severity != "warning":
+                match_mode = False
+            elif filter_mode == "fixable" and not err.can_fix:
+                match_mode = False
+
+            match_query = True
+            if query:
+                searchable = f"{err.rule_name} {err.description} {' '.join(map(str, err.feature_ids))}".lower()
+                if query not in searchable:
+                    match_query = False
+
+            should_hide = not (match_mode and match_query)
+            self.table.setRowHidden(row, should_hide)
+            if not should_hide:
+                visible_count += 1
+
+        self.lbl_filter_count.setText(f"Showing: {visible_count:,} / {total_rows:,}")
 
     # -------------------------------------------------------------
     # Map Visualization & Zoom
@@ -733,9 +1120,9 @@ class TopologyCheckerDialog(QDialog):
                 self.ERROR_LAYER_ID,
                 "⚠️ Topology Errors",
                 geojson_str,
-                is_active=False,       # Crucial: do NOT hijack active editing layer
+                is_active=False,
                 geom_type="any",
-                color="#e74c3c",
+                color="#ef4444",
                 fit_bounds=False
             )
         except Exception as e:
@@ -760,8 +1147,13 @@ class TopologyCheckerDialog(QDialog):
         if not selected_rows or not self.report:
             return
         row = selected_rows[0].row()
-        if 0 <= row < len(self.report.errors):
-            err = self.report.errors[row]
+        err_id_item = self.table.item(row, 0)
+        if not err_id_item:
+            return
+        err_idx = int(err_id_item.text()) - 1
+        if 0 <= err_idx < len(self.report.errors):
+            err = self.report.errors[err_idx]
+            self.btn_fix_single.setEnabled(err.can_fix)
             self._zoom_to_error_geometry(err.geometry, err.id, err=err)
 
     def _on_zoom_to_selected(self):
@@ -769,14 +1161,16 @@ class TopologyCheckerDialog(QDialog):
         if not selected_rows or not self.report:
             return
         row = selected_rows[0].row()
-        if 0 <= row < len(self.report.errors):
-            err = self.report.errors[row]
+        err_id_item = self.table.item(row, 0)
+        if not err_id_item:
+            return
+        err_idx = int(err_id_item.text()) - 1
+        if 0 <= err_idx < len(self.report.errors):
+            err = self.report.errors[err_idx]
             self._zoom_to_error_geometry(err.geometry, err.id, err=err)
 
     def _transform_geom_to_4326(self, geom):
-        """
-        Converts any Shapely error geometry to WGS 84 (EPSG:4326) coordinates for Leaflet.
-        """
+        """Converts any Shapely error geometry to WGS 84 (EPSG:4326) coordinates for Leaflet."""
         if geom is None or (hasattr(geom, "is_empty") and geom.is_empty):
             return None
         import shapely.ops
@@ -801,26 +1195,22 @@ class TopologyCheckerDialog(QDialog):
         return geom
 
     def _zoom_to_error_geometry(self, geom, err_id: int = None, err: TopologyError = None):
-        """
-        Extracts defective geometry piece, converts it to WGS84 GeoJSON,
-        calculates padded extent, and triggers high-zoom QGIS-style error focus.
-        """
+        """Focuses and highlights the defective error geometry piece on the Leaflet map."""
         if geom is None or not self.map_panel:
             return
 
         try:
-            # 1. Transform defective error geometry to EPSG:4326 for Leaflet
             geom_4326 = self._transform_geom_to_4326(geom)
             if geom_4326 is None or (hasattr(geom_4326, "is_empty") and geom_4326.is_empty):
                 return
 
-            bounds = geom_4326.bounds  # (minx, miny, maxx, maxy) in degrees (lon, lat)
+            bounds = geom_4326.bounds
             minx, miny, maxx, maxy = bounds
 
             span_x = abs(maxx - minx)
             span_y = abs(maxy - miny)
             if span_x < 0.0008 or span_y < 0.0008:
-                delta = 0.0006  # ~65 meters comfortable zoom buffer around point/micro-defect
+                delta = 0.0006
                 south = max(-85.0, miny - delta)
                 north = min(85.0, maxy + delta)
                 west = max(-180.0, minx - delta)
@@ -846,7 +1236,7 @@ class TopologyCheckerDialog(QDialog):
             import shapely.geometry
             geojson_geom = shapely.geometry.mapping(geom_4326)
 
-            parent_ids = err.feature_ids if err else []
+            parent_ids = [int(x) for x in err.feature_ids] if err and err.feature_ids else []
             title = err.rule_name if err else "Topoloji Hatası"
             desc = err.description if err else ""
 
@@ -871,10 +1261,14 @@ class TopologyCheckerDialog(QDialog):
         if not selected_rows or not self.report:
             return
         row = selected_rows[0].row()
-        if not (0 <= row < len(self.report.errors)):
+        err_id_item = self.table.item(row, 0)
+        if not err_id_item:
+            return
+        err_idx = int(err_id_item.text()) - 1
+        if not (0 <= err_idx < len(self.report.errors)):
             return
 
-        err = self.report.errors[row]
+        err = self.report.errors[err_idx]
         if not err.can_fix:
             QMessageBox.information(
                 self, "Manual Fix Required",
@@ -900,7 +1294,8 @@ class TopologyCheckerDialog(QDialog):
             self,
             "Auto-Repair Topology",
             "Are you sure you want to attempt automatic fixes for all repairable issues?\n\n"
-            "This will make geometries OGC valid, remove duplicate vertices/points, "
+            "This will make geometries OGC valid, node self-intersections, remove duplicate vertices, "
+            "prune spikes, resolve line overlaps, snap undershoots, merge pseudo-nodes, "
             "clip overlapping areas, and merge slivers.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes
@@ -925,8 +1320,7 @@ class TopologyCheckerDialog(QDialog):
         if self.on_layer_updated:
             self.on_layer_updated(self.gdf)
 
-        ToastNotification.show_toast(self, f"🔧 Successfully resolved {count:,} topology issues!", "success")
-        # Re-run check on repaired dataset
+        ToastNotification.show_toast(self, f"Successfully resolved {count:,} topology issues!", "success")
         self._on_run_checks()
 
     def _on_export_errors(self):

@@ -19,6 +19,7 @@ class TopologyRuleCode:
     GEOM_EMPTY_NULL = "geom_empty_null"
     LINE_SELF_INTERSECT = "line_self_intersect"
     LINE_DUPLICATE_NODES = "line_duplicate_nodes"
+    LINE_SPIKES = "line_spikes"
     LINE_DANGLES = "line_dangles"
     LINE_PSEUDO_NODES = "line_pseudo_nodes"
     LINE_SHORT_SEGMENTS = "line_short_segments"
@@ -55,6 +56,8 @@ class ConfiguredRule:
             tol = float(self.params["tolerance"])
             fmt = f"{tol:.6f}" if is_degree else f"{tol:.3f}"
             parts.append(f"Tolerance: {fmt} {dist_unit}")
+        if "max_angle" in self.params:
+            parts.append(f"Max Spike Angle: {float(self.params['max_angle']):.1f}°")
         if "min_length" in self.params:
             ml = float(self.params["min_length"])
             fmt = f"{ml:.6f}" if is_degree else f"{ml:.3f}"
@@ -83,6 +86,11 @@ class TopologyError:
     severity: str = "error"  # "error" or "warning"
     can_fix: bool = True
 
+    def __post_init__(self):
+        self.id = int(self.id)
+        if self.feature_ids:
+            self.feature_ids = [int(x) for x in self.feature_ids]
+
 
 @dataclass
 class TopologyReport:
@@ -91,6 +99,7 @@ class TopologyReport:
     rule_counts: Dict[str, int] = field(default_factory=dict)
     errors_gdf: Optional[gpd.GeoDataFrame] = None
     layer_geom_type: str = "any"
+    configured_rules: List[ConfiguredRule] = field(default_factory=list)
 
 
 class TopologyEngine:
@@ -138,13 +147,21 @@ class TopologyEngine:
             default_enabled=True,
             supports_auto_fix=True
         ),
+        TopologyRuleCode.LINE_SPIKES: TopologyRuleInfo(
+            code=TopologyRuleCode.LINE_SPIKES,
+            name="Must Not Have Spikes",
+            description="Detects sharp needles and retraced segments where a line doubles back on itself.",
+            geom_types=["line", "mixed"],
+            default_enabled=True,
+            supports_auto_fix=True
+        ),
         TopologyRuleCode.LINE_DANGLES: TopologyRuleInfo(
             code=TopologyRuleCode.LINE_DANGLES,
             name="Must Not Have Dangles",
-            description="Flags open line endpoints not connected to other features in the network.",
+            description="Flags open line endpoints not connected to other features; auto-snaps undershoots within tolerance.",
             geom_types=["line", "mixed"],
             default_enabled=False,  # Can be many in non-closed road/river networks
-            supports_auto_fix=False
+            supports_auto_fix=True
         ),
         TopologyRuleCode.LINE_PSEUDO_NODES: TopologyRuleInfo(
             code=TopologyRuleCode.LINE_PSEUDO_NODES,
@@ -250,6 +267,10 @@ class TopologyEngine:
             params = {}
             if r.code == TopologyRuleCode.POINT_DUPLICATES:
                 params["tolerance"] = 0.0001 if is_degree else 0.05
+            elif r.code == TopologyRuleCode.LINE_DUPLICATE_NODES:
+                params["tolerance"] = 0.0
+            elif r.code == TopologyRuleCode.LINE_SPIKES:
+                params["max_angle"] = 15.0
             elif r.code == TopologyRuleCode.LINE_DANGLES:
                 params["tolerance"] = 0.0002 if is_degree else 0.10
             elif r.code == TopologyRuleCode.LINE_SHORT_SEGMENTS:
@@ -308,7 +329,14 @@ class TopologyEngine:
                 next_id += len(found)
 
             elif code == TopologyRuleCode.LINE_DUPLICATE_NODES:
-                found = cls._check_line_duplicate_nodes(gdf, next_id)
+                tol = float(params.get("tolerance", 0.0))
+                found = cls._check_line_duplicate_nodes(gdf, tol, next_id)
+                errors.extend(found)
+                next_id += len(found)
+
+            elif code == TopologyRuleCode.LINE_SPIKES:
+                max_angle = float(params.get("max_angle", 15.0))
+                found = cls._check_line_spikes(gdf, max_angle, next_id)
                 errors.extend(found)
                 next_id += len(found)
 
@@ -398,7 +426,8 @@ class TopologyEngine:
             errors=errors,
             rule_counts=rule_counts,
             errors_gdf=errors_gdf,
-            layer_geom_type=geom_type
+            layer_geom_type=geom_type,
+            configured_rules=configured_rules
         )
 
     @classmethod
@@ -552,11 +581,239 @@ class TopologyEngine:
                 curr_id += 1
         return errors
 
+    @staticmethod
+    def _clean_line_duplicates(geom, tol: float = 0.0):
+        if geom is None or geom.is_empty:
+            return geom
+
+        def clean_coords(coords):
+            if len(coords) < 2:
+                return coords
+            res = [coords[0]]
+            for pt in coords[1:]:
+                if tol <= 0:
+                    if pt != res[-1]:
+                        res.append(pt)
+                else:
+                    dx = pt[0] - res[-1][0]
+                    dy = pt[1] - res[-1][1]
+                    if (dx * dx + dy * dy) > tol * tol:
+                        res.append(pt)
+            return res
+
+        if geom.geom_type == 'LineString':
+            cleaned = clean_coords(list(geom.coords))
+            return LineString(cleaned) if len(cleaned) >= 2 else None
+        elif geom.geom_type == 'MultiLineString':
+            lines = [clean_coords(list(l.coords)) for l in geom.geoms]
+            valid_lines = [LineString(c) for c in lines if len(c) >= 2]
+            return MultiLineString(valid_lines) if valid_lines else None
+        return geom
+
+    @staticmethod
+    def _clean_line_spikes(geom, max_angle_deg: float = 15.0):
+        if geom is None or geom.is_empty:
+            return geom
+
+        def remove_spikes_from_coords(coords):
+            if len(coords) < 3:
+                return coords
+            cos_thresh = math.cos(math.radians(max_angle_deg))
+            pts = list(coords)
+            changed = True
+
+            while changed and len(pts) >= 3:
+                changed = False
+                new_pts = [pts[0]]
+                i = 1
+                while i < len(pts) - 1:
+                    p0 = pts[i - 1]
+                    p1 = pts[i]
+                    p2 = pts[i + 1]
+
+                    # 1. Exact retracing [p0 -> p1 -> p0]
+                    if p0 == p2:
+                        changed = True
+                        i += 2
+                        continue
+
+                    # 2. Acute angle spike
+                    v1x, v1y = p0[0] - p1[0], p0[1] - p1[1]
+                    v2x, v2y = p2[0] - p1[0], p2[1] - p1[1]
+                    len1 = math.hypot(v1x, v1y)
+                    len2 = math.hypot(v2x, v2y)
+
+                    if len1 > 0 and len2 > 0:
+                        dot = (v1x * v2x + v1y * v2y) / (len1 * len2)
+                        if dot >= cos_thresh:
+                            changed = True
+                            i += 1
+                            continue
+
+                    new_pts.append(p1)
+                    i += 1
+
+                if i < len(pts):
+                    new_pts.append(pts[i])
+                pts = new_pts
+
+            return pts
+
+        if geom.geom_type == 'LineString':
+            cleaned = remove_spikes_from_coords(list(geom.coords))
+            return LineString(cleaned) if len(cleaned) >= 2 else None
+        elif geom.geom_type == 'MultiLineString':
+            lines = [remove_spikes_from_coords(list(l.coords)) for l in geom.geoms]
+            valid_lines = [LineString(c) for c in lines if len(c) >= 2]
+            return MultiLineString(valid_lines) if valid_lines else None
+        return geom
+
+    @staticmethod
+    def _clean_line_self_intersect(geom):
+        if geom is None or geom.is_empty:
+            return geom
+        if geom.geom_type not in ("LineString", "MultiLineString"):
+            return geom
+        if geom.is_simple:
+            return geom
+        try:
+            noded = shapely.node(geom)
+            if noded is not None and not noded.is_empty:
+                if noded.is_simple:
+                    return noded
+                subgeoms = noded.geoms if hasattr(noded, "geoms") else [noded]
+                cleaned_lines = []
+                for g in subgeoms:
+                    coords = list(g.coords)
+                    if len(coords) > 2 and coords[0] == coords[-1]:
+                        mid = len(coords) // 2
+                        cleaned_lines.append(LineString(coords[:mid + 1]))
+                        cleaned_lines.append(LineString(coords[mid:]))
+                    else:
+                        cleaned_lines.append(g)
+                res = MultiLineString(cleaned_lines)
+                if res.is_simple:
+                    return res
+                return noded
+        except Exception:
+            pass
+        return geom
+
+    @staticmethod
+    def _resolve_line_overlap(geom_a, geom_b, min_overlap: float = 1e-8):
+        """
+        Resolves overlap between two lines by either dropping redundant features
+        or trimming the shared 1D segment from geom_b.
+        Returns (new_geom_a, new_geom_b, ok) where None means the feature should be dropped.
+        """
+        if geom_a is None or geom_b is None or geom_a.is_empty or geom_b.is_empty:
+            return geom_a, geom_b, False
+        if not geom_a.intersects(geom_b):
+            return geom_a, geom_b, False
+
+        inter = geom_a.intersection(geom_b)
+        if inter is None or inter.is_empty or inter.length <= min_overlap:
+            return geom_a, geom_b, False
+
+        # 1. If geom_b is completely covered by geom_a or identical
+        diff_b = geom_b.difference(geom_a)
+        if diff_b is None or diff_b.is_empty or diff_b.length <= min_overlap:
+            return geom_a, None, True
+
+        # 2. If geom_a is completely covered by geom_b
+        diff_a = geom_a.difference(geom_b)
+        if diff_a is None or diff_a.is_empty or diff_a.length <= min_overlap:
+            return None, geom_b, True
+
+        # 3. Partial overlap: trim geom_b by removing the shared segment
+        return geom_a, diff_b, True
+
     @classmethod
-    def _check_line_duplicate_nodes(cls, gdf: gpd.GeoDataFrame, start_id: int) -> List[TopologyError]:
+    def _resolve_pseudo_node(cls, geom_a, geom_b):
+        """
+        Merges two lines meeting at a pseudo-node into a single continuous LineString.
+        """
+        if geom_a is None or geom_b is None or geom_a.is_empty or geom_b.is_empty:
+            return None, False
+        try:
+            lines = []
+            if hasattr(geom_a, "geoms"):
+                lines.extend(list(geom_a.geoms))
+            else:
+                lines.append(geom_a)
+            if hasattr(geom_b, "geoms"):
+                lines.extend(list(geom_b.geoms))
+            else:
+                lines.append(geom_b)
+
+            merged = shapely.ops.linemerge(lines)
+            if merged is not None and not merged.is_empty:
+                orig_cnt = len(lines)
+                new_cnt = len(merged.geoms) if hasattr(merged, "geoms") else 1
+                if new_cnt < orig_cnt:
+                    cleaned = cls._clean_line_duplicates(merged)
+                    return cleaned, True
+        except Exception:
+            pass
+        return None, False
+
+    @staticmethod
+    def _snap_geom_to_target(geom_a, geom_b, snap_tol: float):
+        """
+        Snaps the nearest open endpoint of geom_a to the closest vertex or edge on geom_b.
+        Returns (new_geom_a, new_geom_b, ok).
+        """
+        if geom_a is None or geom_b is None or geom_a.is_empty or geom_b.is_empty:
+            return geom_a, geom_b, False
+
+        sub_lines = list(geom_a.geoms) if hasattr(geom_a, "geoms") else [geom_a]
+        best_candidate = None
+        min_dist = float("inf")
+
+        for l_idx, line in enumerate(sub_lines):
+            if line.geom_type != "LineString" or len(line.coords) < 2:
+                continue
+            p_start = Point(line.coords[0])
+            p_end = Point(line.coords[-1])
+            d_start = p_start.distance(geom_b)
+            d_end = p_end.distance(geom_b)
+
+            if 1e-8 < d_start <= snap_tol and d_start < min_dist:
+                min_dist = d_start
+                best_candidate = (l_idx, "start", p_start)
+            if 1e-8 < d_end <= snap_tol and d_end < min_dist:
+                min_dist = d_end
+                best_candidate = (l_idx, "end", p_end)
+
+        if best_candidate is None:
+            return geom_a, geom_b, False
+
+        l_idx, which, p_src = best_candidate
+        _, p_near = shapely.ops.nearest_points(p_src, geom_b)
+
+        orig_line = sub_lines[l_idx]
+        coords = list(orig_line.coords)
+        if which == "start":
+            coords[0] = (p_near.x, p_near.y)
+        else:
+            coords[-1] = (p_near.x, p_near.y)
+
+        sub_lines[l_idx] = LineString(coords)
+        new_geom_a = MultiLineString(sub_lines) if hasattr(geom_a, "geoms") else sub_lines[0]
+
+        try:
+            new_geom_b = shapely.snap(geom_b, new_geom_a, tolerance=1e-5)
+        except Exception:
+            new_geom_b = geom_b
+
+        return new_geom_a, new_geom_b, True
+
+    @classmethod
+    def _check_line_duplicate_nodes(cls, gdf: gpd.GeoDataFrame, tolerance: float = 0.0, start_id: int = 0) -> List[TopologyError]:
         errors = []
         rule = cls.RULES[TopologyRuleCode.LINE_DUPLICATE_NODES]
         curr_id = start_id
+        tol_sq = tolerance * tolerance if tolerance > 0 else 0.0
 
         for idx, geom in gdf.geometry.items():
             if geom is None or geom.is_empty:
@@ -569,8 +826,16 @@ class TopologyEngine:
                     continue
                 coords = list(line.coords)
                 for i in range(len(coords) - 1):
-                    if coords[i] == coords[i + 1]:
-                        dup_points.append(Point(coords[i]))
+                    p0 = coords[i]
+                    p1 = coords[i + 1]
+                    is_dup = (p0 == p1)
+                    if not is_dup and tolerance > 0:
+                        dx = p0[0] - p1[0]
+                        dy = p0[1] - p1[1]
+                        if (dx * dx + dy * dy) <= tol_sq:
+                            is_dup = True
+                    if is_dup:
+                        dup_points.append(Point(p0))
 
             if dup_points:
                 err_geom = MultiPoint(dup_points) if len(dup_points) > 1 else dup_points[0]
@@ -588,15 +853,75 @@ class TopologyEngine:
         return errors
 
     @classmethod
+    def _check_line_spikes(cls, gdf: gpd.GeoDataFrame, max_angle_deg: float = 15.0, start_id: int = 0) -> List[TopologyError]:
+        errors = []
+        rule = cls.RULES[TopologyRuleCode.LINE_SPIKES]
+        curr_id = start_id
+        cos_thresh = math.cos(math.radians(max_angle_deg))
+
+        for idx, geom in gdf.geometry.items():
+            if geom is None or geom.is_empty:
+                continue
+
+            lines = geom.geoms if hasattr(geom, "geoms") else [geom]
+            spike_points = []
+            for line in lines:
+                if line.geom_type != "LineString":
+                    continue
+                coords = list(line.coords)
+                if len(coords) < 3:
+                    continue
+
+                for i in range(1, len(coords) - 1):
+                    p0 = coords[i - 1]
+                    p1 = coords[i]
+                    p2 = coords[i + 1]
+
+                    # 1. Retraced spike: p0 == p2
+                    if p0 == p2:
+                        spike_points.append(Point(p1))
+                        continue
+
+                    # 2. Acute angle spike
+                    v1x, v1y = p0[0] - p1[0], p0[1] - p1[1]
+                    v2x, v2y = p2[0] - p1[0], p2[1] - p1[1]
+                    len1 = math.hypot(v1x, v1y)
+                    len2 = math.hypot(v2x, v2y)
+
+                    if len1 > 0 and len2 > 0:
+                        dot = (v1x * v2x + v1y * v2y) / (len1 * len2)
+                        if dot >= cos_thresh:
+                            spike_points.append(Point(p1))
+
+            if spike_points:
+                err_geom = MultiPoint(spike_points) if len(spike_points) > 1 else spike_points[0]
+                errors.append(TopologyError(
+                    id=curr_id,
+                    rule_code=rule.code,
+                    rule_name=rule.name,
+                    feature_ids=[idx],
+                    geometry=err_geom,
+                    description=f"Line feature #{idx} contains {len(spike_points)} spike(s) or retraced segments.",
+                    severity="warning",
+                    can_fix=True
+                ))
+                curr_id += 1
+        return errors
+
+    @classmethod
     def _check_line_dangles(cls, gdf: gpd.GeoDataFrame, snap_tolerance: float, start_id: int) -> List[TopologyError]:
         errors = []
         rule = cls.RULES[TopologyRuleCode.LINE_DANGLES]
         curr_id = start_id
 
         endpoints = []
+        geoms_list = []
+        indices_list = []
         for idx, geom in gdf.geometry.items():
             if geom is None or geom.is_empty:
                 continue
+            geoms_list.append(geom)
+            indices_list.append(idx)
             lines = geom.geoms if hasattr(geom, "geoms") else [geom]
             for line in lines:
                 if line.geom_type == "LineString" and len(line.coords) >= 2:
@@ -607,30 +932,50 @@ class TopologyEngine:
             return errors
 
         pts = [p for p, _, _ in endpoints]
-        tree = shapely.STRtree(pts)
+        end_tree = shapely.STRtree(pts)
+        line_tree = shapely.STRtree(geoms_list)
 
         for pt, idx, which in endpoints:
-            matches = tree.query(pt, predicate="dwithin", distance=1e-8)
-            if len(matches) <= 1:
-                # It's an open endpoint
-                nearby = tree.query(pt, predicate="dwithin", distance=snap_tolerance)
-                is_close_undershoot = len(nearby) > 1
-                desc = (
-                    f"Dangle endpoint ({which}) on line #{idx} close to another node within snap tolerance."
-                    if is_close_undershoot
-                    else f"Dangling endpoint ({which}) on line #{idx}."
-                )
+            # 1. Does this endpoint touch another feature's vertex or edge?
+            inter_line_indices = line_tree.query(pt, predicate="dwithin", distance=1e-8)
+            touches_other = any(indices_list[g_i] != idx for g_i in inter_line_indices)
+            if touches_other:
+                continue  # Connected to another feature, not a dangle
+
+            # Check if it connects to another part of the same feature (e.g. closed loop)
+            same_feat_matches = [m for m in end_tree.query(pt, predicate="dwithin", distance=1e-8) if endpoints[m][1] == idx]
+            if len(same_feat_matches) > 1:
+                continue  # Closed loop within the same feature
+
+            # 2. It IS an open endpoint (dangle). Is it an undershoot (near another feature within snap_tolerance)?
+            nearby_lines = [g_i for g_i in line_tree.query(pt, predicate="dwithin", distance=snap_tolerance) if indices_list[g_i] != idx]
+            if nearby_lines:
+                # Find nearest target line
+                best_g_i = min(nearby_lines, key=lambda g_i: pt.distance(geoms_list[g_i]))
+                best_idx = indices_list[best_g_i]
+                min_dist = pt.distance(geoms_list[best_g_i])
+                errors.append(TopologyError(
+                    id=curr_id,
+                    rule_code=rule.code,
+                    rule_name=rule.name,
+                    feature_ids=[idx, best_idx],
+                    geometry=pt,
+                    description=f"Undershoot dangle ({which}) on line #{idx} is {min_dist:.4g} from line #{best_idx} (snap tolerance: {snap_tolerance:g}).",
+                    severity="warning",
+                    can_fix=True
+                ))
+            else:
                 errors.append(TopologyError(
                     id=curr_id,
                     rule_code=rule.code,
                     rule_name=rule.name,
                     feature_ids=[idx],
                     geometry=pt,
-                    description=desc,
-                    severity="warning" if is_close_undershoot else "info",
-                    can_fix=is_close_undershoot
+                    description=f"Dangling endpoint ({which}) on line #{idx} (dead-end).",
+                    severity="info",
+                    can_fix=False
                 ))
-                curr_id += 1
+            curr_id += 1
         return errors
 
     @classmethod
@@ -640,9 +985,13 @@ class TopologyEngine:
         curr_id = start_id
 
         endpoints = []
+        geoms_list = []
+        indices_list = []
         for idx, geom in gdf.geometry.items():
             if geom is None or geom.is_empty:
                 continue
+            geoms_list.append(geom)
+            indices_list.append(idx)
             lines = geom.geoms if hasattr(geom, "geoms") else [geom]
             for line in lines:
                 if line.geom_type == "LineString" and len(line.coords) >= 2:
@@ -654,6 +1003,7 @@ class TopologyEngine:
 
         pts = [p for p, _ in endpoints]
         tree = shapely.STRtree(pts)
+        line_tree = shapely.STRtree(geoms_list)
         checked = set()
 
         for pt, idx in endpoints:
@@ -665,17 +1015,20 @@ class TopologyEngine:
                     coord_key = (round(pt.x, 7), round(pt.y, 7))
                     if coord_key not in checked:
                         checked.add(coord_key)
-                        errors.append(TopologyError(
-                            id=curr_id,
-                            rule_code=rule.code,
-                            rule_name=rule.name,
-                            feature_ids=[idx_a, idx_b],
-                            geometry=pt,
-                            description=f"Pseudo-node joining lines #{idx_a} and #{idx_b} (can be merged).",
-                            severity="warning",
-                            can_fix=True
-                        ))
-                        curr_id += 1
+                        touching_geoms = line_tree.query(pt, predicate="dwithin", distance=1e-8)
+                        other_touching = [indices_list[g_i] for g_i in touching_geoms if indices_list[g_i] not in (idx_a, idx_b)]
+                        if not other_touching:
+                            errors.append(TopologyError(
+                                id=curr_id,
+                                rule_code=rule.code,
+                                rule_name=rule.name,
+                                feature_ids=[idx_a, idx_b],
+                                geometry=pt,
+                                description=f"Pseudo-node joining lines #{idx_a} and #{idx_b} (can be merged).",
+                                severity="warning",
+                                can_fix=True
+                            ))
+                            curr_id += 1
         return errors
 
     @classmethod
@@ -717,7 +1070,7 @@ class TopologyEngine:
             return errors
 
         tree = shapely.STRtree(geoms)
-        matches = tree.query(geoms, predicate="overlaps")
+        matches = tree.query(geoms, predicate="intersects")
 
         seen_pairs = set()
         for i, j in zip(matches[0], matches[1]):
@@ -729,7 +1082,7 @@ class TopologyEngine:
                     seen_pairs.add(pair_key)
                     try:
                         inter = geoms[i].intersection(geoms[j])
-                        if inter is not None and not inter.is_empty and inter.length > 0:
+                        if inter is not None and not inter.is_empty and inter.length > 1e-8:
                             errors.append(TopologyError(
                                 id=curr_id,
                                 rule_code=rule.code,
@@ -981,9 +1334,129 @@ class TopologyEngine:
             res_gdf = res_gdf[res_gdf.geometry.notna() & ~res_gdf.geometry.is_empty].copy()
             total_fixed += (orig_len - len(res_gdf))
 
-        # 2. Repair OGC valid
-        if TopologyRuleCode.POLYGON_OGC_VALID in report.rule_counts or TopologyRuleCode.LINE_SELF_INTERSECT in report.rule_counts:
-            invalid_mask = ~res_gdf.geometry.is_valid
+        # 2. Repair Line Self-Intersection (Noding)
+        if TopologyRuleCode.LINE_SELF_INTERSECT in report.rule_counts:
+            fixed_self_inter = 0
+            for idx in list(res_gdf.index):
+                geom = res_gdf.geometry.loc[idx]
+                if geom is not None and not geom.is_empty and geom.geom_type in ("LineString", "MultiLineString"):
+                    if not geom.is_simple:
+                        noded = cls._clean_line_self_intersect(geom)
+                        if noded is not None and not noded.is_empty and noded != geom:
+                            res_gdf.loc[idx, "geometry"] = noded
+                            fixed_self_inter += 1
+            total_fixed += fixed_self_inter
+
+        # 3. Clean line duplicate vertices (preserving collinear vertices)
+        if TopologyRuleCode.LINE_DUPLICATE_NODES in report.rule_counts:
+            fixed_dups = 0
+            for idx in list(res_gdf.index):
+                geom = res_gdf.geometry.loc[idx]
+                if geom is not None and not geom.is_empty and geom.geom_type in ("LineString", "MultiLineString"):
+                    cleaned = cls._clean_line_duplicates(geom)
+                    if cleaned is not None and not cleaned.is_empty and cleaned != geom:
+                        res_gdf.loc[idx, "geometry"] = cleaned
+                        fixed_dups += 1
+            total_fixed += fixed_dups
+
+        # 4. Clean line spikes & retraced segments
+        if TopologyRuleCode.LINE_SPIKES in report.rule_counts:
+            fixed_spikes = 0
+            max_angle = 15.0
+            for r in getattr(report, "configured_rules", []):
+                if r.code == TopologyRuleCode.LINE_SPIKES:
+                    max_angle = float(r.params.get("max_angle", 15.0))
+            for idx in list(res_gdf.index):
+                geom = res_gdf.geometry.loc[idx]
+                if geom is not None and not geom.is_empty and geom.geom_type in ("LineString", "MultiLineString"):
+                    cleaned = cls._clean_line_spikes(geom, max_angle_deg=max_angle)
+                    if cleaned is not None and not cleaned.is_empty and cleaned != geom:
+                        res_gdf.loc[idx, "geometry"] = cleaned
+                        fixed_spikes += 1
+            total_fixed += fixed_spikes
+
+        # 5. Clean line short segments
+        if TopologyRuleCode.LINE_SHORT_SEGMENTS in report.rule_counts:
+            min_len = 0.0001
+            for r in getattr(report, "configured_rules", []):
+                if r.code == TopologyRuleCode.LINE_SHORT_SEGMENTS:
+                    min_len = float(r.params.get("min_length", 0.0001))
+            is_line = res_gdf.geometry.geom_type.isin(["LineString", "MultiLineString"])
+            too_short = is_line & (res_gdf.geometry.length < min_len)
+            res_gdf = res_gdf[~too_short].copy()
+            total_fixed += int(too_short.sum())
+
+        # 6. Clean line overlaps
+        if TopologyRuleCode.LINE_OVERLAPS in report.rule_counts:
+            fixed_line_overlaps = 0
+            overlap_errs = [e for e in report.errors if e.rule_code == TopologyRuleCode.LINE_OVERLAPS]
+            for err in overlap_errs:
+                if len(err.feature_ids) < 2:
+                    continue
+                idx_a, idx_b = err.feature_ids[0], err.feature_ids[1]
+                if idx_a not in res_gdf.index or idx_b not in res_gdf.index:
+                    continue
+                geom_a = res_gdf.geometry.loc[idx_a]
+                geom_b = res_gdf.geometry.loc[idx_b]
+                new_a, new_b, ok = cls._resolve_line_overlap(geom_a, geom_b)
+                if ok:
+                    if new_a is None:
+                        res_gdf = res_gdf.drop(index=idx_a)
+                    else:
+                        res_gdf.loc[idx_a, "geometry"] = new_a
+                    if new_b is None:
+                        res_gdf = res_gdf.drop(index=idx_b)
+                    else:
+                        res_gdf.loc[idx_b, "geometry"] = new_b
+                    fixed_line_overlaps += 1
+            total_fixed += fixed_line_overlaps
+
+        # 7. Snap line dangles (undershoots)
+        if TopologyRuleCode.LINE_DANGLES in report.rule_counts:
+            snap_tol = 0.0002
+            for r in getattr(report, "configured_rules", []):
+                if r.code == TopologyRuleCode.LINE_DANGLES:
+                    snap_tol = float(r.params.get("tolerance", 0.0002))
+            fixed_dangles = 0
+            dangle_errs = [e for e in report.errors if e.rule_code == TopologyRuleCode.LINE_DANGLES and e.can_fix]
+            for err in dangle_errs:
+                if not err.feature_ids:
+                    continue
+                idx_a = err.feature_ids[0]
+                target_idx = err.feature_ids[1] if len(err.feature_ids) >= 2 else None
+                if idx_a not in res_gdf.index or target_idx is None or target_idx not in res_gdf.index:
+                    continue
+                geom_a = res_gdf.geometry.loc[idx_a]
+                geom_b = res_gdf.geometry.loc[target_idx]
+                new_a, new_b, ok = cls._snap_geom_to_target(geom_a, geom_b, snap_tol)
+                if ok:
+                    res_gdf.loc[idx_a, "geometry"] = new_a
+                    res_gdf.loc[target_idx, "geometry"] = new_b
+                    fixed_dangles += 1
+            total_fixed += fixed_dangles
+
+        # 8. Merge line pseudo-nodes
+        if TopologyRuleCode.LINE_PSEUDO_NODES in report.rule_counts:
+            fixed_pseudo = 0
+            pseudo_errs = [e for e in report.errors if e.rule_code == TopologyRuleCode.LINE_PSEUDO_NODES]
+            for err in pseudo_errs:
+                if len(err.feature_ids) < 2:
+                    continue
+                idx_a, idx_b = err.feature_ids[0], err.feature_ids[1]
+                if idx_a not in res_gdf.index or idx_b not in res_gdf.index:
+                    continue
+                geom_a = res_gdf.geometry.loc[idx_a]
+                geom_b = res_gdf.geometry.loc[idx_b]
+                merged, ok = cls._resolve_pseudo_node(geom_a, geom_b)
+                if ok:
+                    res_gdf.loc[idx_a, "geometry"] = merged
+                    res_gdf = res_gdf.drop(index=idx_b)
+                    fixed_pseudo += 1
+            total_fixed += fixed_pseudo
+
+        # 9. Repair Polygon OGC valid
+        if TopologyRuleCode.POLYGON_OGC_VALID in report.rule_counts:
+            invalid_mask = ~res_gdf.geometry.is_valid & res_gdf.geometry.geom_type.isin(["Polygon", "MultiPolygon"])
             count_invalid = int(invalid_mask.sum())
             if count_invalid > 0:
                 res_gdf.loc[invalid_mask, "geometry"] = res_gdf.loc[invalid_mask, "geometry"].apply(
@@ -991,20 +1464,18 @@ class TopologyEngine:
                 )
                 total_fixed += count_invalid
 
-        # 3. Clean duplicate vertices
-        if (TopologyRuleCode.POLYGON_DUPLICATE_VERTICES in report.rule_counts or
-                TopologyRuleCode.LINE_DUPLICATE_NODES in report.rule_counts):
+        # 7. Clean Polygon duplicate vertices
+        if TopologyRuleCode.POLYGON_DUPLICATE_VERTICES in report.rule_counts:
             fixed_dups = 0
             for idx in res_gdf.index:
                 geom = res_gdf.geometry.loc[idx]
-                if geom is not None and not geom.is_empty:
+                if geom is not None and not geom.is_empty and geom.geom_type in ("Polygon", "MultiPolygon"):
                     cleaned = shapely.simplify(geom, tolerance=0)
                     if cleaned is not None and not cleaned.is_empty:
                         res_gdf.loc[idx, "geometry"] = cleaned
                         fixed_dups += 1
             if fixed_dups > 0:
-                total_fixed += min(fixed_dups, report.rule_counts.get(TopologyRuleCode.POLYGON_DUPLICATE_VERTICES, 0) +
-                                   report.rule_counts.get(TopologyRuleCode.LINE_DUPLICATE_NODES, 0))
+                total_fixed += min(fixed_dups, report.rule_counts.get(TopologyRuleCode.POLYGON_DUPLICATE_VERTICES, 0))
 
         # 4. Repair Point Duplicates
         if TopologyRuleCode.POINT_DUPLICATES in report.rule_counts:
@@ -1082,13 +1553,80 @@ class TopologyEngine:
             res_gdf = res_gdf.drop(index=feat_id)
             return res_gdf, True
 
-        elif rule in (TopologyRuleCode.POLYGON_OGC_VALID, TopologyRuleCode.LINE_SELF_INTERSECT):
+        elif rule == TopologyRuleCode.LINE_SELF_INTERSECT:
+            geom = res_gdf.geometry.loc[feat_id]
+            if geom is not None and not geom.is_empty:
+                noded = cls._clean_line_self_intersect(geom)
+                if noded is not None and not noded.is_empty:
+                    res_gdf.loc[feat_id, "geometry"] = noded
+                    return res_gdf, True
+
+        elif rule == TopologyRuleCode.LINE_DUPLICATE_NODES:
+            geom = res_gdf.geometry.loc[feat_id]
+            if geom is not None and not geom.is_empty:
+                cleaned = cls._clean_line_duplicates(geom)
+                if cleaned is not None and not cleaned.is_empty:
+                    res_gdf.loc[feat_id, "geometry"] = cleaned
+                    return res_gdf, True
+
+        elif rule == TopologyRuleCode.LINE_SPIKES:
+            geom = res_gdf.geometry.loc[feat_id]
+            if geom is not None and not geom.is_empty:
+                cleaned = cls._clean_line_spikes(geom)
+                if cleaned is not None and not cleaned.is_empty:
+                    res_gdf.loc[feat_id, "geometry"] = cleaned
+                    return res_gdf, True
+
+        elif rule == TopologyRuleCode.LINE_SHORT_SEGMENTS:
+            res_gdf = res_gdf.drop(index=feat_id)
+            return res_gdf, True
+
+        elif rule == TopologyRuleCode.LINE_OVERLAPS and len(error.feature_ids) >= 2:
+            feat_b = error.feature_ids[1]
+            if feat_b in res_gdf.index:
+                geom_a = res_gdf.geometry.loc[feat_id]
+                geom_b = res_gdf.geometry.loc[feat_b]
+                new_a, new_b, ok = cls._resolve_line_overlap(geom_a, geom_b)
+                if ok:
+                    if new_a is None:
+                        res_gdf = res_gdf.drop(index=feat_id)
+                    else:
+                        res_gdf.loc[feat_id, "geometry"] = new_a
+                    if new_b is None:
+                        res_gdf = res_gdf.drop(index=feat_b)
+                    else:
+                        res_gdf.loc[feat_b, "geometry"] = new_b
+                    return res_gdf, True
+
+        elif rule == TopologyRuleCode.LINE_PSEUDO_NODES and len(error.feature_ids) >= 2:
+            feat_b = error.feature_ids[1]
+            if feat_b in res_gdf.index:
+                geom_a = res_gdf.geometry.loc[feat_id]
+                geom_b = res_gdf.geometry.loc[feat_b]
+                merged, ok = cls._resolve_pseudo_node(geom_a, geom_b)
+                if ok:
+                    res_gdf.loc[feat_id, "geometry"] = merged
+                    res_gdf = res_gdf.drop(index=feat_b)
+                    return res_gdf, True
+
+        elif rule == TopologyRuleCode.LINE_DANGLES and error.can_fix:
+            target_idx = error.feature_ids[1] if len(error.feature_ids) >= 2 else None
+            if target_idx is not None and target_idx in res_gdf.index:
+                geom_a = res_gdf.geometry.loc[feat_id]
+                geom_b = res_gdf.geometry.loc[target_idx]
+                new_a, new_b, ok = cls._snap_geom_to_target(geom_a, geom_b, snap_tol=1000.0)
+                if ok:
+                    res_gdf.loc[feat_id, "geometry"] = new_a
+                    res_gdf.loc[target_idx, "geometry"] = new_b
+                    return res_gdf, True
+
+        elif rule == TopologyRuleCode.POLYGON_OGC_VALID:
             geom = res_gdf.geometry.loc[feat_id]
             if geom is not None and not geom.is_empty:
                 res_gdf.loc[feat_id, "geometry"] = shapely.make_valid(geom)
                 return res_gdf, True
 
-        elif rule in (TopologyRuleCode.POLYGON_DUPLICATE_VERTICES, TopologyRuleCode.LINE_DUPLICATE_NODES):
+        elif rule == TopologyRuleCode.POLYGON_DUPLICATE_VERTICES:
             geom = res_gdf.geometry.loc[feat_id]
             if geom is not None and not geom.is_empty:
                 res_gdf.loc[feat_id, "geometry"] = shapely.simplify(geom, tolerance=0)

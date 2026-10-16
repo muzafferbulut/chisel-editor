@@ -333,7 +333,7 @@ class MainWindow(QMainWindow):
         act_dissolve = QAction("🔗 Dissolve", self)
         act_dissolve.triggered.connect(self._dissolve_geometries)
 
-        act_simplify = QAction("✂️ Simplify...", self)
+        act_simplify = QAction("✂️ Simplify", self)
         act_simplify.triggered.connect(self._simplify_geometries)
 
         act_topology = QAction("📐 Topology Engine", self)
@@ -1187,8 +1187,8 @@ class MainWindow(QMainWindow):
                 else:
                     if hasattr(tab, "text_editor") and tab.text_editor:
                         tab.text_editor.setTheme(theme_name)
-                    if hasattr(tab, "map_panel") and tab.map_panel:
-                        tab.map_panel.set_theme_tiles(theme_name)
+        if hasattr(self, "topology_dialog") and self.topology_dialog is not None and self.topology_dialog.isVisible():
+            self.topology_dialog.apply_theme(theme_name)
         settings = QSettings("ChiselEditor", "ChiselEditor")
         settings.setValue("current_theme", theme_name)
 

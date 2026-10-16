@@ -70,10 +70,22 @@ LUCIDE_SVGS: dict[str, str] = {
     "chevrons-right": '<polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/>',
     "arrow-left-right": '<polyline points="8 3 4 7 8 11"/><polyline points="16 21 20 17 16 13"/><line x1="4" x2="20" y1="7" y2="7"/><line x1="20" x2="4" y1="17" y2="17"/>',
     "eraser": '<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/>',
+    "play": '<polygon points="6 3 20 12 6 21 6 3"/>',
+    "wrench": '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+    "zap": '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+    "alert-triangle": '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/>',
+    "info": '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+    "check-circle-2": '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
 }
 
 # Aliases mapping project/action names to canonical Lucide SVG names
 ICON_ALIASES: dict[str, str] = {
+    "play": "play",
+    "wrench": "wrench",
+    "zap": "zap",
+    "alert": "alert-triangle",
+    "info": "info",
+    "check_circle": "check-circle-2",
     "zoom_to_selected": "zoom-in",
     "box_select": "box-select",
     "select_box": "box-select",

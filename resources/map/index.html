@@ -3160,6 +3160,12 @@
 
       function restoreSnapshotMode() {
         document.body.classList.remove("snapshot-mode");
+        var legendEl = document.getElementById("snapshotLegend");
+        if (legendEl) {
+          legendEl.style.display = "none";
+          legendEl.innerHTML = "";
+        }
+        closeAllFlyouts();
         return true;
       }
 
