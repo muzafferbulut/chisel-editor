@@ -33,28 +33,8 @@ class SpatialHandler(BaseHandler):
         Reads a CSV file and constructs a GeoDataFrame using WKT or coordinate pairs (lat/lon, y/x).
         Supports auto-detection of delimiters (, ; \t |) and encodings (utf-8, cp1254, latin1).
         """
-        import csv
-        encoding = "utf-8"
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                sample = f.read(8192)
-        except UnicodeDecodeError:
-            try:
-                encoding = "cp1254"
-                with open(file_path, "r", encoding="cp1254") as f:
-                    sample = f.read(8192)
-            except UnicodeDecodeError:
-                encoding = "latin1"
-                with open(file_path, "r", encoding="latin1") as f:
-                    sample = f.read(8192)
-
-        try:
-            dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
-            sep = dialect.delimiter
-        except Exception:
-            sep = ","
-
-        df = pd.read_csv(file_path, sep=sep, encoding=encoding)
+        from core.io_utils import read_delimited_file
+        df, _, _ = read_delimited_file(file_path)
         if df.empty:
             return gpd.GeoDataFrame(df, crs="EPSG:4326")
 
@@ -123,7 +103,7 @@ class SpatialHandler(BaseHandler):
                 try:
                     gdf = gpd.read_file(file_path)
                     if hasattr(gdf, "crs") and gdf.crs is None:
-                        gdf.set_crs("EPSG:4326", inplace=True)
+                        gdf = gdf.set_crs("EPSG:4326")
                     return gdf
                 except Exception:
                     with zipfile.ZipFile(file_path, 'r') as zf:
@@ -134,14 +114,14 @@ class SpatialHandler(BaseHandler):
                                 extracted_kml = os.path.join(tmp_dir, kml_members[0])
                                 gdf = gpd.read_file(extracted_kml)
                                 if hasattr(gdf, "crs") and gdf.crs is None:
-                                    gdf.set_crs("EPSG:4326", inplace=True)
+                                    gdf = gdf.set_crs("EPSG:4326")
                                 return gdf
 
             if file_path.lower().endswith(".dxf"):
                 try:
                     gdf = gpd.read_file(file_path)
                     if hasattr(gdf, "crs") and gdf.crs is None:
-                        gdf.set_crs("EPSG:4326", inplace=True)
+                        gdf = gdf.set_crs("EPSG:4326")
                     return gdf
                 except Exception as e:
                     raise RuntimeError(f"Failed to read DXF file: {str(e)}")
@@ -162,10 +142,30 @@ class SpatialHandler(BaseHandler):
                 gdfs = []
                 for l in layers:
                     try:
-                        gdfs.append(gpd.read_file(file_path, layer=l, engine="pyogrio"))
+                        lgdf = gpd.read_file(file_path, layer=l, engine="pyogrio")
                     except Exception:
-                        gdfs.append(gpd.read_file(file_path, layer=l))
-                gdf = pd.concat(gdfs, ignore_index=True)
+                        lgdf = gpd.read_file(file_path, layer=l)
+                    if lgdf is not None and not lgdf.empty:
+                        gdfs.append(lgdf)
+
+                if not gdfs:
+                    gdf = gpd.GeoDataFrame()
+                elif len(gdfs) == 1:
+                    gdf = gdfs[0]
+                else:
+                    base_crs = gdfs[0].crs or "EPSG:4326"
+                    aligned = []
+                    for g in gdfs:
+                        if hasattr(g, 'crs') and g.crs is not None and g.crs != base_crs:
+                            try:
+                                aligned.append(g.to_crs(base_crs))
+                            except Exception:
+                                aligned.append(g)
+                        else:
+                            aligned.append(g)
+                    concat_df = pd.concat(aligned, ignore_index=True)
+                    geom_name = gdfs[0].geometry.name if hasattr(gdfs[0], 'geometry') and gdfs[0].geometry.name in concat_df.columns else 'geometry'
+                    gdf = gpd.GeoDataFrame(concat_df, geometry=geom_name, crs=base_crs)
             elif layer_name:
                 try:
                     gdf = gpd.read_file(file_path, layer=layer_name, engine="pyogrio")
@@ -178,7 +178,7 @@ class SpatialHandler(BaseHandler):
                     gdf = gpd.read_file(file_path)
 
             if hasattr(gdf, "crs") and gdf.crs is None:
-                gdf.set_crs("EPSG:4326", inplace=True)
+                gdf = gdf.set_crs("EPSG:4326")
 
             return gdf
         except MultipleLayersError:

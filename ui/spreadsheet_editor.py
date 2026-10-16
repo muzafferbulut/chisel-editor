@@ -9,6 +9,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QKeySequence, QShortcut, QIcon
 from handlers.excel import ExcelHandler
 from core.theme import ThemeManager
+from ui.toolbar_helper import create_tool_button, create_vsep, refresh_tool_buttons, get_toolbar_button_qss
 
 
 class SpreadsheetEditorWidget(QWidget):
@@ -26,6 +27,7 @@ class SpreadsheetEditorWidget(QWidget):
         self._current_sheet_name = None
         self._is_loading = False
         self._is_dirty = False
+        self._tool_buttons = {}
         self._init_ui()
         self.apply_theme()
 
@@ -41,34 +43,28 @@ class SpreadsheetEditorWidget(QWidget):
         toolbar.setContentsMargins(0, 0, 0, 0)
         toolbar.setSpacing(4)
 
+        def _add_btn(name, text, tip, cb=None):
+            btn = create_tool_button(name, fallback_text=text, tooltip=tip, callback=cb, parent=self)
+            self._tool_buttons[btn] = name
+            toolbar.addWidget(btn)
+            return btn
+
         # Row and Column Tools
-        self.btn_add_row = self._create_tool_btn("add_row", "+R", "Insert Row (Inserts new row below selected)", self._add_row)
-        toolbar.addWidget(self.btn_add_row)
+        self.btn_add_row = _add_btn("add_row", "+R", "Insert Row (Inserts new row below selected)", self._add_row)
+        self.btn_del_row = _add_btn("delete_row", "-R", "Delete Row (Deletes selected row)", self._del_row)
+        self.btn_add_col = _add_btn("add_col", "+C", "Insert Column (Inserts new column)", self._add_column)
+        self.btn_del_col = _add_btn("delete_col", "-C", "Delete Column (Deletes selected column)", self._del_column)
 
-        self.btn_del_row = self._create_tool_btn("delete_row", "-R", "Delete Row (Deletes selected row)", self._del_row)
-        toolbar.addWidget(self.btn_del_row)
-
-        self.btn_add_col = self._create_tool_btn("add_col", "+C", "Insert Column (Inserts new column)", self._add_column)
-        toolbar.addWidget(self.btn_add_col)
-
-        self.btn_del_col = self._create_tool_btn("delete_col", "-C", "Delete Column (Deletes selected column)", self._del_column)
-        toolbar.addWidget(self.btn_del_col)
-
-        toolbar.addWidget(self._create_vsep())
+        toolbar.addWidget(create_vsep(self))
 
         # Layout and Content Tools
-        self.btn_autofit = self._create_tool_btn("autofit", "↔", "Auto-fit Column Widths", self._autofit_columns)
-        toolbar.addWidget(self.btn_autofit)
+        self.btn_autofit = _add_btn("autofit", "↔", "Auto-fit Column Widths", self._autofit_columns)
+        self.btn_clear = _add_btn("clear_cells", "✕", "Clear Selected Cells (Delete)", self._clear_selected_cells)
+        self.btn_stats = _add_btn("statistics", "📊", "Column Statistics (Sum, Mean, Min, Max)", self._show_column_stats)
 
-        self.btn_clear = self._create_tool_btn("clear_cells", "✕", "Clear Selected Cells (Delete)", self._clear_selected_cells)
-        toolbar.addWidget(self.btn_clear)
+        toolbar.addWidget(create_vsep(self))
 
-        self.btn_stats = self._create_tool_btn("statistics", "📊", "Column Statistics (Sum, Mean, Min, Max)", self._show_column_stats)
-        toolbar.addWidget(self.btn_stats)
-
-        toolbar.addWidget(self._create_vsep())
-
-        self.btn_export = self._create_tool_btn("export_csv", "💾", "Export Table as CSV", self._export_to_csv)
+        self.btn_export = _add_btn("export_csv", "💾", "Export Table as CSV", self._export_to_csv)
         toolbar.addWidget(self.btn_export)
 
         toolbar.addStretch()
@@ -144,76 +140,21 @@ class SpreadsheetEditorWidget(QWidget):
         QShortcut(QKeySequence.StandardKey.Paste, self.table, self._paste_selection)
         QShortcut(QKeySequence.StandardKey.Delete, self.table, self._clear_selected_cells)
 
-    def _create_vsep(self) -> QFrame:
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setFrameShadow(QFrame.Shadow.Sunken)
-        sep.setStyleSheet("background-color: rgba(128, 128, 128, 0.25); width: 1px; margin: 3px 2px; border: none;")
-        return sep
-
-    def _get_icon(self, icon_name: str) -> QIcon:
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        icon_path = os.path.join(base_dir, "resources", "icons", f"{icon_name}.png")
-        if os.path.isfile(icon_path):
-            return QIcon(icon_path)
-        return QIcon()
-
-    def _create_tool_btn(self, icon_name: str, fallback_text: str, tooltip: str, callback=None) -> QPushButton:
-        btn = QPushButton()
-        icon = self._get_icon(icon_name)
-        if not icon.isNull():
-            btn.setIcon(icon)
-            btn.setIconSize(QSize(16, 16))
-        else:
-            btn.setText(fallback_text)
-
-        btn.setToolTip(tooltip)
-        btn.setFixedSize(28, 28)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        if callback:
-            btn.clicked.connect(callback)
-        return btn
-
     def apply_theme(self, theme_name: str = None):
         """Applies dynamic theme styling to toolbar, table, formula bar, and headers."""
+        refresh_tool_buttons(self._tool_buttons, theme_name)
+        self.toolbar_container.setStyleSheet(get_toolbar_button_qss("SpreadsheetToolbar", theme_name))
+
         tokens = ThemeManager.get_tokens(theme_name)
         bg = tokens.get("panel_bg", "#ffffff")
         toolbar_bg = tokens.get("toolbar_bg", "#f8fafc")
         text = tokens.get("text", "#1e293b")
         text_muted = tokens.get("text_muted", "#64748b")
         border = tokens.get("border", "#e2e8f0")
-        hover = tokens.get("hover", "rgba(128,128,128,0.18)")
-        active = tokens.get("active", "rgba(128,128,128,0.30)")
         accent = tokens.get("accent", "#0284c7")
         grid = tokens.get("grid_line", "#e2e8f0")
         is_dark = ThemeManager.is_dark(theme_name)
         alt_bg = tokens.get("hover", "#f8fafc") if not is_dark else tokens.get("active", "#252526")
-
-        tb_qss = f"""
-            #SpreadsheetToolbar QPushButton {{
-                background-color: transparent;
-                border: 1px solid transparent;
-                border-radius: 4px;
-                min-width: 28px;
-                max-width: 28px;
-                min-height: 28px;
-                max-height: 28px;
-                color: {text};
-            }}
-            #SpreadsheetToolbar QPushButton:hover {{
-                background-color: {hover};
-                border: 1px solid {border};
-            }}
-            #SpreadsheetToolbar QPushButton:pressed {{
-                background-color: {active};
-            }}
-            #SpreadsheetToolbar QPushButton:disabled {{
-                background-color: transparent;
-                border: 1px solid transparent;
-                color: {text_muted};
-            }}
-        """
-        self.toolbar_container.setStyleSheet(tb_qss)
 
         # Formula & search styling
         self.lbl_cell_coord.setStyleSheet(
@@ -482,7 +423,7 @@ class SpreadsheetEditorWidget(QWidget):
         if path:
             self._sync_current_table_to_df()
             df = self._sheets.get(self._current_sheet_name, pd.DataFrame())
-            df.to_csv(path, index=False, encoding="utf-8")
+            df.to_csv(path, index=False, encoding="utf-8-sig")
             from ui.toast import ToastNotification
             ToastNotification.show_toast(self.window(), f"CSV Exported: {os.path.basename(path)}", "info")
 

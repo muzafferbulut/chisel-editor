@@ -101,7 +101,7 @@ class SpatialOps:
         """
         gdf = gpd.read_file(io.StringIO(content))
         if gdf.crs is None:
-            gdf.set_crs("EPSG:4326", inplace=True)
+            gdf = gdf.set_crs("EPSG:4326")
         return gdf
 
     @staticmethod
@@ -119,8 +119,7 @@ class SpatialOps:
         Sets or overrides CRS on GeoDataFrame without coordinate modification.
         """
         new_gdf = gdf.copy()
-        new_gdf.set_crs(crs_str, allow_override=True, inplace=True)
-        return new_gdf
+        return new_gdf.set_crs(crs_str, allow_override=True)
 
     @staticmethod
     def validate_and_repair(gdf: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, int]:
@@ -376,14 +375,15 @@ class SpatialOps:
                     idx += 1
                 seen.add(short)
                 new_cols[col] = short
-            shp_gdf.rename(columns=new_cols, inplace=True)
+            if new_cols:
+                shp_gdf = shp_gdf.rename(columns=new_cols)
             shp_gdf.to_file(target_path, driver='ESRI Shapefile', engine='pyogrio')
         elif ext == '.kml':
             kml_gdf = clean_gdf.copy()
             if kml_gdf.crs and str(kml_gdf.crs) != "EPSG:4326":
                 kml_gdf = kml_gdf.to_crs("EPSG:4326")
             elif not kml_gdf.crs:
-                kml_gdf.set_crs("EPSG:4326", inplace=True)
+                kml_gdf = kml_gdf.set_crs("EPSG:4326")
             kml_gdf.to_file(target_path, driver='KML')
         elif ext == '.kmz':
             import zipfile
@@ -392,7 +392,7 @@ class SpatialOps:
             if kml_gdf.crs and str(kml_gdf.crs) != "EPSG:4326":
                 kml_gdf = kml_gdf.to_crs("EPSG:4326")
             elif not kml_gdf.crs:
-                kml_gdf.set_crs("EPSG:4326", inplace=True)
+                kml_gdf = kml_gdf.set_crs("EPSG:4326")
             with tempfile.TemporaryDirectory() as tmp_dir:
                 tmp_kml = os.path.join(tmp_dir, "doc.kml")
                 kml_gdf.to_file(tmp_kml, driver="KML")
@@ -418,9 +418,9 @@ class SpatialOps:
             csv_df = pd.DataFrame(clean_gdf)
             csv_df['wkt_geometry'] = clean_gdf.geometry.apply(lambda g: g.wkt if g is not None else "")
             geom_col = clean_gdf.geometry.name
-            if geom_col in csv_df.columns:
+            if geom_col in csv_df.columns and geom_col != 'wkt_geometry':
                 csv_df = csv_df.drop(columns=[geom_col])
-            csv_df.to_csv(target_path, index=False, encoding='utf-8')
+            csv_df.to_csv(target_path, index=False, encoding='utf-8-sig')
         else:
             clean_gdf.to_file(target_path, engine='pyogrio')
         return True

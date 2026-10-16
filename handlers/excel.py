@@ -18,28 +18,8 @@ class ExcelHandler(BaseHandler):
         ext = os.path.splitext(file_path)[1].lower()
         if ext == '.csv':
             try:
-                import csv
-                encoding = "utf-8"
-                try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        sample = f.read(8192)
-                except UnicodeDecodeError:
-                    try:
-                        encoding = "cp1254"
-                        with open(file_path, "r", encoding="cp1254") as f:
-                            sample = f.read(8192)
-                    except UnicodeDecodeError:
-                        encoding = "latin1"
-                        with open(file_path, "r", encoding="latin1") as f:
-                            sample = f.read(8192)
-
-                try:
-                    dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
-                    sep = dialect.delimiter
-                except Exception:
-                    sep = ","
-
-                df = pd.read_csv(file_path, sep=sep, encoding=encoding)
+                from core.io_utils import read_delimited_file
+                df, _, _ = read_delimited_file(file_path)
                 sheet_name = os.path.splitext(os.path.basename(file_path))[0] or "CSV_Data"
                 return {sheet_name: df}
             except Exception as e:
@@ -64,7 +44,7 @@ class ExcelHandler(BaseHandler):
             try:
                 first_df = list(sheets_data.values())[0] if isinstance(sheets_data, dict) and sheets_data else pd.DataFrame()
                 if isinstance(first_df, pd.DataFrame):
-                    first_df.to_csv(file_path, index=False, encoding='utf-8')
+                    first_df.to_csv(file_path, index=False, encoding='utf-8-sig')
                 return
             except Exception as e:
                 raise RuntimeError(f"Failed to save CSV file ({os.path.basename(file_path)}): {e}")

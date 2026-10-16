@@ -33,6 +33,11 @@ class EditorTab(QWidget):
         self.spatial_layers = {}
         self.active_layer_id = None
         self._custom_map_panel = map_panel
+        self._active_viewport_workers = set()
+        self._pending_viewport = None
+        self._viewport_timer = QTimer(self)
+        self._viewport_timer.setSingleShot(True)
+        self._viewport_timer.timeout.connect(self._dispatch_viewport_query)
 
         self._init_ui()
 
@@ -298,22 +303,38 @@ class EditorTab(QWidget):
         if not self._is_large_dataset or self._current_gdf is None or self._current_gdf.empty:
             return
 
-        if hasattr(self, "_viewport_worker") and self._viewport_worker is not None and self._viewport_worker.isRunning():
-            try:
-                self._viewport_worker.finished.disconnect()
-            except Exception:
-                pass
+        self._pending_viewport = (minx, miny, maxx, maxy, zoom)
+        self._viewport_timer.start(250)
 
+    def _dispatch_viewport_query(self):
+        if not self._pending_viewport or not self._is_large_dataset:
+            return
+        if self._current_gdf is None or self._current_gdf.empty:
+            return
+
+        # Cancel obsolete running workers so they exit quickly without wasting CPU
+        for w in list(self._active_viewport_workers):
+            if w.isRunning():
+                w.cancel()
+
+        minx, miny, maxx, maxy, zoom = self._pending_viewport
         layer_name = os.path.basename(self.current_file) if self.current_file else "Spatial Layer"
         geom_type = SpatialOps.get_layer_geometry_type(self._current_gdf)
 
         from core.workers import ViewportQueryWorker
-        self._viewport_worker = ViewportQueryWorker(
+        worker = ViewportQueryWorker(
             self.layer_id, layer_name, self._current_gdf, geom_type,
             minx, miny, maxx, maxy, zoom
         )
-        self._viewport_worker.finished.connect(self._on_viewport_query_finished)
-        self._viewport_worker.start()
+        self._active_viewport_workers.add(worker)
+
+        def _on_finished(l_id, l_name, geojson, g_type, w=worker):
+            self._active_viewport_workers.discard(w)
+            if not getattr(w, "_is_cancelled", False):
+                self._on_viewport_query_finished(l_id, l_name, geojson, g_type)
+
+        worker.finished.connect(_on_finished)
+        worker.start()
 
     def _on_viewport_query_finished(self, layer_id: str, layer_name: str, raw_geojson: str, geom_type: str):
         if self.map_panel and layer_id == self.layer_id:
@@ -323,6 +344,15 @@ class EditorTab(QWidget):
                 geojson_str=raw_geojson,
                 geom_type=geom_type
             )
+
+    def cleanup(self):
+        """Safely stops timers and cancels/waits on active threads to prevent runtime crashes on tab close."""
+        if hasattr(self, "_viewport_timer") and self._viewport_timer.isActive():
+            self._viewport_timer.stop()
+        for w in list(getattr(self, "_active_viewport_workers", set())):
+            if w.isRunning():
+                w.cancel()
+                w.wait(200)
 
     def update_spatial_gdf(self, gdf: gpd.GeoDataFrame, fit_bounds: bool = False):
         if self.active_layer_id and self.active_layer_id in self.spatial_layers:

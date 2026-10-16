@@ -47,11 +47,21 @@ class ViewportQueryWorker(QThread):
         self.maxx = maxx
         self.maxy = maxy
         self.zoom = zoom
+        self._is_cancelled = False
+
+    def cancel(self):
+        self._is_cancelled = True
 
     def run(self):
         try:
+            if self._is_cancelled:
+                return
             sub_gdf = SpatialOps.query_viewport_and_lod(self.gdf, self.minx, self.miny, self.maxx, self.maxy, self.zoom)
+            if self._is_cancelled:
+                return
             raw_geojson = SpatialOps.to_geojson_str(sub_gdf)
+            if self._is_cancelled:
+                return
             self.finished.emit(self.layer_id, self.layer_name, raw_geojson, self.geom_type)
         except Exception:
             pass
@@ -79,7 +89,7 @@ class WFSWorker(QThread):
             text = resp.text
             gdf = gpd.read_file(io.StringIO(text))
             if gdf.crs is None:
-                gdf.set_crs("EPSG:4326", inplace=True)
+                gdf = gdf.set_crs("EPSG:4326")
 
             layer_name = self.type_name or "WFS_Layer"
             self.finished.emit(layer_name, gdf, "")

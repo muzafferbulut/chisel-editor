@@ -141,10 +141,14 @@ class ExplorerPanel(QWidget):
 
         act_reveal = QAction("📂 Reveal in File Explorer", self)
         def _reveal():
-            target = file_path if os.path.isdir(file_path) else os.path.dirname(file_path)
+            norm_path = os.path.normpath(file_path)
             if os.name == 'nt':
-                subprocess.Popen(f'explorer /select,"{os.path.normpath(file_path)}"')
+                if os.path.exists(norm_path):
+                    subprocess.Popen(['explorer', f'/select,{norm_path}'])
+                else:
+                    subprocess.Popen(['explorer', os.path.dirname(norm_path)])
             else:
+                target = norm_path if os.path.isdir(norm_path) else os.path.dirname(norm_path)
                 subprocess.Popen(['xdg-open', target])
         act_reveal.triggered.connect(_reveal)
         menu.addAction(act_reveal)

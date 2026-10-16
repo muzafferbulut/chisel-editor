@@ -1,4 +1,6 @@
 from .base import BaseHandler
+from core.io_utils import read_text_file, write_text_file
+
 
 class TextHandler(BaseHandler):
 
@@ -7,10 +9,8 @@ class TextHandler(BaseHandler):
         return False
 
     def read(self, file_path: str) -> str:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
+        return read_text_file(file_path)
 
     def write(self, file_path: str, content: str) -> bool:
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(content)
+        write_text_file(file_path, content)
         return True

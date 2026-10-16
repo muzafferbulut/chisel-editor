@@ -9,6 +9,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QAbstractTableModel, QModelIndex, QSort
 import geopandas as gpd
 import pandas as pd
 from core.spatial_ops import SpatialOps
+from ui.toolbar_helper import create_tool_button, create_vsep, refresh_tool_buttons, get_tool_icon
 
 
 class AttributeTableProxyModel(QSortFilterProxyModel):
@@ -348,48 +349,21 @@ class AttributeTableWidget(QWidget):
         self.apply_theme()
 
     def _create_vsep(self) -> QFrame:
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setFrameShadow(QFrame.Shadow.Sunken)
-        sep.setStyleSheet("background-color: rgba(128, 128, 128, 0.25); width: 1px; margin: 3px 2px; border: none;")
-        return sep
+        return create_vsep()
 
     def _get_icon(self, icon_name: str, theme_name: str = None) -> QIcon:
-        try:
-            from ui.icons import get_lucide_icon
-            icon = get_lucide_icon(icon_name, theme_name=theme_name)
-            if not icon.isNull():
-                return icon
-        except Exception:
-            pass
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        icon_path = os.path.join(base_dir, "resources", "icons", f"{icon_name}.png")
-        if os.path.isfile(icon_path):
-            return QIcon(icon_path)
-        return QIcon()
+        return get_tool_icon(icon_name, theme_name=theme_name)
 
     def _create_tool_btn(self, icon_name: str, fallback_text: str, tooltip: str, callback=None, checkable: bool = False, obj_name: str = "") -> QPushButton:
-        btn = QPushButton()
+        btn = create_tool_button(
+            icon_name,
+            fallback_text=fallback_text,
+            tooltip=tooltip,
+            callback=callback,
+            checkable=checkable,
+            obj_name=obj_name
+        )
         self._tool_buttons[btn] = icon_name
-        icon = self._get_icon(icon_name)
-        if not icon.isNull():
-            btn.setIcon(icon)
-            btn.setIconSize(QSize(16, 16))
-        else:
-            btn.setText(fallback_text)
-
-        btn.setToolTip(tooltip)
-        btn.setFixedSize(28, 28)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        if obj_name:
-            btn.setObjectName(obj_name)
-        if checkable:
-            btn.setCheckable(True)
-        if callback:
-            if checkable:
-                btn.toggled.connect(callback)
-            else:
-                btn.clicked.connect(callback)
         return btn
 
     def _init_ui(self):
@@ -604,15 +578,10 @@ class AttributeTableWidget(QWidget):
         self.toolbar_container.setStyleSheet(tb_qss)
 
         # Update all toolbar button icons to match current theme colors
-        if hasattr(self, '_tool_buttons'):
-            for btn, icon_name in self._tool_buttons.items():
-                ico = self._get_icon(icon_name, theme_name=theme_name)
-                if not ico.isNull():
-                    btn.setIcon(ico)
-                    btn.setIconSize(QSize(16, 16))
+        refresh_tool_buttons(self._tool_buttons, theme_name)
 
         if hasattr(self, 'search_action') and self.search_action:
-            self.search_action.setIcon(self._get_icon("search", theme_name=theme_name))
+            self.search_action.setIcon(get_tool_icon("search", theme_name=theme_name))
 
         table_qss = f"""
             QTableView {{
@@ -1064,7 +1033,7 @@ class AttributeTableWidget(QWidget):
 
         try:
             clean_df = pd.DataFrame(self._current_gdf.drop(columns=[self._current_gdf.geometry.name], errors='ignore'))
-            clean_df.to_csv(path, index=False, encoding='utf-8')
+            clean_df.to_csv(path, index=False, encoding='utf-8-sig')
             QMessageBox.information(self, "Success", f"Attribute table saved:\n{path}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save CSV: {str(e)}")

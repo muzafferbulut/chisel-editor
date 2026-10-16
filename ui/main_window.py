@@ -401,8 +401,11 @@ class MainWindow(QMainWindow):
 
     def _close_tab(self, index: int):
         tab = self.tab_widget.widget(index)
-        if tab and tab.is_spatial:
-            self.shared_map_panel.clear_all_vector_layers()
+        if tab:
+            if hasattr(tab, "cleanup"):
+                tab.cleanup()
+            if tab.is_spatial:
+                self.shared_map_panel.clear_all_vector_layers()
         self.tab_widget.removeTab(index)
         if self.tab_widget.count() == 0:
             self._add_new_tab()
@@ -1098,4 +1101,12 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._save_session_state()
+        for w in list(self._active_workers):
+            if hasattr(w, "cancel"):
+                w.cancel()
+            w.wait(200)
+        for i in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(i)
+            if hasattr(tab, "cleanup"):
+                tab.cleanup()
         super().closeEvent(event)

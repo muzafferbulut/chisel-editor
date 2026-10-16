@@ -8,6 +8,7 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtPdf import QPdfDocument
 from PyQt6.QtPdfWidgets import QPdfView
 from core.theme import ThemeManager
+from ui.toolbar_helper import create_tool_button, create_vsep, refresh_tool_buttons, get_toolbar_button_qss
 
 
 class PdfViewerWidget(QWidget):
@@ -22,6 +23,7 @@ class PdfViewerWidget(QWidget):
         self.current_file = None
         self.doc = QPdfDocument(self)
         self._rotation_angle = 0
+        self._tool_buttons = {}
         self._init_ui()
         self.apply_theme()
 
@@ -37,13 +39,17 @@ class PdfViewerWidget(QWidget):
         toolbar_layout.setContentsMargins(8, 4, 8, 4)
         toolbar_layout.setSpacing(4)
 
+        def _add_btn(name, text, tip, cb=None):
+            btn = create_tool_button(name, fallback_text=text, tooltip=tip, callback=cb, parent=self)
+            self._tool_buttons[btn] = name
+            toolbar_layout.addWidget(btn)
+            return btn
+
         # First Page
-        self.btn_first = self._create_tool_btn("page_first", "⇤", "First Page (Home)", self._first_page)
-        toolbar_layout.addWidget(self.btn_first)
+        self.btn_first = _add_btn("page_first", "⇤", "First Page (Home)", self._first_page)
 
         # Previous Page
-        self.btn_prev = self._create_tool_btn("page_prev", "◀", "Previous Page (Left Arrow)", self._prev_page)
-        toolbar_layout.addWidget(self.btn_prev)
+        self.btn_prev = _add_btn("page_prev", "◀", "Previous Page (Left Arrow)", self._prev_page)
 
         # Page Jumper
         self.lbl_page_text = QLabel("Page:")
@@ -60,18 +66,15 @@ class PdfViewerWidget(QWidget):
         toolbar_layout.addWidget(self.lbl_page_count)
 
         # Next Page
-        self.btn_next = self._create_tool_btn("page_next", "▶", "Next Page (Right Arrow)", self._next_page)
-        toolbar_layout.addWidget(self.btn_next)
+        self.btn_next = _add_btn("page_next", "▶", "Next Page (Right Arrow)", self._next_page)
 
         # Last Page
-        self.btn_last = self._create_tool_btn("page_last", "⇥", "Last Page (End)", self._last_page)
-        toolbar_layout.addWidget(self.btn_last)
+        self.btn_last = _add_btn("page_last", "⇥", "Last Page (End)", self._last_page)
 
-        toolbar_layout.addWidget(self._create_sep())
+        toolbar_layout.addWidget(create_vsep(self))
 
         # Zoom Out
-        self.btn_zoom_out = self._create_tool_btn("zoom_out", "-", "Zoom Out (Ctrl+-)", self._zoom_out)
-        toolbar_layout.addWidget(self.btn_zoom_out)
+        self.btn_zoom_out = _add_btn("zoom_out", "-", "Zoom Out (Ctrl+-)", self._zoom_out)
 
         # Zoom Mode / Percentage Combo
         self.zoom_combo = QComboBox()
@@ -82,14 +85,12 @@ class PdfViewerWidget(QWidget):
         toolbar_layout.addWidget(self.zoom_combo)
 
         # Zoom In
-        self.btn_zoom_in = self._create_tool_btn("zoom_in", "+", "Zoom In (Ctrl++)", self._zoom_in)
-        toolbar_layout.addWidget(self.btn_zoom_in)
+        self.btn_zoom_in = _add_btn("zoom_in", "+", "Zoom In (Ctrl++)", self._zoom_in)
 
-        toolbar_layout.addWidget(self._create_sep())
+        toolbar_layout.addWidget(create_vsep(self))
 
         # Rotate Page
-        self.btn_rotate = self._create_tool_btn("rotate", "↻", "Rotate 90° Clockwise", self._rotate_page)
-        toolbar_layout.addWidget(self.btn_rotate)
+        self.btn_rotate = _add_btn("rotate", "↻", "Rotate 90° Clockwise", self._rotate_page)
 
         toolbar_layout.addStretch()
 
@@ -111,70 +112,23 @@ class PdfViewerWidget(QWidget):
 
         layout.addWidget(self.pdf_view)
 
-    def _create_sep(self) -> QFrame:
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setFrameShadow(QFrame.Shadow.Sunken)
-        sep.setStyleSheet("background-color: rgba(128, 128, 128, 0.25); width: 1px; margin: 3px 2px; border: none;")
-        return sep
-
-    def _get_icon(self, icon_name: str) -> QIcon:
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        icon_path = os.path.join(base_dir, "resources", "icons", f"{icon_name}.png")
-        if os.path.isfile(icon_path):
-            return QIcon(icon_path)
-        return QIcon()
-
-    def _create_tool_btn(self, icon_name: str, fallback_text: str, tooltip: str, callback=None) -> QPushButton:
-        btn = QPushButton()
-        icon = self._get_icon(icon_name)
-        if not icon.isNull():
-            btn.setIcon(icon)
-            btn.setIconSize(QSize(16, 16))
-        else:
-            btn.setText(fallback_text)
-
-        btn.setToolTip(tooltip)
-        btn.setFixedSize(28, 28)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        if callback:
-            btn.clicked.connect(callback)
-        return btn
-
     def apply_theme(self, theme_name: str = None):
         """Applies theme-adaptive styling to toolbar, controls, and canvas background."""
+        refresh_tool_buttons(self._tool_buttons, theme_name)
+
         tokens = ThemeManager.get_tokens(theme_name)
         toolbar_bg = tokens.get("toolbar_bg", "#f8fafc")
         panel_bg = tokens.get("panel_bg", "#ffffff")
         text = tokens.get("text", "#1e293b")
         text_muted = tokens.get("text_muted", "#64748b")
         border = tokens.get("border", "#e2e8f0")
-        hover = tokens.get("hover", "rgba(128,128,128,0.18)")
-        active = tokens.get("active", "rgba(128,128,128,0.30)")
-        accent = tokens.get("accent", "#0284c7")
         is_dark = ThemeManager.is_dark(theme_name)
 
-        tb_qss = f"""
+        btn_qss = get_toolbar_button_qss("PdfToolbar", theme_name)
+        controls_qss = f"""
             #PdfToolbar {{
                 background-color: {toolbar_bg};
                 border-bottom: 1px solid {border};
-            }}
-            #PdfToolbar QPushButton {{
-                background-color: transparent;
-                border: 1px solid transparent;
-                border-radius: 4px;
-                min-width: 28px;
-                max-width: 28px;
-                min-height: 28px;
-                max-height: 28px;
-                color: {text};
-            }}
-            #PdfToolbar QPushButton:hover {{
-                background-color: {hover};
-                border: 1px solid {border};
-            }}
-            #PdfToolbar QPushButton:pressed {{
-                background-color: {active};
             }}
             #PdfToolbar QComboBox, #PdfToolbar QSpinBox {{
                 background-color: {panel_bg};
@@ -185,7 +139,7 @@ class PdfViewerWidget(QWidget):
                 font-size: 11px;
             }}
         """
-        self.toolbar_container.setStyleSheet(tb_qss)
+        self.toolbar_container.setStyleSheet(btn_qss + controls_qss)
 
         view_bg = panel_bg if is_dark else "#e2e8f0"
         self.pdf_view.setStyleSheet(f"QPdfView {{ background-color: {view_bg}; border: none; }}")

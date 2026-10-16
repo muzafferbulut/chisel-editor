@@ -47,6 +47,29 @@ LUCIDE_SVGS: dict[str, str] = {
     "eye-off": '<path d="9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>',
     "rotate-ccw": '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
     "rotate-cw": '<path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
+
+    # Rich Text & Formatting Tools
+    "bold": '<path d="M6 12h9a4 4 0 0 1 0 8H6v-8zm0 0h8a3.5 3.5 0 0 0 0-7H6v7z"/>',
+    "italic": '<line x1="19" x2="10" y1="4" y2="4"/><line x1="14" x2="5" y1="20" y2="20"/><line x1="15" x2="9" y1="4" y2="20"/>',
+    "underline": '<path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="4" x2="20" y1="20" y2="20"/>',
+    "strikethrough": '<path d="M16 4H9a3 3 0 0 0-2.83 4"/><path d="M14 12a4 4 0 0 1 0 8H6"/><line x1="4" x2="20" y1="12" y2="12"/>',
+    "type": '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>',
+    "highlighter": '<path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/>',
+    "align-left": '<line x1="21" x2="3" y1="6" y2="6"/><line x1="15" x2="3" y1="12" y2="12"/><line x1="17" x2="3" y1="18" y2="18"/>',
+    "align-center": '<line x1="21" x2="3" y1="6" y2="6"/><line x1="19" x2="5" y1="12" y2="12"/><line x1="21" x2="3" y1="18" y2="18"/>',
+    "align-right": '<line x1="21" x2="3" y1="6" y2="6"/><line x1="21" x2="9" y1="12" y2="12"/><line x1="21" x2="7" y1="18" y2="18"/>',
+    "align-justify": '<line x1="21" x2="3" y1="6" y2="6"/><line x1="21" x2="3" y1="12" y2="12"/><line x1="21" x2="3" y1="18" y2="18"/>',
+    "list": '<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>',
+    "list-ordered": '<line x1="10" x2="21" y1="6" y2="6"/><line x1="10" x2="21" y1="12" y2="12"/><line x1="10" x2="21" y1="18" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/>',
+    "contrast": '<circle cx="12" cy="12" r="10"/><path d="M12 18a6 6 0 0 0 0-12v12z"/>',
+
+    # Navigation & Paging
+    "chevrons-left": '<polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/>',
+    "chevron-left": '<polyline points="15 18 9 12 15 6"/>',
+    "chevron-right": '<polyline points="9 18 15 12 9 6"/>',
+    "chevrons-right": '<polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/>',
+    "arrow-left-right": '<polyline points="8 3 4 7 8 11"/><polyline points="16 21 20 17 16 13"/><line x1="4" x2="20" y1="7" y2="7"/><line x1="20" x2="4" y1="17" y2="17"/>',
+    "eraser": '<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/>',
 }
 
 # Aliases mapping project/action names to canonical Lucide SVG names
@@ -69,6 +92,28 @@ ICON_ALIASES: dict[str, str] = {
     "delete_col": "trash-2",
     "export_csv": "file-down",
     "close": "x",
+    # Formatting & Document Tools
+    "strike": "strikethrough",
+    "text_color": "type",
+    "bg_color": "highlighter",
+    "align_left": "align-left",
+    "align_center": "align-center",
+    "align_right": "align-right",
+    "align_justify": "align-justify",
+    "list_bullet": "list",
+    "list_num": "list-ordered",
+    "paper_mode": "contrast",
+    "undo": "rotate-ccw",
+    "redo": "rotate-cw",
+    "rotate": "rotate-cw",
+    "page_first": "chevrons-left",
+    "page_prev": "chevron-left",
+    "page_next": "chevron-right",
+    "page_last": "chevrons-right",
+    "zoom_in": "zoom-in",
+    "zoom_out": "zoom-out",
+    "autofit": "arrow-left-right",
+    "clear_cells": "eraser",
 }
 
 

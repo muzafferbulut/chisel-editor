@@ -134,4 +134,4 @@ class DocxHandler(BaseHandler):
 
             doc.save(file_path)
         except Exception as e:
-            raise RuntimeError(f"Word belgesi kaydedilemedi ({os.path.basename(file_path)}): {e}")
+            raise RuntimeError(f"Failed to save Word document ({os.path.basename(file_path)}): {e}")

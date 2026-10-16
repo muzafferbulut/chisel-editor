@@ -11,6 +11,7 @@ from PyQt6.QtGui import (
 )
 from handlers.docx import DocxHandler
 from core.theme import ThemeManager
+from ui.toolbar_helper import create_tool_button, create_vsep, refresh_tool_buttons, get_toolbar_button_qss
 
 
 class WordDocumentEditorWidget(QWidget):
@@ -28,6 +29,7 @@ class WordDocumentEditorWidget(QWidget):
         self._is_dirty = False
         self._dark_paper_mode = False
         self._current_theme = "light"
+        self._tool_buttons = {}
         self._init_ui()
         self.apply_theme()
 
@@ -43,14 +45,17 @@ class WordDocumentEditorWidget(QWidget):
         toolbar_layout.setContentsMargins(6, 4, 6, 4)
         toolbar_layout.setSpacing(4)
 
+        def _add_btn(name, text, tip, cb=None, checkable=False):
+            btn = create_tool_button(name, fallback_text=text, tooltip=tip, callback=cb, checkable=checkable, parent=self)
+            self._tool_buttons[btn] = name
+            toolbar_layout.addWidget(btn)
+            return btn
+
         # Undo / Redo
-        self.btn_undo = self._create_tool_btn("undo", "↶", "Undo (Ctrl+Z)", lambda: self.editor.undo())
-        toolbar_layout.addWidget(self.btn_undo)
+        self.btn_undo = _add_btn("undo", "↶", "Undo (Ctrl+Z)", lambda: self.editor.undo())
+        self.btn_redo = _add_btn("redo", "↷", "Redo (Ctrl+Y)", lambda: self.editor.redo())
 
-        self.btn_redo = self._create_tool_btn("redo", "↷", "Redo (Ctrl+Y)", lambda: self.editor.redo())
-        toolbar_layout.addWidget(self.btn_redo)
-
-        toolbar_layout.addWidget(self._create_sep())
+        toolbar_layout.addWidget(create_vsep(self))
 
         # Heading / Style Selector
         self.style_combo = QComboBox()
@@ -78,61 +83,39 @@ class WordDocumentEditorWidget(QWidget):
         self.size_combo.currentTextChanged.connect(self._apply_font_size)
         toolbar_layout.addWidget(self.size_combo)
 
-        toolbar_layout.addWidget(self._create_sep())
+        toolbar_layout.addWidget(create_vsep(self))
 
         # Bold, Italic, Underline, Strikethrough
-        self.btn_bold = self._create_tool_btn("bold", "B", "Bold (Ctrl+B)", self._toggle_bold, checkable=True)
-        toolbar_layout.addWidget(self.btn_bold)
+        self.btn_bold = _add_btn("bold", "B", "Bold (Ctrl+B)", self._toggle_bold, checkable=True)
+        self.btn_italic = _add_btn("italic", "I", "Italic (Ctrl+I)", self._toggle_italic, checkable=True)
+        self.btn_underline = _add_btn("underline", "U", "Underline (Ctrl+U)", self._toggle_underline, checkable=True)
+        self.btn_strike = _add_btn("strike", "S", "Strikethrough", self._toggle_strike, checkable=True)
 
-        self.btn_italic = self._create_tool_btn("italic", "I", "Italic (Ctrl+I)", self._toggle_italic, checkable=True)
-        toolbar_layout.addWidget(self.btn_italic)
-
-        self.btn_underline = self._create_tool_btn("underline", "U", "Underline (Ctrl+U)", self._toggle_underline, checkable=True)
-        toolbar_layout.addWidget(self.btn_underline)
-
-        self.btn_strike = self._create_tool_btn("strike", "S", "Strikethrough", self._toggle_strike, checkable=True)
-        toolbar_layout.addWidget(self.btn_strike)
-
-        toolbar_layout.addWidget(self._create_sep())
+        toolbar_layout.addWidget(create_vsep(self))
 
         # Colors
-        self.btn_text_color = self._create_tool_btn("text_color", "A", "Text Color", self._pick_text_color)
-        toolbar_layout.addWidget(self.btn_text_color)
+        self.btn_text_color = _add_btn("text_color", "A", "Text Color", self._pick_text_color)
+        self.btn_bg_color = _add_btn("bg_color", "🖍", "Highlight Color", self._pick_bg_color)
 
-        self.btn_bg_color = self._create_tool_btn("bg_color", "🖍", "Highlight Color", self._pick_bg_color)
-        toolbar_layout.addWidget(self.btn_bg_color)
-
-        toolbar_layout.addWidget(self._create_sep())
+        toolbar_layout.addWidget(create_vsep(self))
 
         # Alignment
-        self.btn_align_left = self._create_tool_btn("align_left", "⇤", "Align Left", lambda: self._set_alignment(Qt.AlignmentFlag.AlignLeft))
-        toolbar_layout.addWidget(self.btn_align_left)
+        self.btn_align_left = _add_btn("align_left", "⇤", "Align Left", lambda: self._set_alignment(Qt.AlignmentFlag.AlignLeft))
+        self.btn_align_center = _add_btn("align_center", "⬌", "Align Center", lambda: self._set_alignment(Qt.AlignmentFlag.AlignCenter))
+        self.btn_align_right = _add_btn("align_right", "⇥", "Align Right", lambda: self._set_alignment(Qt.AlignmentFlag.AlignRight))
+        self.btn_align_justify = _add_btn("align_justify", "☰", "Justify", lambda: self._set_alignment(Qt.AlignmentFlag.AlignJustify))
 
-        self.btn_align_center = self._create_tool_btn("align_center", "⬌", "Align Center", lambda: self._set_alignment(Qt.AlignmentFlag.AlignCenter))
-        toolbar_layout.addWidget(self.btn_align_center)
-
-        self.btn_align_right = self._create_tool_btn("align_right", "⇥", "Align Right", lambda: self._set_alignment(Qt.AlignmentFlag.AlignRight))
-        toolbar_layout.addWidget(self.btn_align_right)
-
-        self.btn_align_justify = self._create_tool_btn("align_justify", "☰", "Justify", lambda: self._set_alignment(Qt.AlignmentFlag.AlignJustify))
-        toolbar_layout.addWidget(self.btn_align_justify)
-
-        toolbar_layout.addWidget(self._create_sep())
+        toolbar_layout.addWidget(create_vsep(self))
 
         # Lists & Tables
-        self.btn_bullet_list = self._create_tool_btn("list_bullet", "•=", "Bullet List", self._insert_bullet_list)
-        toolbar_layout.addWidget(self.btn_bullet_list)
+        self.btn_bullet_list = _add_btn("list_bullet", "•=", "Bullet List", self._insert_bullet_list)
+        self.btn_num_list = _add_btn("list_num", "1=", "Numbered List", self._insert_numbered_list)
+        self.btn_table = _add_btn("table", "▦", "Insert Table", self._insert_table)
 
-        self.btn_num_list = self._create_tool_btn("list_num", "1=", "Numbered List", self._insert_numbered_list)
-        toolbar_layout.addWidget(self.btn_num_list)
-
-        self.btn_table = self._create_tool_btn("table", "▦", "Insert Table", self._insert_table)
-        toolbar_layout.addWidget(self.btn_table)
-
-        toolbar_layout.addWidget(self._create_sep())
+        toolbar_layout.addWidget(create_vsep(self))
 
         # Paper Mode Toggle (Dark Paper / White Paper)
-        self.btn_paper_mode = self._create_tool_btn("paper_mode", "◐", "Page View Mode (Dark Paper / White Paper)", self._toggle_paper_mode, checkable=True)
+        self.btn_paper_mode = _add_btn("paper_mode", "◐", "Page View Mode (Dark Paper / White Paper)", self._toggle_paper_mode, checkable=True)
         toolbar_layout.addWidget(self.btn_paper_mode)
 
         toolbar_layout.addStretch()
@@ -173,38 +156,6 @@ class WordDocumentEditorWidget(QWidget):
         self.scroll_area.setWidget(self.canvas_widget)
         main_layout.addWidget(self.scroll_area)
 
-    def _create_sep(self) -> QFrame:
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setFrameShadow(QFrame.Shadow.Sunken)
-        sep.setStyleSheet("background-color: rgba(128, 128, 128, 0.25); width: 1px; margin: 2px 3px; border: none;")
-        return sep
-
-    def _get_icon(self, icon_name: str) -> QIcon:
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        icon_path = os.path.join(base_dir, "resources", "icons", f"{icon_name}.png")
-        if os.path.isfile(icon_path):
-            return QIcon(icon_path)
-        return QIcon()
-
-    def _create_tool_btn(self, icon_name: str, fallback_text: str, tooltip: str, callback=None, checkable: bool = False) -> QPushButton:
-        btn = QPushButton()
-        icon = self._get_icon(icon_name)
-        if not icon.isNull():
-            btn.setIcon(icon)
-            btn.setIconSize(QSize(16, 16))
-        else:
-            btn.setText(fallback_text)
-
-        btn.setToolTip(tooltip)
-        btn.setFixedSize(28, 28)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        if checkable:
-            btn.setCheckable(True)
-        if callback:
-            btn.clicked.connect(callback)
-        return btn
-
     def _toggle_paper_mode(self):
         self._dark_paper_mode = self.btn_paper_mode.isChecked()
         self.apply_theme(self._current_theme)
@@ -213,43 +164,23 @@ class WordDocumentEditorWidget(QWidget):
         """Applies dynamic theme styling to toolbar, canvas, and A4 document page."""
         if theme_name:
             self._current_theme = theme_name
+        refresh_tool_buttons(self._tool_buttons, self._current_theme)
+
         tokens = ThemeManager.get_tokens(self._current_theme)
         toolbar_bg = tokens.get("toolbar_bg", "#f8fafc")
         panel_bg = tokens.get("panel_bg", "#ffffff")
         text = tokens.get("text", "#1e293b")
         text_muted = tokens.get("text_muted", "#64748b")
         border = tokens.get("border", "#e2e8f0")
-        hover = tokens.get("hover", "rgba(128,128,128,0.18)")
-        active = tokens.get("active", "rgba(128,128,128,0.30)")
         accent = tokens.get("accent", "#0284c7")
         is_dark = ThemeManager.is_dark(self._current_theme)
 
         # Toolbar styling
-        tb_qss = f"""
+        btn_qss = get_toolbar_button_qss("WordToolbar", self._current_theme)
+        combo_qss = f"""
             #WordToolbar {{
                 background-color: {toolbar_bg};
                 border-bottom: 1px solid {border};
-            }}
-            #WordToolbar QPushButton {{
-                background-color: transparent;
-                border: 1px solid transparent;
-                border-radius: 4px;
-                min-width: 28px;
-                max-width: 28px;
-                min-height: 28px;
-                max-height: 28px;
-                color: {text};
-            }}
-            #WordToolbar QPushButton:hover {{
-                background-color: {hover};
-                border: 1px solid {border};
-            }}
-            #WordToolbar QPushButton:pressed {{
-                background-color: {active};
-            }}
-            #WordToolbar QPushButton:checked {{
-                background-color: {active};
-                border: 1px solid {accent};
             }}
             #WordToolbar QComboBox {{
                 background-color: {panel_bg};
@@ -260,7 +191,7 @@ class WordDocumentEditorWidget(QWidget):
                 font-size: 11px;
             }}
         """
-        self.toolbar_container.setStyleSheet(tb_qss)
+        self.toolbar_container.setStyleSheet(btn_qss + combo_qss)
 
         # Canvas container background
         canvas_bg = panel_bg if is_dark else "#f1f5f9"
