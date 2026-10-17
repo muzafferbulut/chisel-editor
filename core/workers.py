@@ -213,9 +213,9 @@ class TopologyWorker(QThread):
                     report = TopologyEngine.run_configured_rules(self.gdf, configured_rules)
                 else:
                     rules = self.params.get("enabled_rules")
-                    snap_tol = self.params.get("snap_tolerance", 0.0001)
-                    min_len = self.params.get("min_length", 0.0001)
-                    min_area = self.params.get("min_area", 1e-7)
+                    snap_tol = self.params.get("snap_tolerance", 0.05)
+                    min_len = self.params.get("min_length", 0.50)
+                    min_area = self.params.get("min_area", 1.0)
                     sliver_thin = self.params.get("sliver_thinness", 0.03)
                     report = TopologyEngine.run_checks(
                         self.gdf,

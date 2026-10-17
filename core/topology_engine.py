@@ -49,29 +49,23 @@ class ConfiguredRule:
     description: str = ""
 
     def get_param_summary(self, is_degree: bool = False) -> str:
-        dist_unit = "°" if is_degree else "m"
-        area_unit = "°²" if is_degree else "m²"
         parts = []
         if "tolerance" in self.params:
             tol = float(self.params["tolerance"])
-            fmt = f"{tol:.6f}" if is_degree else f"{tol:.3f}"
-            parts.append(f"Tolerance: {fmt} {dist_unit}")
+            parts.append(f"Tolerance: {tol:.3f} m")
         if "max_angle" in self.params:
             parts.append(f"Max Spike Angle: {float(self.params['max_angle']):.1f}°")
         if "min_length" in self.params:
             ml = float(self.params["min_length"])
-            fmt = f"{ml:.6f}" if is_degree else f"{ml:.3f}"
-            parts.append(f"Min Length: {fmt} {dist_unit}")
+            parts.append(f"Min Length: {ml:.2f} m")
         if "min_area" in self.params:
             ma = float(self.params["min_area"])
-            fmt = f"{ma:.8f}" if is_degree else f"{ma:.2f}"
-            parts.append(f"Min Area: {fmt} {area_unit}")
+            parts.append(f"Min Area: {ma:.2f} m²")
         if "thinness" in self.params:
             parts.append(f"Thinness: {float(self.params['thinness']):.3f}")
         if "max_gap_area" in self.params:
             mga = float(self.params["max_gap_area"])
-            fmt = f"{mga:.8f}" if is_degree else f"{mga:.2f}"
-            parts.append(f"Max Gap: {fmt} {area_unit}")
+            parts.append(f"Max Gap: {mga:.2f} m²")
         return ", ".join(parts) if parts else "OGC Standard (No threshold)"
 
 
@@ -255,9 +249,68 @@ class TopologyEngine:
         return res
 
     @classmethod
-    def get_default_configured_rules(cls, geom_type: str, is_degree: bool) -> List[ConfiguredRule]:
+    def get_metric_conversion_factors(cls, gdf: Optional[gpd.GeoDataFrame]) -> Tuple[float, float]:
         """
-        Returns recommended rules with default thresholds tailored to the layer's CRS unit.
+        Calculates metric conversion factors for the given layer:
+          - meters_per_coord_unit: linear scale factor (meters per native coordinate unit)
+          - sqmeters_per_coord_unit: area scale factor (square meters per native coordinate unit^2)
+
+        For geographic CRS (e.g. EPSG:4326), computes geodesic meters per degree
+        at the layer bounds / centroid.
+        For metric projected CRS (e.g. EPSG:3857, UTM), returns (1.0, 1.0).
+        """
+        if gdf is None or gdf.empty:
+            return 1.0, 1.0
+
+        crs = gdf.crs
+        is_geo = False
+        if crs is not None:
+            if hasattr(crs, "is_geographic") and crs.is_geographic:
+                is_geo = True
+            elif any(k in str(crs).upper() for k in ["4326", "WGS 84", "WGS84", "CRS84", "GEOGRAPHIC"]):
+                is_geo = True
+        else:
+            try:
+                b = gdf.total_bounds
+                if abs(b[0]) <= 180.0 and abs(b[2]) <= 180.0 and abs(b[1]) <= 90.0 and abs(b[3]) <= 90.0:
+                    is_geo = True
+            except Exception:
+                pass
+
+        if is_geo:
+            try:
+                b = gdf.total_bounds
+                lat_mid = (b[1] + b[3]) / 2.0
+            except Exception:
+                lat_mid = 0.0
+
+            lat_mid = max(-89.0, min(89.0, lat_mid))
+            phi = math.radians(lat_mid)
+            # WGS-84 geodesic arc length approximations
+            lat_m = 111132.95 - 559.82 * math.cos(2 * phi) + 1.175 * math.cos(4 * phi)
+            lon_m = 111412.84 * math.cos(phi) - 93.5 * math.cos(3 * phi)
+            lon_m = max(lon_m, 1.0)
+            lat_m = max(lat_m, 1.0)
+
+            meters_per_coord_unit = (lat_m + lon_m) / 2.0
+            sqmeters_per_coord_unit = lat_m * lon_m
+            return meters_per_coord_unit, sqmeters_per_coord_unit
+
+        # Projected CRS unit factor check
+        if crs is not None and hasattr(crs, "axis_info") and crs.axis_info:
+            try:
+                factor = float(crs.axis_info[0].unit_conversion_factor)
+                if factor > 0:
+                    return factor, factor * factor
+            except Exception:
+                pass
+
+        return 1.0, 1.0
+
+    @classmethod
+    def get_default_configured_rules(cls, geom_type: str, is_degree: bool = False) -> List[ConfiguredRule]:
+        """
+        Returns recommended rules with default thresholds in metric units (meters and square meters).
         """
         applicable = cls.get_applicable_rules(geom_type)
         res = []
@@ -266,22 +319,22 @@ class TopologyEngine:
                 continue
             params = {}
             if r.code == TopologyRuleCode.POINT_DUPLICATES:
-                params["tolerance"] = 0.0001 if is_degree else 0.05
+                params["tolerance"] = 0.05
             elif r.code == TopologyRuleCode.LINE_DUPLICATE_NODES:
                 params["tolerance"] = 0.0
             elif r.code == TopologyRuleCode.LINE_SPIKES:
                 params["max_angle"] = 15.0
             elif r.code == TopologyRuleCode.LINE_DANGLES:
-                params["tolerance"] = 0.0002 if is_degree else 0.10
+                params["tolerance"] = 0.10
             elif r.code == TopologyRuleCode.LINE_SHORT_SEGMENTS:
-                params["min_length"] = 0.0001 if is_degree else 0.10
+                params["min_length"] = 0.50
             elif r.code == TopologyRuleCode.POLYGON_OVERLAPS:
-                params["min_area"] = 1e-7 if is_degree else 0.10
+                params["min_area"] = 0.10
             elif r.code == TopologyRuleCode.POLYGON_SLIVERS:
-                params["min_area"] = 1e-7 if is_degree else 1.0
+                params["min_area"] = 1.0
                 params["thinness"] = 0.03
             elif r.code == TopologyRuleCode.POLYGON_GAPS:
-                params["max_gap_area"] = 1e-5 if is_degree else 50.0
+                params["max_gap_area"] = 50.0
 
             res.append(ConfiguredRule(code=r.code, name=r.name, params=params, description=r.description))
         return res
@@ -293,8 +346,9 @@ class TopologyEngine:
         configured_rules: List[ConfiguredRule]
     ) -> TopologyReport:
         """
-        Executes a user-configured list of topology rules directly in the layer's
-        native coordinate system unit (degrees for geographic CRS, meters for projected CRS).
+        Executes a user-configured list of topology rules.
+        Parameters are entered in human metric units (meters and square meters)
+        and converted into the layer's native coordinate system space.
         """
         if gdf is None or gdf.empty or not configured_rules:
             return TopologyReport()
@@ -303,6 +357,7 @@ class TopologyEngine:
         geom_type = SpatialOps.get_layer_geometry_type(gdf)
 
         orig_crs = gdf.crs or "EPSG:4326"
+        meters_per_unit, sqmeters_per_unit = cls.get_metric_conversion_factors(gdf)
 
         errors: List[TopologyError] = []
         rule_counts: Dict[str, int] = {}
@@ -318,8 +373,9 @@ class TopologyEngine:
                 next_id += len(found)
 
             elif code == TopologyRuleCode.POINT_DUPLICATES:
-                tol = float(params.get("tolerance", 0.0001))
-                found = cls._check_point_duplicates(gdf, tol, next_id)
+                tol_m = float(params.get("tolerance", 0.05))
+                tol_native = tol_m / meters_per_unit
+                found = cls._check_point_duplicates(gdf, tol_native, next_id, meters_per_unit=meters_per_unit)
                 errors.extend(found)
                 next_id += len(found)
 
@@ -329,8 +385,9 @@ class TopologyEngine:
                 next_id += len(found)
 
             elif code == TopologyRuleCode.LINE_DUPLICATE_NODES:
-                tol = float(params.get("tolerance", 0.0))
-                found = cls._check_line_duplicate_nodes(gdf, tol, next_id)
+                tol_m = float(params.get("tolerance", 0.0))
+                tol_native = (tol_m / meters_per_unit) if tol_m > 0 else 0.0
+                found = cls._check_line_duplicate_nodes(gdf, tol_native, next_id, meters_per_unit=meters_per_unit)
                 errors.extend(found)
                 next_id += len(found)
 
@@ -341,8 +398,9 @@ class TopologyEngine:
                 next_id += len(found)
 
             elif code == TopologyRuleCode.LINE_DANGLES:
-                tol = float(params.get("tolerance", 0.0002))
-                found = cls._check_line_dangles(gdf, tol, next_id)
+                tol_m = float(params.get("tolerance", 0.10))
+                tol_native = tol_m / meters_per_unit
+                found = cls._check_line_dangles(gdf, tol_native, next_id, meters_per_unit=meters_per_unit)
                 errors.extend(found)
                 next_id += len(found)
 
@@ -352,8 +410,9 @@ class TopologyEngine:
                 next_id += len(found)
 
             elif code == TopologyRuleCode.LINE_SHORT_SEGMENTS:
-                min_len = float(params.get("min_length", 0.0001))
-                found = cls._check_line_short_segments(gdf, min_len, next_id)
+                min_len_m = float(params.get("min_length", 0.50))
+                min_len_native = min_len_m / meters_per_unit
+                found = cls._check_line_short_segments(gdf, min_len_native, next_id, meters_per_unit=meters_per_unit)
                 errors.extend(found)
                 next_id += len(found)
 
@@ -373,21 +432,24 @@ class TopologyEngine:
                 next_id += len(found)
 
             elif code == TopologyRuleCode.POLYGON_OVERLAPS:
-                min_area = float(params.get("min_area", 1e-7))
-                found = cls._check_polygon_overlaps(gdf, min_area, next_id)
+                min_area_m = float(params.get("min_area", 0.10))
+                min_area_native = min_area_m / sqmeters_per_unit
+                found = cls._check_polygon_overlaps(gdf, min_area_native, next_id, sqmeters_per_unit=sqmeters_per_unit)
                 errors.extend(found)
                 next_id += len(found)
 
             elif code == TopologyRuleCode.POLYGON_SLIVERS:
-                min_area = float(params.get("min_area", 1e-7))
+                min_area_m = float(params.get("min_area", 1.0))
+                min_area_native = min_area_m / sqmeters_per_unit
                 thinness = float(params.get("thinness", 0.03))
-                found = cls._check_polygon_slivers(gdf, min_area, thinness, next_id)
+                found = cls._check_polygon_slivers(gdf, min_area_native, thinness, next_id, sqmeters_per_unit=sqmeters_per_unit)
                 errors.extend(found)
                 next_id += len(found)
 
             elif code == TopologyRuleCode.POLYGON_GAPS:
-                max_gap = float(params.get("max_gap_area", 1e-5))
-                found = cls._check_polygon_gaps(gdf, max_gap, next_id)
+                max_gap_m = float(params.get("max_gap_area", 50.0))
+                max_gap_native = max_gap_m / sqmeters_per_unit
+                found = cls._check_polygon_gaps(gdf, max_gap_native, next_id, sqmeters_per_unit=sqmeters_per_unit)
                 errors.extend(found)
                 next_id += len(found)
 
@@ -436,12 +498,12 @@ class TopologyEngine:
         gdf: gpd.GeoDataFrame,
         enabled_rules: Optional[List[str]] = None,
         snap_tolerance: float = 0.05,
-        min_length: float = 0.1,
+        min_length: float = 0.50,
         min_area: float = 1.0,
         sliver_thinness: float = 0.03
     ) -> TopologyReport:
         """
-        Convenience wrapper executing selected rules with default thresholds.
+        Convenience wrapper executing selected rules with default metric thresholds.
         """
         if gdf is None or gdf.empty:
             return TopologyReport()
@@ -468,7 +530,7 @@ class TopologyEngine:
                 params["min_area"] = min_area
                 params["thinness"] = sliver_thinness
             elif r.code == TopologyRuleCode.POLYGON_GAPS:
-                params["max_gap_area"] = min_area * 100
+                params["max_gap_area"] = 50.0
 
             configured_rules.append(ConfiguredRule(code=r.code, name=r.name, params=params, description=r.description))
 
@@ -500,7 +562,7 @@ class TopologyEngine:
         return errors
 
     @classmethod
-    def _check_point_duplicates(cls, gdf: gpd.GeoDataFrame, tolerance: float, start_id: int) -> List[TopologyError]:
+    def _check_point_duplicates(cls, gdf: gpd.GeoDataFrame, tolerance: float, start_id: int, meters_per_unit: float = 1.0) -> List[TopologyError]:
         errors = []
         rule = cls.RULES[TopologyRuleCode.POINT_DUPLICATES]
         curr_id = start_id
@@ -516,6 +578,7 @@ class TopologyEngine:
         tree = shapely.STRtree(geoms)
         dist = max(tolerance, 1e-12)
         matches = tree.query(geoms, predicate="dwithin", distance=dist)
+        tol_m = dist * meters_per_unit
 
         seen_pairs = set()
         for i, j in zip(matches[0], matches[1]):
@@ -531,7 +594,7 @@ class TopologyEngine:
                         rule_name=rule.name,
                         feature_ids=[idx_i, idx_j],
                         geometry=geoms[i],
-                        description=f"Features #{idx_i} and #{idx_j} are coincident / duplicates within {dist:g}.",
+                        description=f"Features #{idx_i} and #{idx_j} are coincident / duplicates within {tol_m:.3g} m.",
                         severity="error",
                         can_fix=True
                     ))
@@ -809,7 +872,7 @@ class TopologyEngine:
         return new_geom_a, new_geom_b, True
 
     @classmethod
-    def _check_line_duplicate_nodes(cls, gdf: gpd.GeoDataFrame, tolerance: float = 0.0, start_id: int = 0) -> List[TopologyError]:
+    def _check_line_duplicate_nodes(cls, gdf: gpd.GeoDataFrame, tolerance: float = 0.0, start_id: int = 0, meters_per_unit: float = 1.0) -> List[TopologyError]:
         errors = []
         rule = cls.RULES[TopologyRuleCode.LINE_DUPLICATE_NODES]
         curr_id = start_id
@@ -839,13 +902,14 @@ class TopologyEngine:
 
             if dup_points:
                 err_geom = MultiPoint(dup_points) if len(dup_points) > 1 else dup_points[0]
+                tol_str = f" within {tolerance * meters_per_unit:.3g} m" if tolerance > 0 else ""
                 errors.append(TopologyError(
                     id=curr_id,
                     rule_code=rule.code,
                     rule_name=rule.name,
                     feature_ids=[idx],
                     geometry=err_geom,
-                    description=f"Line feature #{idx} has {len(dup_points)} consecutive duplicate vertices.",
+                    description=f"Line feature #{idx} has {len(dup_points)} consecutive duplicate vertices{tol_str}.",
                     severity="warning",
                     can_fix=True
                 ))
@@ -909,7 +973,7 @@ class TopologyEngine:
         return errors
 
     @classmethod
-    def _check_line_dangles(cls, gdf: gpd.GeoDataFrame, snap_tolerance: float, start_id: int) -> List[TopologyError]:
+    def _check_line_dangles(cls, gdf: gpd.GeoDataFrame, snap_tolerance: float, start_id: int, meters_per_unit: float = 1.0) -> List[TopologyError]:
         errors = []
         rule = cls.RULES[TopologyRuleCode.LINE_DANGLES]
         curr_id = start_id
@@ -954,13 +1018,15 @@ class TopologyEngine:
                 best_g_i = min(nearby_lines, key=lambda g_i: pt.distance(geoms_list[g_i]))
                 best_idx = indices_list[best_g_i]
                 min_dist = pt.distance(geoms_list[best_g_i])
+                min_dist_m = min_dist * meters_per_unit
+                snap_tol_m = snap_tolerance * meters_per_unit
                 errors.append(TopologyError(
                     id=curr_id,
                     rule_code=rule.code,
                     rule_name=rule.name,
                     feature_ids=[idx, best_idx],
                     geometry=pt,
-                    description=f"Undershoot dangle ({which}) on line #{idx} is {min_dist:.4g} from line #{best_idx} (snap tolerance: {snap_tolerance:g}).",
+                    description=f"Undershoot dangle ({which}) on line #{idx} is {min_dist_m:.2f} m from line #{best_idx} (snap tolerance: {snap_tol_m:.2f} m).",
                     severity="warning",
                     can_fix=True
                 ))
@@ -1032,7 +1098,7 @@ class TopologyEngine:
         return errors
 
     @classmethod
-    def _check_line_short_segments(cls, gdf: gpd.GeoDataFrame, min_length: float, start_id: int) -> List[TopologyError]:
+    def _check_line_short_segments(cls, gdf: gpd.GeoDataFrame, min_length: float, start_id: int, meters_per_unit: float = 1.0) -> List[TopologyError]:
         errors = []
         rule = cls.RULES[TopologyRuleCode.LINE_SHORT_SEGMENTS]
         curr_id = start_id
@@ -1042,13 +1108,15 @@ class TopologyEngine:
                 continue
 
             if geom.length < min_length:
+                geom_len_m = geom.length * meters_per_unit
+                thresh_len_m = min_length * meters_per_unit
                 errors.append(TopologyError(
                     id=curr_id,
                     rule_code=rule.code,
                     rule_name=rule.name,
                     feature_ids=[idx],
                     geometry=geom,
-                    description=f"Line feature #{idx} length ({geom.length:.4g}) is below minimum threshold ({min_length:g}).",
+                    description=f"Line feature #{idx} length ({geom_len_m:.2f} m) is below minimum threshold ({thresh_len_m:.2f} m).",
                     severity="warning",
                     can_fix=True
                 ))
@@ -1198,7 +1266,7 @@ class TopologyEngine:
         return errors
 
     @classmethod
-    def _check_polygon_overlaps(cls, gdf: gpd.GeoDataFrame, min_area: float, start_id: int) -> List[TopologyError]:
+    def _check_polygon_overlaps(cls, gdf: gpd.GeoDataFrame, min_area: float, start_id: int, sqmeters_per_unit: float = 1.0) -> List[TopologyError]:
         errors = []
         rule = cls.RULES[TopologyRuleCode.POLYGON_OVERLAPS]
         curr_id = start_id
@@ -1225,13 +1293,14 @@ class TopologyEngine:
                     try:
                         inter = geoms[i].intersection(geoms[j])
                         if inter is not None and not inter.is_empty and inter.area >= min_area:
+                            inter_area_m2 = inter.area * sqmeters_per_unit
                             errors.append(TopologyError(
                                 id=curr_id,
                                 rule_code=rule.code,
                                 rule_name=rule.name,
                                 feature_ids=[idx_i, idx_j],
                                 geometry=inter,
-                                description=f"Polygons #{idx_i} and #{idx_j} overlap by area {inter.area:.4g}.",
+                                description=f"Polygons #{idx_i} and #{idx_j} overlap by area {inter_area_m2:.2f} m².",
                                 severity="error",
                                 can_fix=True
                             ))
@@ -1241,7 +1310,7 @@ class TopologyEngine:
         return errors
 
     @classmethod
-    def _check_polygon_slivers(cls, gdf: gpd.GeoDataFrame, min_area: float, thinness_threshold: float, start_id: int) -> List[TopologyError]:
+    def _check_polygon_slivers(cls, gdf: gpd.GeoDataFrame, min_area: float, thinness_threshold: float, start_id: int, sqmeters_per_unit: float = 1.0) -> List[TopologyError]:
         errors = []
         rule = cls.RULES[TopologyRuleCode.POLYGON_SLIVERS]
         curr_id = start_id
@@ -1264,7 +1333,8 @@ class TopologyEngine:
                 is_sliver = thinness < thinness_threshold and area < (min_area * 1000)
 
                 if is_micro or is_sliver:
-                    reason = f"Micro-area ({area:.4g})" if is_micro else f"Thinness ratio ({thinness:.4f} < {thinness_threshold})"
+                    area_m2 = area * sqmeters_per_unit
+                    reason = f"Micro-area ({area_m2:.2f} m²)" if is_micro else f"Thinness ratio ({thinness:.4f} < {thinness_threshold})"
                     errors.append(TopologyError(
                         id=curr_id,
                         rule_code=rule.code,
@@ -1279,7 +1349,7 @@ class TopologyEngine:
         return errors
 
     @classmethod
-    def _check_polygon_gaps(cls, gdf: gpd.GeoDataFrame, max_gap_area: float, start_id: int) -> List[TopologyError]:
+    def _check_polygon_gaps(cls, gdf: gpd.GeoDataFrame, max_gap_area: float, start_id: int, sqmeters_per_unit: float = 1.0) -> List[TopologyError]:
         errors = []
         rule = cls.RULES[TopologyRuleCode.POLYGON_GAPS]
         curr_id = start_id
@@ -1296,13 +1366,14 @@ class TopologyEngine:
                     for interior in geom.interiors:
                         hole = Polygon(interior)
                         if 0 < hole.area <= max_gap_area:
+                            hole_area_m2 = hole.area * sqmeters_per_unit
                             errors.append(TopologyError(
                                 id=curr_id,
                                 rule_code=rule.code,
                                 rule_name=rule.name,
                                 feature_ids=[],
                                 geometry=hole,
-                                description=f"Enclosed gap / void found between adjacent polygons (Area: {hole.area:.4g}).",
+                                description=f"Enclosed gap / void found between adjacent polygons (Area: {hole_area_m2:.2f} m²).",
                                 severity="warning",
                                 can_fix=False
                             ))
@@ -1327,6 +1398,7 @@ class TopologyEngine:
 
         res_gdf = gdf.copy()
         total_fixed = 0
+        meters_per_unit, sqmeters_per_unit = cls.get_metric_conversion_factors(res_gdf)
 
         # 1. Clean empty / null geometries
         if TopologyRuleCode.GEOM_EMPTY_NULL in report.rule_counts:
@@ -1377,10 +1449,11 @@ class TopologyEngine:
 
         # 5. Clean line short segments
         if TopologyRuleCode.LINE_SHORT_SEGMENTS in report.rule_counts:
-            min_len = 0.0001
+            min_len_m = 0.50
             for r in getattr(report, "configured_rules", []):
                 if r.code == TopologyRuleCode.LINE_SHORT_SEGMENTS:
-                    min_len = float(r.params.get("min_length", 0.0001))
+                    min_len_m = float(r.params.get("min_length", 0.50))
+            min_len = min_len_m / meters_per_unit
             is_line = res_gdf.geometry.geom_type.isin(["LineString", "MultiLineString"])
             too_short = is_line & (res_gdf.geometry.length < min_len)
             res_gdf = res_gdf[~too_short].copy()
@@ -1413,10 +1486,11 @@ class TopologyEngine:
 
         # 7. Snap line dangles (undershoots)
         if TopologyRuleCode.LINE_DANGLES in report.rule_counts:
-            snap_tol = 0.0002
+            snap_tol_m = 0.10
             for r in getattr(report, "configured_rules", []):
                 if r.code == TopologyRuleCode.LINE_DANGLES:
-                    snap_tol = float(r.params.get("tolerance", 0.0002))
+                    snap_tol_m = float(r.params.get("tolerance", 0.10))
+            snap_tol = snap_tol_m / meters_per_unit
             fixed_dangles = 0
             dangle_errs = [e for e in report.errors if e.rule_code == TopologyRuleCode.LINE_DANGLES and e.can_fix]
             for err in dangle_errs:
@@ -1479,23 +1553,48 @@ class TopologyEngine:
 
         # 4. Repair Point Duplicates
         if TopologyRuleCode.POINT_DUPLICATES in report.rule_counts:
+            tol_m = 0.05
+            for r in getattr(report, "configured_rules", []):
+                if r.code == TopologyRuleCode.POINT_DUPLICATES:
+                    tol_m = float(r.params.get("tolerance", 0.05))
+            tol_native = tol_m / meters_per_unit
             orig_cnt = len(res_gdf)
-            # Drop identical geometries
-            res_gdf = res_gdf.drop_duplicates(subset=["geometry"]).copy()
+            if tol_native > 1e-9:
+                valid_mask = res_gdf.geometry.notna() & ~res_gdf.geometry.is_empty
+                pts_geoms = res_gdf[valid_mask].geometry.values
+                pts_indices = list(res_gdf[valid_mask].index)
+                if len(pts_geoms) >= 2:
+                    tree = shapely.STRtree(pts_geoms)
+                    matches = tree.query(pts_geoms, predicate="dwithin", distance=tol_native)
+                    to_drop = set()
+                    for i, j in zip(matches[0], matches[1]):
+                        if i < j and pts_indices[i] not in to_drop:
+                            to_drop.add(pts_indices[j])
+                    if to_drop:
+                        res_gdf = res_gdf.drop(index=list(to_drop)).copy()
+            else:
+                res_gdf = res_gdf.drop_duplicates(subset=["geometry"]).copy()
             total_fixed += (orig_cnt - len(res_gdf))
 
         # 5. Resolve Polygon Overlaps (clip overlapping regions)
         if TopologyRuleCode.POLYGON_OVERLAPS in report.rule_counts:
             fixed_overlaps = 0
+            min_area_m = 0.10
+            for r in getattr(report, "configured_rules", []):
+                if r.code == TopologyRuleCode.POLYGON_OVERLAPS:
+                    min_area_m = float(r.params.get("min_area", 0.10))
+            min_area = min_area_m / sqmeters_per_unit
             indices = list(res_gdf.index)
             for i in range(len(indices)):
                 for j in range(i + 1, len(indices)):
                     idx_i, idx_j = indices[i], indices[j]
+                    if idx_i not in res_gdf.index or idx_j not in res_gdf.index:
+                        continue
                     geom_i = res_gdf.geometry.loc[idx_i]
                     geom_j = res_gdf.geometry.loc[idx_j]
                     if geom_i is not None and geom_j is not None and geom_i.intersects(geom_j):
                         inter = geom_i.intersection(geom_j)
-                        if inter.area > 1e-9:
+                        if inter.area >= min_area:
                             new_geom_j = geom_j.difference(geom_i)
                             if new_geom_j is not None and not new_geom_j.is_empty:
                                 res_gdf.loc[idx_j, "geometry"] = new_geom_j

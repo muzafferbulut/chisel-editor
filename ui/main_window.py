@@ -56,11 +56,15 @@ class MainWindow(QMainWindow):
         else:
             self._current_folder = os.getcwd()
 
-        self.topology_dialog = None
+        self.topology_dock = None
 
         self._init_ui()
         self._create_menus()
         self._restore_session_files()
+
+    @property
+    def topology_dialog(self):
+        return self.topology_dock
 
     def _init_ui(self):
         self.setWindowTitle("Chisel Editor")
@@ -98,6 +102,18 @@ class MainWindow(QMainWindow):
 
         central_layout.addWidget(self.main_splitter)
         self.setCentralWidget(central_container)
+
+        # Dock Options & Topology Engine Dock
+        self.setDockOptions(
+            QMainWindow.DockOption.AnimatedDocks |
+            QMainWindow.DockOption.AllowTabbedDocks |
+            QMainWindow.DockOption.GroupedDragging
+        )
+
+        from ui.topology_dialog import TopologyDockWidget
+        self.topology_dock = TopologyDockWidget(parent=self, map_panel=self.shared_map_panel)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.topology_dock)
+        self.topology_dock.hide()
 
         # Modern Compact Status Bar
         self.status_bar = self.statusBar()
@@ -275,6 +291,10 @@ class MainWindow(QMainWindow):
         act_toggle_sidebar.setShortcut(QKeySequence("Ctrl+B"))
         act_toggle_sidebar.triggered.connect(self._toggle_side_bar)
         view_menu.addAction(act_toggle_sidebar)
+
+        act_toggle_topology = self.topology_dock.toggleViewAction()
+        act_toggle_topology.setText("Topology Engine Dock")
+        view_menu.addAction(act_toggle_topology)
 
         view_menu.addSeparator()
         theme_menu: QMenu = view_menu.addMenu("Theme")
@@ -456,6 +476,13 @@ class MainWindow(QMainWindow):
 
                 geom_type = SpatialOps.get_layer_geometry_type(tab._current_gdf)
                 self.shared_map_panel.set_active_vector_layer(tab.layer_id, geom_type)
+
+                if hasattr(self, "topology_dock") and self.topology_dock is not None and self.topology_dock.isVisible():
+                    if tab._current_gdf is not None and not tab._current_gdf.empty:
+                        layer_name = os.path.basename(tab.current_file) if tab.current_file else "Spatial Layer"
+                        def _on_topology_layer_updated(new_gdf):
+                            tab.update_spatial_gdf(new_gdf)
+                        self.topology_dock.update_layer(tab._current_gdf, layer_name, _on_topology_layer_updated, layer_id=tab.layer_id)
             else:
                 self.btn_status_crs.hide()
         self._save_session_state()
@@ -1055,30 +1082,21 @@ class MainWindow(QMainWindow):
             ToastNotification.show_toast(self, "No active spatial layer for topology check", "warning")
             return
 
-        from ui.topology_dialog import TopologyCheckerDialog
         layer_name = os.path.basename(tab.current_file) if tab.current_file else "Spatial Layer"
 
         def _on_topology_layer_updated(new_gdf):
             tab.update_spatial_gdf(new_gdf)
 
-        # If already open, update to active layer and bring to focus without blocking main window
-        if hasattr(self, "topology_dialog") and self.topology_dialog is not None and self.topology_dialog.isVisible():
-            self.topology_dialog.update_layer(tab._current_gdf, layer_name, _on_topology_layer_updated, layer_id=tab.layer_id)
-            self.topology_dialog.raise_()
-            self.topology_dialog.activateWindow()
-            return
+        if not hasattr(self, "topology_dock") or self.topology_dock is None:
+            from ui.topology_dialog import TopologyDockWidget
+            self.topology_dock = TopologyDockWidget(parent=self, map_panel=self.shared_map_panel)
+            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.topology_dock)
+            self.topology_dock.apply_theme(ThemeManager._current_theme)
 
-        self.topology_dialog = TopologyCheckerDialog(
-            gdf=tab._current_gdf,
-            layer_name=layer_name,
-            map_panel=self.shared_map_panel,
-            on_layer_updated=_on_topology_layer_updated,
-            layer_id=tab.layer_id,
-            parent=self
-        )
-        self.topology_dialog.show()
-        self.topology_dialog.raise_()
-        self.topology_dialog.activateWindow()
+        self.topology_dock.update_layer(tab._current_gdf, layer_name, _on_topology_layer_updated, layer_id=tab.layer_id)
+        self.topology_dock.show()
+        self.topology_dock.raise_()
+        self.topology_dock.activateWindow()
 
     def _validate_geometries(self):
         tab = self._get_current_tab()
@@ -1187,8 +1205,8 @@ class MainWindow(QMainWindow):
                 else:
                     if hasattr(tab, "text_editor") and tab.text_editor:
                         tab.text_editor.setTheme(theme_name)
-        if hasattr(self, "topology_dialog") and self.topology_dialog is not None and self.topology_dialog.isVisible():
-            self.topology_dialog.apply_theme(theme_name)
+        if hasattr(self, "topology_dock") and self.topology_dock is not None:
+            self.topology_dock.apply_theme(theme_name)
         settings = QSettings("ChiselEditor", "ChiselEditor")
         settings.setValue("current_theme", theme_name)
 
@@ -1239,4 +1257,6 @@ class MainWindow(QMainWindow):
             tab = self.tab_widget.widget(i)
             if hasattr(tab, "cleanup"):
                 tab.cleanup()
+        if hasattr(self, "topology_dock") and self.topology_dock is not None:
+            self.topology_dock.close()
         super().closeEvent(event)
